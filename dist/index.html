@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MTUN-XD 文件</title>
+<style>
+  body { margin:0 auto; max-width:760px; padding:36px 20px; line-height:1.9;
+         font:15px/1.9 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; color:#222; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p { color:#666; margin:0 0 20px; }
+  code { background:#f4f4f5; padding:2px 6px; border-radius:4px; font-size:14px; }
+  pre { background:#f4f4f5; padding:12px 14px; border-radius:6px; overflow:auto; }
+  a { color:#0a7d3f; }
+  ul { padding-left:20px; }
+</style>
+</head>
+<body>
+<h1>MTUN-XD</h1>
+<p>面板 + 核心 + 配置工具，打成一个 LuCI 包。装的时候现拉核心/面板，所以包只有几十 KB。</p>
+
+<pre id="cmd">curl -fsSL ./install.sh -o /tmp/mtun-xd-install.sh && sh /tmp/mtun-xd-install.sh</pre>
+<script>
+  // 安装命令按当前访问的域名现拼：页面里不写死托管域名，换域名或反代时同样可用。
+  document.getElementById('cmd').textContent =
+    'curl -fsSL ' + location.origin + '/install.sh -o /tmp/mtun-xd-install.sh && '
+      + 'sh /tmp/mtun-xd-install.sh';
+</script>
+
+<ul>
+  <li><a href="./install.sh">install.sh</a> —— 一行装（自己认 apk / opkg）</li>
+  <li><a href="./latest.txt">latest.txt</a> —— 当前版本号</li>
+  <li><a href="./luci-app-mtun-xd-2026.11.01.apk">luci-app-mtun-xd-2026.11.01.apk</a> —— OpenWrt 25.x（apk）</li>
+  <li><a href="./luci-app-mtun-xd_2026.11.01_all.ipk">luci-app-mtun-xd_2026.11.01_all.ipk</a> —— 24.10 及以前（opkg）</li>
+  <li><a href="./generator.sh">generator.sh</a> / <a href="./mihomo-deploy.zip">mihomo-deploy.zip</a> /
+      <a href="./mihomo-deploy.tar.gz">mihomo-deploy.tar.gz</a> —— 配置工具（生成器）的部署包</li>
+</ul>
+
+
+
+<p style="color:#888">装完：路由器界面 → 服务 → MTUN-XD。</p>
+</body>
+</html>

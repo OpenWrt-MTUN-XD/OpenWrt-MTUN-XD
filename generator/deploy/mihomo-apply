@@ -1,0 +1,363 @@
+#!/bin/sh
+# 把 POST 上来的整份 mihomo 配置写进配置文件，并让 mihomo 重载。
+#
+# 为什么需要它：mihomo 的 API 不能写文件 —— PUT /configs 只有 ParseWithBytes /
+# ParseWithPath 两条分支、之后只调 ApplyConfig（hub/route/configs.go），只改内存，
+# 进程一重启就回滚。所以用现成的 uhttpd CGI（cgi_prefix 是 /cgi-bin）来落盘。
+#
+# 调用：POST /cgi-bin/mihomo-apply；header `Authorization: Bearer <config 里的 secret>`；
+#       body 整份 YAML（Content-Type: text/plain）。
+#
+# ⚠️ 认证认 mihomo 自己的 secret（登录面板要用的密码，生成器从面板 localStorage 取）：
+#    脚本里不留静态钥匙文件 —— 那等于把钥匙挂在不用登录的 /ui/config/ 静态目录上。
+# ⚠️ uhttpd 不把自定义请求头传进 CGI，但 Authorization 会原样传进来，别改成自定义头。
+# ⚠️ 没设 secret 的配置一律拒绝：secret 是这里唯一的门禁。
+
+BASE='/etc/mihomo'
+CONFIG="$BASE/config.yaml"
+BIN="$BASE/mihomo"
+CONTAINER='mihomo'                             # Docker 容器名（API 调不通时兜底重启）
+CFG_TMP=''
+CFG_BAK=''
+CFG_TEST=''
+CFG_KEEP_BAK=0
+
+cleanup_cfg_files() {
+    [ -n "$CFG_TMP" ] && rm -f "$CFG_TMP"
+    [ "$CFG_KEEP_BAK" = 1 ] || [ -z "$CFG_BAK" ] || rm -f "$CFG_BAK"
+    [ -n "$CFG_TEST" ] && rm -f "$CFG_TEST"
+}
+trap cleanup_cfg_files EXIT
+trap 'cleanup_cfg_files; exit 130' INT TERM
+
+# 监听地址和 secret **不写死**，直接从配置文件里读 —— 这样它跟着生成器里填的走，
+# 以后改地址/改密码也不用回来动这个脚本。
+api_addr() {
+  sed -n 's/^external-controller:[[:space:]]*//p' "$CONFIG" | head -1 | tr -d '"'\'' '
+}
+api_secret() {
+  sed -n 's/^secret:[[:space:]]*//p' "$CONFIG" | head -1 | tr -d '"'\'' '
+}
+
+cors() {
+  # 生成器在 :9090，这个 CGI 在 :80 —— 不同端口=跨域。
+  # ⚠️ 带了 Authorization 头就不再是「简单请求」，浏览器会先发 OPTIONS 预检，
+  #    所以 Allow-Headers 里必须列出 Authorization，否则浏览器直接拦掉。
+  # 只回请求方给的 Origin；真正的门是上面的 secret 校验。
+  [ -n "$HTTP_ORIGIN" ] && printf 'Access-Control-Allow-Origin: %s\r\n' "$HTTP_ORIGIN"
+  printf 'Access-Control-Allow-Methods: POST, OPTIONS\r\n'
+  printf 'Access-Control-Allow-Headers: Content-Type, Authorization\r\n'
+}
+
+fail() {
+  printf 'Status: %s\r\n' "$1"
+  printf 'Content-Type: text/plain; charset=utf-8\r\n'
+  cors
+  printf '\r\n'
+  printf '%s\n' "$2"
+  exit 0
+}
+
+[ "$REQUEST_METHOD" = 'OPTIONS' ] && fail '204 No Content' ''
+[ "$REQUEST_METHOD" = 'POST' ] || fail '405 Method Not Allowed' 'only POST'
+
+# ── 认证 ────────────────────────────────────────────────────────
+want=$(api_secret)
+if [ -z "$want" ]; then
+  fail '403 Forbidden' 'mihomo 没设 secret —— 写盘接口拒绝执行，先给 config.yaml 设个 secret'
+fi
+
+given=$(printf '%s' "$HTTP_AUTHORIZATION" | sed -n 's/^[Bb]earer[[:space:]]*//p')
+if [ -z "$given" ]; then
+  fail '401 Unauthorized' 'missing Authorization: Bearer <secret>'
+fi
+if [ "$given" != "$want" ]; then
+  fail '403 Forbidden' 'bad secret'
+fi
+
+# ── 让改动生效 ──────────────────────────────────────────────────
+# ⚠️ 从（可能刚改过的）配置里现读 secret 和监听地址 —— 用户可能刚好把密码也改了，
+#    这时候得用新的那个去调 API，用旧的会 401。
+# ⚠️ 不写死 127.0.0.1：mihomo 只绑配置里那个地址。
+api_addr_norm() {
+  local a
+  a=$(api_addr)
+  # 跟套件那边（expose_host）同一套通配写法：这些不是真地址，换成回环
+  case "$a" in
+    0.0.0.0:*) a="127.0.0.1:${a#0.0.0.0:}" ;;
+    '[::]':*)  a="127.0.0.1:${a#\[::\]:}" ;;
+    '::':*)    a="127.0.0.1:${a#::}" ;;
+    '*':*)     a="127.0.0.1:${a#*:}" ;;
+    :*)        a="127.0.0.1:${a#:}" ;;
+  esac
+  printf '%s' "$a"
+}
+
+# 本机各个 IPv4（挑候选地址用，只是拿来试，不判断是不是"内网"）
+lan_ips() {
+  ip -4 addr show scope global 2>/dev/null \
+    | sed -n 's/.*inet \([0-9][0-9.]*\)\/.*/\1/p'
+}
+
+# ⚠️ 不能只打配置里那一个地址：内核热载不重新绑定监听（老地址照旧在听、新地址没人听），
+#    而写盘这一步是先落盘再让内核重读 ⇒ 新地址这时候没人应，PUT 拒连，整条链子退化成
+#    `reload: none`：配置只落了盘、内存里一点没生效，可页面还弹"已载入配置文件"。
+#    ⇒ 挨个试：配置地址 → 127.0.0.1:端口 → 本机各 IPv4:端口 → 再试 9090 → netstat 里真在听的。
+api_try() {
+  local secret c p seen=''
+  secret=$(api_secret)
+  p=$(printf '%s' "$(api_addr_norm)" | sed 's/.*://')
+  [ -n "$p" ] || p=9090
+  # ⚠️ 候选会有重复（默认端口下 127.0.0.1:$p 和 :9090 是同一条），拿 $seen 去一遍：
+  #    每个连不上的地址都要烧满 -m 20，重复一条就多等 20 秒。
+  for c in "$(api_addr_norm)" \
+           "127.0.0.1:$p" \
+           $(lan_ips | sed "s|\$|:$p|") \
+           "127.0.0.1:9090" \
+           $(lan_ips | sed 's|$|:9090|') \
+           $(netstat -ltnp 2>/dev/null | awk '/mihomo/ && $4 ~ /:/ {print $4}'); do
+    [ -n "$c" ] || continue
+    case " $seen " in *" $c "*) continue ;; esac
+    seen="$seen $c"
+    case "$c" in 0.0.0.0:*|'[::]':*|'::':*|'*':*|:*) continue ;; esac
+    if curl -sf -m 20 -X PUT "http://$c/configs?force=true" \
+         -H "Authorization: Bearer $secret" \
+         -H 'Content-Type: application/json' \
+         -d '{"path":"","payload":""}' >/dev/null 2>&1; then
+      printf '%s' "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# 重启内核（procd 那套是 /etc/init.d/mihomo，Docker 那套是 docker restart）
+core_restart() {
+  /etc/init.d/mihomo restart >/dev/null 2>&1 && return 0
+  docker restart "$CONTAINER" >/dev/null 2>&1
+}
+
+# 配置里写的监听地址，内核是不是真的在听。
+# ⚠️ api_try 比的是归一化后的地址，0.0.0.0 ↔ 127.0.0.1 两种改法会被它骗过去：探测照样通，
+#    但内核仍只听回环 / 仍敞在所有网卡上 ⇒ 只能按字面地址核对 netstat；看不到监听项就不判。
+listen_ok() {
+  local raw host port list
+  raw=$(api_addr)
+  [ -n "$raw" ] || return 0
+  port=${raw##*:}
+  host=${raw%:*}
+  case "$host" in \[*\]) host=${host#\[}; host=${host%\]} ;; esac
+  list=$(netstat -ltnp 2>/dev/null | awk '/mihomo/ {print $4}')
+  [ -n "$list" ] || return 0
+  case "$host" in
+    0.0.0.0|'::'|'')
+      printf '%s\n' "$list" | grep -qE "(^|:)(0\.0\.0\.0|::|\[::\]|\*):$port\$"
+      ;;
+    *:*)
+      # IPv6：netstat 带中括号（[::1]:9090），也兼容不带的那种写法
+      { printf '%s\n' "$list" | grep -qF "[$host]:$port"; } \
+        || printf '%s\n' "$list" | grep -qF "$host:$port"
+      ;;
+    *)
+      printf '%s\n' "$list" | grep -qF "$host:$port"
+      ;;
+  esac
+}
+
+# 内核重启后**真的**回来了吗：/version 回 200/401 才算（进程被拉起 ≠ 能服务）。
+# 少了这一道，"载入配置文件"会把内核弄死也报成功 —— 文件已经是新的、备份还被删了。
+core_healthy() {
+    local c code i
+    for c in "$(api_addr_norm)" "127.0.0.1:9090"; do
+        [ -n "$c" ] || continue
+        i=0
+        while [ "$i" -lt 4 ]; do
+            i=$((i + 1))
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 3 \
+                     -H "Authorization: Bearer $(api_secret)" "http://$c/version" 2>/dev/null)
+            case "$code" in 200|401) return 0 ;; esac
+            sleep 1
+        done
+    done
+    return 1
+}
+
+reload_mihomo() {
+  local used
+  if used=$(api_try); then
+    # 通上了，但不是配置里那个地址 ⇒ 内核还在老地址上听（热载不换监听）：补一次重启，
+    # 让内核读到新地址；否则文件说 A、内核听 B，一直错着，只有下次重启才对上。
+    # 地址归一化后相同（0.0.0.0 ↔ 127.0.0.1）不代表真的对齐，再按字面地址核一遍。
+    if [ "$used" = "$(api_addr_norm)" ] && listen_ok; then
+      echo "api ($used)"
+    elif core_restart && core_healthy; then
+      echo "api ($used) + restart"
+    else
+      echo 'none'
+    fi
+    return 0
+  fi
+  if core_restart && core_healthy; then
+    echo 'restart'
+  else
+    echo 'none'
+  fi
+}
+
+# ── 动作一：换工具密码（旋转）─────────────────────────────────────
+# 调用：POST /cgi-bin/mihomo-apply?rotate=1，body 空；认证照旧（Bearer <当前 secret>）。
+#
+# 语义：把分发出去的那把「工具密码」作废（不是面板密码）—— 拿到旧钥匙的人立刻进不来工具，
+# 机主的面板不受影响（面板认 secret，跟工具密码是两个东西）。要动三样：$TOOLFILE
+# （/etc/mihomo-toolpass，明文，给机主看）、$G/toolhash.txt（它的 SHA-256，登录门现取，
+# 单独放文件是为了不受 gate.js 的 ?v= 缓存影响）、gate.js 里那份兜底常量。
+#
+# ⚠️ 不用 reload mihomo —— 门是纯前端的；只认 query，不看 body。
+# ⚠️ 下面两个路径要跟 deploy/generator.sh 里的 TOOLFILE / $G 保持一致。
+CGI_G='/etc/mihomo/ui/config'
+CGI_TOOLFILE='/etc/mihomo-toolpass'
+
+sha_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | cut -d' ' -f1
+  elif command -v openssl >/dev/null 2>&1; then
+    printf '%s' "$1" | openssl dgst -sha256 | sed 's|.*[ =]||'
+  fi
+}
+
+if [ "$QUERY_STRING" = 'rotate=1' ]; then
+  new=''
+  # 12 位字母数字（跟 generator.sh 装机时生成的同一规格）；循环防 urandom 抽不够长
+  while [ ${#new} -lt 12 ]; do
+    new=$(head -c 256 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 12)
+  done
+  h=$(sha_of "$new")
+  [ -n "$h" ] || fail '500 Internal Server Error' 'no sha256sum / openssl'
+
+  ( umask 077; printf '%s\n' "$new" > "$CGI_TOOLFILE" ) \
+    || fail '500 Internal Server Error' "write $CGI_TOOLFILE failed"
+  printf '%s\n' "$h" > "$CGI_G/toolhash.txt" \
+    || fail '500 Internal Server Error' "write $CGI_G/toolhash.txt failed"
+  # 兜底那份（拿不到上面那个文件时用）；改不动也不算错
+  sed -i "s|^\( *var TOOL_HASH = '\)[0-9a-f]*\(';\)|\1$h\2|" "$CGI_G/gate.js" 2>/dev/null
+
+  printf 'Content-Type: text/plain; charset=utf-8\r\n'
+  cors
+  printf '\r\n'
+  # ⚠️ 新密码**只能在这里回给浏览器**（它得知道新的那把，好存在本机继续用）。
+  #    浏览器按 `^rotated <密码>` 解，别改这个格式。
+  printf 'rotated %s (reload: tool)\n' "$new"
+  exit 0
+fi
+
+# 先落临时文件，校验过了再动真配置 —— 半截请求不能把配置写坏。
+# ⚠️ 临时文件必须跟 $CONFIG 同一个目录：最后用 `mv` 原子换名；/tmp 跟 /etc 常常不是同一个
+#    文件系统，跨盘 mv 退化成复制+删除。写到一半断电 / ENOSPC 会留下半截配置，起不来。
+cdir=$(dirname "$CONFIG")
+tmp=$(mktemp "$cdir/.config.XXXXXX") || fail '500 Internal Server Error' 'mktemp failed'
+CFG_TMP="$tmp"
+# UI 本来就把生成物限制在 10 MiB；CGI 自己也兜一道，避免任意大请求把 flash 写满。
+dd bs=1024 count=10241 2>/dev/null > "$tmp" \
+    || { rm -f "$tmp"; fail '500 Internal Server Error' 'read request body failed'; }
+
+size=$(wc -c < "$tmp" | tr -d ' ')
+[ "$size" -gt 0 ] || { rm -f "$tmp"; fail '400 Bad Request' 'empty body'; }
+[ "$size" -le 10485760 ] || { rm -f "$tmp"; fail '413 Payload Too Large' '配置超过 10 MiB'; }
+
+# 粗校验：真配置一定有 mode: 这一行。宁可在这里挡住，也别让 mihomo 起不来。
+head -c 200 "$tmp" | grep -q 'mode:' || { rm -f "$tmp"; fail '400 Bad Request' 'not a mihomo config'; }
+
+# 用内核自己的解析器做完整校验。临时文件就在 $BASE 里，rule-provider / Geo 的相对
+# 路径与正式配置一致；坏配置在替换前就被拦下，现网配置一个字节都不动。
+test_note=''
+# ⚠️ 必须真的找到一个校验器：找不到就不写 —— `$BIN` 不在就跳过校验等于把没验证过的配置
+#    直接落盘，违反本项目"写盘前必须 mihomo -t"的硬规定。
+TBIN="$BIN"
+[ -x "$TBIN" ] || TBIN=$(command -v mihomo 2>/dev/null || true)
+if [ -z "$TBIN" ] || [ ! -x "$TBIN" ]; then
+    rm -f "$tmp"
+    CFG_TMP=''
+    fail '501 Not Implemented' "找不到 mihomo 可执行文件（$BIN），拒绝在未校验的情况下替换配置"
+fi
+if [ -x "$TBIN" ]; then
+    CFG_TEST="$cdir/.config.test.$$"
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 25 "$TBIN" -t -d "$BASE" -f "$tmp" >"$CFG_TEST" 2>&1
+    else
+        "$TBIN" -t -d "$BASE" -f "$tmp" >"$CFG_TEST" 2>&1
+    fi
+    rc=$?
+    if [ "$rc" = 124 ] || [ "$rc" = 143 ]; then
+        # 远端 rule-provider 偶发慢，和安装流程保持同一口径：不把“校验超时”误判成语法错。
+        test_note=' (config test timed out)'
+    elif [ "$rc" != 0 ]; then
+        detail=$(tail -n 5 "$CFG_TEST" 2>/dev/null | tr '\r' ' ' | head -c 800)
+        rm -f "$tmp" "$CFG_TEST"
+        CFG_TMP=''
+        CFG_TEST=''
+        fail '400 Bad Request' "mihomo -t rejected this config: ${detail:-validation failed}"
+    fi
+    rm -f "$CFG_TEST"
+    CFG_TEST=''
+fi
+
+# 同目录备份；替换后热载 / 重启失败就原样恢复，避免"文件换了、内核没吃上"。
+# ⚠️ cp -p：保留 owner/权限。config.yaml 里有 secret 和节点凭据，不能因为备份变成权限更宽的文件。
+old_mode=''
+if [ -f "$CONFIG" ]; then
+    old_mode=$(stat -c %a "$CONFIG" 2>/dev/null)
+    CFG_BAK="$cdir/.config.bak.$$"
+    cp -p "$CONFIG" "$CFG_BAK" || fail '500 Internal Server Error' 'backup config failed'
+fi
+# 权限跟原文件一致；原来没有就 600（里面是密码）。
+if [ -n "$old_mode" ]; then
+    chmod "$old_mode" "$tmp" 2>/dev/null
+else
+    chmod 600 "$tmp" 2>/dev/null
+fi
+mv -f "$tmp" "$CONFIG" || { rm -f "$tmp"; fail '500 Internal Server Error' 'replace config failed'; }
+CFG_TMP=''
+# ⚠️ 文件已经换了、内核还没重载：这时候被 INT/TERM 打断，备份是**唯一**的回滚点。
+#    先标记"留着"，等 reload 成功（或回滚完成）才允许清理。
+[ -n "$CFG_BAK" ] && CFG_KEEP_BAK=1
+
+# ── 让它生效 ────────────────────────────────────────────────────
+reload=$(reload_mihomo)
+if [ "$reload" = 'none' ]; then
+    if [ -n "$CFG_BAK" ]; then
+        if ! mv -f "$CFG_BAK" "$CONFIG"; then
+            CFG_KEEP_BAK=1
+            fail '500 Internal Server Error' "new config failed and restore failed; previous config kept at $CFG_BAK"
+        fi
+        CFG_BAK=''
+        old_reload=$(reload_mihomo)
+        fail '502 Bad Gateway' "new config did not take effect; restored previous config (reload: ${old_reload:-none})"
+    fi
+    rm -f "$CONFIG"
+    fail '502 Bad Gateway' 'new config did not take effect; removed it because there was no previous config'
+fi
+# 生效了 → 备份可以丢了（前面为了防中断一直是"留着"的）
+CFG_KEEP_BAK=0
+rm -f "$CFG_BAK"
+CFG_BAK=''
+
+# 记一笔「跑着的内核已经吃到这份配置」：套件的 restart_needed() 拿这个时间戳跟
+# config.yaml 的 mtime 比，不写的话热载完文件永远比"上次启动"新，下次重跑安装会重启内核。
+# ⚠️ 只在这一步之后写：走到这儿说明 reload 不是 none（文件换了、内核也认了）。
+date +%s > /etc/mtun-xd.start.stamp 2>/dev/null || true
+
+# 内核要是因为换了监听地址被重启过（`+ restart` / `restart`），80 那条口子的转发目标还是
+# 老地址 ⇒ 面板会打不开。顺手让它现在就对准新地址，后台跑：`expose` 可能重启 uhttpd，
+# 前台跑会把这次回包掐断；内核刚重启，也得等它起来再探。
+# ⚠️ 用 `ensure`（不是 `on`）—— 人主动 `expose off` 过的认标记；套件没装就什么都不做。
+case "$reload" in
+  *restart*)
+    [ -x /usr/sbin/mtun-xd ] && \
+      ( sleep 3; /usr/sbin/mtun-xd expose ensure >/dev/null 2>&1 ) >/dev/null 2>&1 &
+    ;;
+esac
+
+printf 'Content-Type: text/plain; charset=utf-8\r\n'
+cors
+printf '\r\n'
+printf 'ok %s bytes (reload: %s)%s\n' "$size" "$reload" "$test_note"

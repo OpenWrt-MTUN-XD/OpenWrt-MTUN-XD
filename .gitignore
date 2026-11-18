@@ -1,0 +1,13 @@
+# 打出来的包：发 Releases，不进仓库
+*.ipk
+*.apk
+
+# ⚠️ 但 dist/ 里那两份是**要发出去的**（Cloudflare Workers 的静态目录，见 wrangler.jsonc）——
+#    路由器/别人就是从那儿下的，所以它们必须进仓库。负号规则要写在上面两条**后面**才生效。
+!dist/
+!dist/*.ipk
+!dist/*.apk
+
+# Python
+__pycache__/
+*.pyc

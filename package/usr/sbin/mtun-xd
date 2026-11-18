@@ -1,0 +1,2263 @@
+#!/bin/sh
+# Mihomo 管理套件（MTUN-XD）—— 面板 + 核心 + 配置工具，一件装齐。
+#
+#   mtun-xd setup        装机动作：拉核心、铺默认配置、起服务、装配置工具、铺面板配置
+#   mtun-xd status       当前内核 / 面板 / 工具
+#   mtun-xd core --bg    升级内核（算好 CPU 档，起不来自动回滚）
+#   mtun-xd ui   --bg    升级面板（metacubexd 官方最新）
+#   mtun-xd update-panel  只换面板（核心 / 配置工具不碰；老机器恢复官方原版也走它）
+#   mtun-xd tool --bg    重装 / 升级配置工具（从它自己那边拉）
+#   mtun-xd console --bg 升级控制台本体 + 配置工具（捆绑一次；核心 / 面板不碰）
+#   mtun-xd seed-panel   重写面板的 config.js（后端自动填）
+#   mtun-xd uninstall    全卸程序；配置和工具密码默认保留，交互时问一次
+#   mtun-xd uninstall --purge
+#                             连配置 / 工具密码 / GEO 一起删，一个字节都不留
+#
+# 设计约束：
+#   · **自成一套**：不依赖、不调用别的脚本；对外只碰
+#     /etc/mihomo/*、/www/cgi-bin/mihomo-apply、/etc/mihomo-toolpass。
+#   · **核心和面板都在装的时候下**（包里一个带二进制、一个带静态站都不带）
+#     → 包只有几十 KB，ipk/apk 都是 noarch，而且拿到的永远是当下最新的一份。
+#   · 配置工具是**另一个项目**的东西，这里只调它的安装脚本（不搬源码）。
+#   · 默认监听地址**写死 127.0.0.1**：内核的口子由 `expose on` 挂到 uhttpd 那个端口上，
+#     面板 / 配置工具 / API 全走同源那条路。
+set -u
+
+BASE=/etc/mihomo
+UI="$BASE/ui"
+# ⚠️ 换面板用的暂存目录：放在 $UI 外面（那底下是公开静态目录，铺到一半的东西不该被发出去），
+#    但必须跟 $UI 同一个盘 —— 最后靠 `mv` 换名，跨盘的 mv 会退化成"复制+删除"，就不原子了。
+UINEW="$BASE/.ui.new"
+UIOLD="$BASE/.ui.old"
+BIN="$BASE/mihomo"
+# 工具密码的明文（在 /etc/mihomo 外面，别跟着 BASE 走）—— 收尾的汇总要读它。
+# 生成器那边同一个路径（deploy/generator.sh 的 TOOLFILE），改要一起改。
+TOOLFILE=/etc/mihomo-toolpass
+CFG="$BASE/config.yaml"
+TMP="/tmp/mtun-xd.$$"
+# 「控制台升级」会覆盖 /usr/sbin/mtun-xd 本身，跑起来的那份不能一边读一边被换
+# （tar 原地截断写），所以这条动作从临时副本跑；副本在正常情况下不存在。
+SELFCOPY="/tmp/mtun-xd.self.$$"
+LOG=/tmp/mtun-xd.log
+DONE=/tmp/mtun-xd.done
+MIRRORS="https://github.com https://ghfast.top/https://github.com https://gh-proxy.com/https://github.com"
+# 生成器（配置工具）从独立的滚动 release 拉（OpenWrt-MTUN-XD/OpenWrt-MTUN-XD-genkit，tag `genkit`），跟核心 /
+# 面板一样走上面那套镜像，不依赖生成器自己的网站（那只是它的线上本体）。
+# ⚠️ 那个 release 是 **prerelease**：`releases/latest` 才不会把它当成"最新版"，
+#    install.sh 解析版本号时才不会跑偏去找 luci-app-*.apk。
+# ⚠️ 两份都要：安装脚本 + 它要铺的包（zip / tar.gz）；后者用 `MIHOMO_KIT_FILE` 指给脚本
+#    （我们这边镜像会挨个回退，它那边只有一个 URL）。
+KIT_REL="OpenWrt-MTUN-XD/OpenWrt-MTUN-XD-genkit/releases/download/genkit"
+# ⚠️ 第一条路是自己家的 CF 静态站（见 wrangler.jsonc）：仓库转私有后 release 附件要 token，
+#    只有这儿还能拿；GitHub + 镜像那条留着当兜底（仓库还公开、或者 CF 抽风时用）。
+REPO_GH='OpenWrt-MTUN-XD/OpenWrt-MTUN-XD'
+GH='https://github.com'
+GH_API='https://api.github.com'
+GH_RAW='https://raw.githubusercontent.com/'"$REPO_GH"'/main'
+KIT_CF='https://mtun-xd.wxcircle.top'
+CGI=/www/cgi-bin/mihomo-apply
+# 80 口归 nginx（Kwrt / QWRT 这类）时用的适配脚本，随包带在 usr/share 下，
+# 源是仓库的 deploy/mihomo-kwrt-nginx.sh。
+NGINX_HELPER=/usr/share/mtun-xd/mihomo-kwrt-nginx.sh
+HAPROXY_HELPER=/usr/share/mtun-xd/mihomo-haproxy.sh
+# nginx 那套的三个状态文件（路径跟 deploy/mihomo-kwrt-nginx.sh 里一致，改要一起改）：
+#   state = 装过 + 改了 uhttpd 哪些地方；addr = 挂的内核地址；loc = 生成的 nginx locations
+NGINX_STATE=/etc/mihomo-kwrt-nginx.state
+NGINX_ADDR=/etc/mihomo-kwrt-nginx.addr
+NGINX_LOC=/etc/nginx/conf.d/mtun-xd.locations
+# uninstall 默认**保留配置**（交互时可明确选择全删）；`--purge` 直接全删。
+# `--keep-config` 继续可用，方便脚本 / 老调用方显式表达保留。
+KEEP_CONFIG=1
+# 下载校验值的兜底开关：正常路径必须拿到 GitHub 官方 SHA-256。
+# 只有用户明确知道风险、且所在网络确实取不到元数据时才允许放行。
+ALLOW_UNVERIFIED=${MIHOMO_ALLOW_UNVERIFIED:-0}
+# TUN 那两样（自编译 / 精简固件常见缺）：开机重建 /dev/net/tun 的 init 脚本，
+# 以及"我们建过什么"的标记（卸载时按它回滚）。
+TUN_INIT=/etc/init.d/mihomo-tun
+TUN_MARK=/etc/mtun-xd.tun-created
+# 「上次成功启动内核」的时间戳 —— 用来判断这次 setup 到底要不要重启。
+# ⚠️ SSH 走 mihomo 代理（198.18.0.x fake-IP）时内核一重启就断线，
+#    所以「没变化就别重启」不只是省事，是为了不把人的连接踢断。
+START_STAMP=/etc/mtun-xd.start.stamp
+
+# ── uhttpd 反代（只开 80 就能把 mihomo 全管了）──────────────────────────────
+# 靠 iStoreOS 给 uhttpd 打的「原始流代理」补丁（-F / proxy_prefix；上游 uhttpd 没有）。
+# ⚠️ 它不剥前缀（/x/version 原样透传给内核）⇒ 只能按内核的真实路径一条条挂。
+# ⚠️ 面板后端地址 = 它自己的 origin（config.js 里是 window.location.host），/ui 挂上去后
+#    面板自己会找同源的 /version、/configs …；清单来自内核源码 hub/route/server.go。
+EXPOSE_PFX='ui version logs traffic memory configs proxies group rules connections providers cache dns storage restart upgrade'
+# 老版本整份还原 uhttpd 快照那套留下的文件，`off` / purge 现在只删它、不还原 ——
+# 整份还原会把挂上之后用户自己加的 proxy_prefix 一起抹掉（现在只摘我们那 16 条）。
+EXPOSE_BAK=/etc/config/uhttpd.mihomo-bak
+# 「用户主动关过」的标记 —— 留着它，`setup` / `install.sh` 就不会擅自开回来
+# （自动补挂只兜"pkg 模式装的 / 改过监听地址"那种漏，不能跟人主动的决定打架）。
+EXPOSE_OFF_MARK=/etc/mtun-xd.expose-off
+# 我们写进去的那几条原文（`/ui=http://…`）。摘的时候只认这里列出来的 ——
+# 光按名字判会把用户自己挂的 `/ui`、`/dns` 之类一起删掉。
+# 老机器上没这份文件 → strip 才退回按名字判（那时候也没别的办法）。
+EXPOSE_STATE=/etc/mtun-xd.expose-state
+# 没有 uhttpd 原始流代理、改用 HAProxy 管 80 时：这里存 HAProxy 转发的内核地址。
+# backend 配置和 uhttpd 的原始监听备份由部署脚本落在这里，expose off / uninstall 可还原。
+HAPROXY_STATE=/etc/mtun-xd.haproxy
+HAPROXY_UHTTPD_BAK=/etc/mtun-xd.haproxy-uhttpd.bak
+
+# 面板左下角绿点（配置生成器 deploy/btn.js）那一行，挂在面板 config.js 末尾。
+# ⚠️ 必须跟 deploy/generator.sh 里那份一字不差（两边靠标记行整段比对 / 替换）；
+#    seed_panel_cfg 整份重写 config.js，漏了它绿点就没了，那是只能映射 9090 的机器
+#    进生成器的唯一入口。
+DOT_HOOK='// mihomo-generator-button: configuration generator entry (removed on uninstall)
+;(function(){for(var s=document.scripts,i=0;i<s.length;i++){if(/btn\.js/.test(s[i].src))return}document.head.appendChild(Object.assign(document.createElement("script"),{src:"./config/btn.js?v="+Date.now()}))})()'
+
+STEP_MODE="${MTUN_XD_STEPS:-1}"
+STEP_QUIET=0
+STEP_LOG=/tmp/mtun-xd.setup.log
+
+ui_step() { printf '▶ %s\n' "$1"; }
+ui_ok()   { printf '  ✔ %s\n' "$1"; }
+ui_warn() { printf '  ⚠️ %s\n' "$1"; }
+ui_fail() { printf '  ✘ %s\n' "$1"; }
+
+say() {
+    if [ "$STEP_MODE" = 1 ] && [ "$STEP_QUIET" = 1 ]; then
+        printf '%s\n' "$1" >>"$STEP_LOG" 2>/dev/null
+    else
+        echo "$1"
+    fi
+}
+
+# 写日志前兜底脱敏：把 secret / 工具密码的**当前值**从输出里抹掉。
+# 源头已经不打印它们（show_summary 只报「已设置」），这里防的是别的路径
+# —— 比如内核自己的报错把 secret 带出来。
+scrub_stream() {
+    local sec tp
+    sec=$(cfg_get secret 2>/dev/null || true)
+    tp=$(cat "$TOOLFILE" 2>/dev/null || true)
+    awk -v s="$sec" -v t="$tp" '
+        function wipe(str, val,   i) {
+            while (val != "" && (i = index(str, val)) > 0)
+                str = substr(str, 1, i - 1) "***" substr(str, i + length(val))
+            return str
+        }
+        { print wipe(wipe($0, s), t) }
+    '
+}
+
+# need_kb <目录> <最少 KB> <名称> —— 空间不够就别下（写满 / 半截文件比失败更难收拾）。
+# ⚠️ df 拿不到（不认识的 fs）就放行：宁可让它试，也别凭空拦住。
+need_kb() {
+    local avail d="$1"
+    # ⚠️ 目录还不存在时（全新安装的 /etc/mihomo）`df` 会直接失败 ⇒ 门禁形同虚设，
+    #    所以退到最近的已存在父目录去量。
+    while [ ! -d "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
+        d=$(dirname "$d")
+    done
+    avail=$(df -k "$d" 2>/dev/null | awk 'NR==2 {print $4}')
+    [ -n "$avail" ] || return 0
+    [ "$avail" -ge "$2" ] && return 0
+    say "✘ $3：磁盘空间不够（剩 $((avail / 1024))MB，要 $(($2 / 1024))MB）"
+    return 1
+}
+# ── 并发锁 ────────────────────────────────────────────────────────────────
+# 同时点两下升级会互相 rm -rf 暂存目录、交叉 rename，/ui 可能变成半份。用 mkdir 的原子性
+# 做锁，锁里记 pid：进程没了（断电留下的）就自动接管。
+SUITE_LOCK=/tmp/mtun-xd.lock
+LOCKED=0
+lock_acquire() {
+    # 嵌套调用（控制台升级 → install.sh → mtun-xd tool）：锁由最外层拿着，
+    # 子进程不再抢、也不去删（它自己的 LOCKED 保持 0，退出时不会碰锁）。
+    [ "${MTUN_XD_LOCKED:-0}" = 1 ] && return 0
+    if mkdir "$SUITE_LOCK" 2>/dev/null; then
+        echo $$ > "$SUITE_LOCK/pid" 2>/dev/null
+        LOCKED=1
+        return 0
+    fi
+    local old
+    old=$(cat "$SUITE_LOCK/pid" 2>/dev/null)
+    if [ -n "$old" ] && kill -0 "$old" 2>/dev/null; then
+        return 1
+    fi
+    rm -rf "$SUITE_LOCK"
+    mkdir "$SUITE_LOCK" 2>/dev/null || return 1
+    echo $$ > "$SUITE_LOCK/pid" 2>/dev/null
+    # ⚠️ 抢占不是原子的：两个进程可能同时判死、交错 rm/mkdir。写完 pid 回读一遍，
+    #    对不上说明被对方抢走了 —— 认输，别两个都以为持有锁。
+    [ "$(cat "$SUITE_LOCK/pid" 2>/dev/null)" = "$$" ] || return 1
+    LOCKED=1
+    return 0
+}
+cleanup() {
+    rm -rf "$TMP"
+    [ "${MTUN_XD_SELFCOPY:-0}" = 1 ] && rm -f "$SELFCOPY"
+    # ⚠️ 只删**自己那把**锁（接手过别人的陈旧锁时，pid 文件里是当前进程自己），
+    #    否则退出时会把后来者的锁一起删了。
+    [ "$LOCKED" = 1 ] && [ "$(cat "$SUITE_LOCK/pid" 2>/dev/null)" = "$$" ] \
+        && rm -rf "$SUITE_LOCK"
+    return 0
+}
+# ⚠️ INT/TERM 必须自己 exit：BusyBox 跑完 trap 会接着往下执行 —— 那等于
+#    「临时目录删了、锁放了，活还在干」，第二个操作就能进来跟它抢。
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM
+mkdir -p "$TMP"
+
+# ── 下载与完整性校验 ──────────────────────────────────────────────────────
+sha_file() {   # 输出文件的 SHA-256；没有可用工具就失败
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" 2>/dev/null | awk '{print $1}' | tr 'A-F' 'a-f'
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$1" 2>/dev/null | sed 's|.*[ =]||' | tr 'A-F' 'a-f'
+    else
+        return 1
+    fi
+}
+
+# GitHub Release API 里每个资产都有官方 `digest`。优先经自己的 CF Worker 取，
+# 一次取整份 Release 元数据并缓存到本次临时目录；这样核心的多个架构候选只查一次。
+release_meta() {   # release_meta <owner/repo> <tag>；输出缓存文件路径
+    local repo="$1" ver="$2" cache url
+    cache="$TMP/release-${repo#*/}-${ver#v}.json"
+    if [ ! -s "$cache" ]; then
+        for url in \
+            "$GH_API/repos/$repo/releases/tags/$ver" \
+            "https://api.github.com/repos/$repo/releases/tags/$ver"; do
+            rm -f "$cache"
+            if curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
+                    --user-agent "MTUN-XD" \
+                    -H 'Accept: application/vnd.github+json' \
+                    -o "$cache" "$url" >/dev/null 2>&1 \
+               && grep -q '"assets"' "$cache" 2>/dev/null \
+               && grep -Eq '"digest"[[:space:]]*:[[:space:]]*"sha256:' "$cache" 2>/dev/null; then
+                break
+            fi
+        done
+    fi
+    [ -s "$cache" ] || return 1
+    printf '%s' "$cache"
+}
+
+panel_latest_ver() {
+    # 上游偶尔「先打 tag、后传压缩包」（v1.275.0 刚发布时 assets=0）：
+    # 那种版本取不到 compressed-dist.tgz 的摘要，不能直接当目标。
+    # 这里按「新 → 旧」看最近几个 tag，挑第一个真带压缩包且有 digest 的。
+    local out tags t url
+    for url in \
+        "$GH_API/repos/MetaCubeX/metacubexd/releases" \
+        "https://api.github.com/repos/MetaCubeX/metacubexd/releases?per_page=10"; do
+        out=$(curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
+                --user-agent "MTUN-XD" -H 'Accept: application/vnd.github+json' \
+                "$url" 2>/dev/null) || continue
+        # CF 那份是 {"tags":[...]}，GitHub 那份是完整 release 对象；两种都按「引号里的版本号」提。
+        tags=$(printf '%s' "$out" | tr ',' '\n' \
+            | sed -n 's/.*"\(v\{0,1\}[0-9]\+\.[0-9]\+\.[0-9]\+\)".*/\1/p' \
+            | awk '!seen[$0]++' | head -5)
+        [ -n "$tags" ] && break
+    done
+    [ -n "$tags" ] || return 1
+    for t in $tags; do
+        if [ -n "$(release_asset_sha MetaCubeX/metacubexd "$t" compressed-dist.tgz 2>/dev/null)" ]; then
+            printf '%s' "$t"
+            return 0
+        fi
+    done
+    return 1
+}
+
+release_asset_sha() {   # release_asset_sha <owner/repo> <tag> <asset name>
+    local json
+    json=$(release_meta "$1" "$2") || return 1
+    # API 的资产对象里，digest 位于 name 之后。去掉 JSON 排版空白后按对象字段切行，
+    # 用精确的 `"name":"文件名"` 定位，避免 sed 贪婪匹配到别的资产。
+    sed 's/[[:space:]]*:[[:space:]]*/:/g' "$json" \
+        | tr ',{}' '\n\n\n' \
+        | awk -v want="\"name\":\"$3\"" '
+            index($0, want) { hit = 1; next }
+            hit && index($0, "\"name\":") { exit }
+            hit && match($0, /"digest":"sha256:[0-9a-fA-F]+"/) {
+                s = substr($0, RSTART, RLENGTH)
+                sub(/^"digest":"sha256:/, "", s)
+                sub(/"$/, "", s)
+                print tolower(s)
+                exit
+            }
+        '
+}
+
+dl() {   # dl <github 路径> <落地文件> [期望 SHA-256]
+    # ⚠️ 第一顺位是自己家 CF 的反代（/gh/…，Worker 见 src/index.js）：国内直连 GitHub 多半
+    #    "连得上但很慢/半路断"，先试它等于点一下升级先干等十几秒；CF 第二次起直接命中边缘缓存。
+    # ⚠️ 试两次 + 连接超时 8 秒：CF 边缘偶发 5xx / 握手慢，只试一次会放弃整条路；等 15 秒又太久。
+    # ⚠️ 给了第三个参数就必须逐份核对；镜像返回 200 但内容不对不算成功。
+    local i m got
+    for i in 1 2; do
+        if curl -fL --retry 1 --connect-timeout 8 -m 300 \
+                --user-agent "Mozilla/5.0" -o "$2" "$GH/$1" >/dev/null 2>&1; then
+            if [ -z "${3:-}" ]; then return 0; fi
+            got=$(sha_file "$2") || got=''
+            [ "$got" = "$3" ] && return 0
+            rm -f "$2"
+        fi
+    done
+    for m in $MIRRORS; do
+        if curl -fL --retry 1 --connect-timeout 15 -m 300 \
+                --user-agent "Mozilla/5.0" -o "$2" "$m/$1" >/dev/null 2>&1; then
+            if [ -z "${3:-}" ]; then return 0; fi
+            got=$(sha_file "$2") || got=''
+            [ "$got" = "$3" ] && return 0
+            rm -f "$2"
+        fi
+    done
+    return 1
+}
+
+latest_tag() {   # 用 302 解析最新 tag（不吃 API 配额）
+    # ① 自己家的反代（跟 dl 一个道理：国内稳）—— 同样试两次、连接超时 8 秒
+    local i t=''
+    for i in 1 2; do
+        t=$(curl -sI --connect-timeout 8 --user-agent "Mozilla/5.0" \
+                "$GH/$1/releases/latest" 2>/dev/null \
+            | sed -n 's|.*[Ll]ocation: .*/tag/\([^[:space:]]*\).*|\1|p' | tr -d '\r')
+        [ -n "$t" ] && break
+    done
+    # ② 回落 GitHub 直连 / 第三方镜像
+    for m in $MIRRORS; do
+        [ -n "$t" ] && break
+        t=$(curl -sI --connect-timeout 10 --user-agent "Mozilla/5.0" \
+                "$m/$1/releases/latest" 2>/dev/null \
+            | sed -n 's|.*[Ll]ocation: .*/tag/\([^[:space:]]*\).*|\1|p' | tr -d '\r')
+    done
+    [ -n "$t" ] && { printf '%s' "$t"; return 0; }
+    return 1
+}
+
+# ── 读现成的东西 ──────────────────────────────────────────────────────────
+cfg_get() {   # cfg_get <键>
+    sed -n "s/^[[:space:]]*$1:[[:space:]]*[\"']\{0,1\}\([^\"'[:space:]]*\).*/\1/p" "$CFG" 2>/dev/null | head -1
+}
+
+# ⚠️ 抹掉 v：面板版本读出来不带 v（1.273.1），内核版本 mihomo 自己带（v1.19.32），
+#    两行并排出现时不能一半带一半不带。
+core_version() { "$BIN" -v 2>/dev/null | head -1 | sed -n 's/.*\(v[0-9][^ ]*\).*/\1/p' | sed 's/^v//'; }
+panel_version() { sed -n 's/.*appVersion:"\([^"]*\)".*/\1/p' "$UI/index.html" 2>/dev/null | head -1 | tr -d '\r'; }
+
+# 内核到底活没活：问它自己的 API（配置里没有 external-controller 才退回看进程）。
+# ⚠️ 地址按**谁能答**来（expose_pick）：文件跟跑着的内核可以不是一回事，照文件硬连会把
+#    活内核判成死的；探出来的地址一个进程内只算一次（升级的等待循环会问十几遍）。
+# ⚠️ 判据只看状态码/主体，不看正文有没有 "version" 字样 —— 没认证时回的是
+#    401 {"message":"Unauthorized"}，正文里压根没有 version。
+CORE_ADDR=''
+core_alive() {
+    if [ -z "$(cfg_get external-controller)" ]; then
+        pidof mihomo >/dev/null 2>&1 || pgrep -f "$BIN" >/dev/null 2>&1
+        return $?
+    fi
+    [ -n "$CORE_ADDR" ] || CORE_ADDR=$(expose_pick) || CORE_ADDR=$(expose_addr)
+    expose_probe "$CORE_ADDR"
+}
+
+# 文件的修改时间（秒）；拿不到就当 0（宁可判"要重启"，也别漏了该重启的）
+file_mtime() { stat -c %Y "$1" 2>/dev/null || echo 0; }
+
+# 这次到底要不要重启内核。只在三种情况重启：
+#   ① 内核没在跑        ② 核心二进制换过（比上次启动新）  ③ config.yaml 改过
+# 其它情况（重跑安装补面板/对齐工具/修环境）**一律不重启** —— 重启会打断走代理的连接。
+restart_needed() {
+    local stamp now
+    core_alive || return 0
+    stamp=$(cat "$START_STAMP" 2>/dev/null)
+    if [ -z "$stamp" ]; then
+        # 老版本升上来时没有时间戳：核心二进制 / 配置都不是刚改过的（超过 60 秒）就认为跑着的
+        # 就是它 → 记上、不重启（第一次也不必重启）。
+        now=$(date +%s)
+        [ "$(file_mtime "$BIN")" -gt $((now - 60)) ] 2>/dev/null && return 0
+        [ "$(file_mtime "$CFG")" -gt $((now - 60)) ] 2>/dev/null && return 0
+        printf '%s\n' "$now" > "$START_STAMP" 2>/dev/null
+        return 1
+    fi
+    [ "$(file_mtime "$BIN")" -gt "$stamp" ] 2>/dev/null && return 0
+    [ "$(file_mtime "$CFG")" -gt "$stamp" ] 2>/dev/null && return 0
+    return 1
+}
+
+# ── 面板的 config.js（每台现写；面板更新/重装都会覆盖它，所以每次铺完都要重写）──
+#   defaultBackendURL 指向面板自己的源；LuCI 用 `?secret=` 带进来的密码喂给
+#   window.metacubexd.endpoint → 首次进面板不用手填（密码只走地址栏，不写进这个文件，
+#   因为 /ui 是公开静态目录）。面板自己的默认值一个字节都不改。
+# ⚠️ 面板的 PWA service worker 必须收掉：1.275.x 换成 workbox generateSW 之后，
+#    它会用 NavigationRoute 把 /ui/config/ 也兜底成面板自己的页面 ——
+#    表现就是 LuCI 里「配置工具」一片空白（面板资源是相对路径，在 /ui/config/ 下全 404）。
+#    处理：换成什么都不拦的空 SW（请求照走网络），并清掉旧缓存。只在 https 下才会犯。
+#    ⚠️ 面板升级会把 sw.js 覆盖回来，所以每次铺完面板 / 改完 config.js 都要补一刀。
+tame_panel_sw() {
+    local f="$UI/sw.js"
+    [ -f "$f" ] || return 0
+    grep -q 'workbox\|precacheAndRoute\|NavigationRoute\|createHandlerBoundToURL' "$f" 2>/dev/null || return 0
+    # 用 printf 逐行写（脚本可能从 stdin 灌进来，heredoc 会抢流）；写 .new 再 mv，避免半份 SW
+    printf '%s\n' \
+'// 由 deploy/generator.sh 换成的空 SW。' \
+'// 面板自带那个 sw.js 用 NavigationRoute 把 /ui/config/ 也兜底成面板页面，' \
+'// 作用域 /ui/ 且没有 denylist，生成器打开就是白屏。这里什么都不拦，请求照走网络。' \
+'self.addEventListener("install", function (e) { e.waitUntil(self.skipWaiting()); });' \
+'self.addEventListener("activate", function (e) {' \
+'    e.waitUntil(self.clients.claim());' \
+'    e.waitUntil(caches.keys().then(function (ks) {' \
+'        return Promise.all(ks.map(function (k) { return caches.delete(k); }));' \
+'    }));' \
+'});' \
+'self.addEventListener("fetch", function (e) {' \
+'    if (e.request.mode !== "navigate") return;' \
+'    var u = new URL(e.request.url);' \
+'    if (u.origin !== self.location.origin) return;' \
+'    if (u.pathname.indexOf("/config/") === -1) return;' \
+'    e.respondWith(fetch(e.request, { cache: "no-cache" }));' \
+'});' > "$f.new" 2>/dev/null || { rm -f "$f.new"; return 0; }
+    mv -f "$f.new" "$f" 2>/dev/null || rm -f "$f.new"
+    return 0
+}
+
+seed_panel_cfg() {
+    # ⚠️ 「面板还没铺」是正常情况（全新装时 postinst 先铺一次，那会儿面板还没下下来），
+    #    所以一声不吭地走人，不打「面板还没铺，config.js 跳过」这类噪音。
+    [ -f "$UI/index.html" ] || return 0
+    # ⚠️ 先写同目录的 .new、最后 rename：这目录是**公开静态目录**，直接截断写的话，
+    #    写的那一瞬浏览器拿到的就是半份 JS（面板会白屏）。
+    cat > "$UI/.config.js.new" <<'EOJS'
+/*! Generated by mtun-xd (seed-panel). Do not edit: panel upgrades rewrite this file. */
+(function () {
+  // Route the panel to the overview page before it mounts, so the connection screen never flashes.
+  try {
+    var hasEndpoint = false;
+    try { hasEndpoint = !!localStorage.getItem('selectedEndpoint'); } catch (e) { /* ignore */ }
+    if (!window.location.hash && (hasEndpoint || /[?&]secret=/.test(window.location.search || ''))) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/overview');
+    }
+  } catch (e) { /* ignore */ }
+
+  // Apply the endpoint supplied by LuCI (?secret=...).
+  var m = /[?&]secret=([^&]+)/.exec(window.location.search || '');
+  if (!m) return;
+  var secret = '';
+  try { secret = decodeURIComponent(m[1]); } catch (e) { secret = m[1]; }
+  if (!secret) return;
+  window.metacubexd = window.metacubexd || {};
+  window.metacubexd.endpoint = {
+    url: window.location.protocol + '//' + window.location.host,
+    secret: secret,
+  };
+  // Strip ?secret= from the address bar, keep every other query parameter.
+  try {
+    var rest = String(window.location.search || '').replace(/^\?/, '').split('&')
+      .filter(function (kv) { return kv && kv.indexOf('secret=') !== 0; });
+    window.history.replaceState(null, '',
+      window.location.pathname + (rest.length ? '?' + rest.join('&') : '') + window.location.hash);
+  } catch (e) { /* ignore */ }
+})();
+
+window.__METACUBEXD_CONFIG__ = {
+  defaultBackendURL: window.location.protocol + '//' + window.location.host,
+  githubToken: '',
+};
+
+/*! Theme bridge: load ./config/theme.js before the panel starts. */
+;(function () {
+  try {
+    for (var i = 0; i < document.scripts.length; i++) {
+      if (/theme\.js/.test(document.scripts[i].src)) return;
+    }
+    var s = document.createElement('script');
+    s.src = './config/theme.js?v=' + Date.now();
+    document.head.appendChild(s);
+  } catch (e) { /* ignore */ }
+})();
+EOJS
+    # 绿点：生成器在不在，看它自己那份 config/btn.js 在不在（跟安装顺序无关）。
+    # 见上面 DOT_HOOK 那段注释。
+    [ -f "$UI/config/btn.js" ] && printf '%s\n' "$DOT_HOOK" >> "$UI/.config.js.new"
+    mv -f "$UI/.config.js.new" "$UI/config.js" || { rm -f "$UI/.config.js.new"; return 1; }
+
+    # 面板主题：自己的一份脚本，放在面板的 config/ 里（开关在 LuCI 那边，这里只管跟随）。
+    # ⚠️ 面板的**构建产物**一个字节都不改：只在 menu 同级的 config/ 里多放这一个文件；
+    #    面板更新只换它自己的产物，config/ 原样保留（upgrade_ui 里 cp -a）。
+    mkdir -p "$UI/config"
+    cat > "$UI/config/.theme.js.new" <<'EOTHEME'
+/*! mtun-xd panel theme: follows the LuCI light/dark setting. */
+(function () {
+  'use strict';
+
+  var NAME_LIGHT = 'light';    // built-in light theme name
+  var NAME_DARK = 'sunset';    // built-in dark theme name (factory default)
+
+  // Light theme palette
+  var PALETTE = [
+    ['--color-base-100', '#ffffff'],
+    ['--color-base-200', '#f4f6f9'],
+    ['--color-base-300', '#e5eaf0'],
+    ['--color-base-content', '#1f2937'],
+    ['--color-primary', '#16a34a'],
+    ['--color-primary-content', '#ffffff'],
+    ['--color-secondary', '#0ea5e9'],
+    ['--color-secondary-content', '#ffffff'],
+    ['--color-accent', '#f59e0b'],
+    ['--color-accent-content', '#1f2937'],
+    ['--color-neutral', '#e8edf4'],
+    ['--color-neutral-content', '#1f2937'],
+    ['--color-info', '#3b82f6'],
+    ['--color-info-content', '#ffffff'],
+    ['--color-success', '#16a34a'],
+    ['--color-success-content', '#ffffff'],
+    ['--color-warning', '#f59e0b'],
+    ['--color-warning-content', '#1f2937'],
+    ['--color-error', '#ef4444'],
+    ['--color-error-content', '#ffffff']
+  ];
+
+  function paletteCss() {
+    var vars = '', i;
+    for (i = 0; i < PALETTE.length; i++) vars += PALETTE[i][0] + ':' + PALETTE[i][1] + '!important;';
+    return '[data-theme="light"]{' + vars + '}' +
+      // Node cards use neutral; a light border keeps them visible.
+      '[data-theme="light"] .proxy-card{box-shadow:inset 0 0 0 1px #e1e7ef!important}';
+  }
+
+  function ensurePalette(on) {
+    var el = document.getElementById('mh-theme-css');
+    if (!on) {
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+      return;
+    }
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'mh-theme-css';
+      (document.head || document.documentElement).appendChild(el);
+    }
+    var css = paletteCss();
+    if (el.textContent !== css) el.textContent = css;
+  }
+
+  // Read data-mh-theme from the parent LuCI page (null when unavailable).
+  function parentTheme() {
+    try {
+      var w = window.parent;
+      if (w && w !== window && w.document && w.document.documentElement) {
+        var a = w.document.documentElement.getAttribute('data-mh-theme');
+        if (a === 'light' || a === 'dark') return a;
+      }
+    } catch (e) { /* cross-origin */ }
+    return null;
+  }
+
+  function setPanelTheme(name) {
+    var old = null;
+    try {
+      old = localStorage.getItem('theme');
+      if (old === name) return;
+      localStorage.setItem('theme', name);
+    } catch (e) { return; }
+    try {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'theme', oldValue: old, newValue: name,
+        storageArea: localStorage, url: window.location.href
+      }));
+    } catch (e) { /* old browser: no StorageEvent constructor; correct after reload */ }
+  }
+
+  // Apply this palette in light mode only.
+  function syncPalette() {
+    ensurePalette(document.documentElement.getAttribute('data-theme') === 'light');
+  }
+
+  function apply() {
+    var p = parentTheme();
+    if (p) setPanelTheme(p === 'light' ? NAME_LIGHT : NAME_DARK);
+    // Standalone panel: keep the panel theme choice, only fix light-mode colors.
+    syncPalette();
+  }
+
+  apply();
+
+  // Follow theme changes made inside the panel.
+  new MutationObserver(syncPalette).observe(document.documentElement, {
+    attributes: true, attributeFilter: ['data-theme']
+  });
+
+  // Follow light/dark switches from the parent page.
+  try {
+    var w = window.parent;
+    if (w && w !== window && w.document) {
+      new MutationObserver(apply).observe(w.document.documentElement, {
+        attributes: true, attributeFilter: ['data-mh-theme']
+      });
+    }
+  } catch (e) { /* cross-origin */ }
+})();
+EOTHEME
+    chmod 644 "$UI/config/.theme.js.new"
+    mv -f "$UI/config/.theme.js.new" "$UI/config/theme.js" || rm -f "$UI/config/.theme.js.new"
+
+    # ⚠️ 给 index.html 里那行引用挂个版本号：mihomo 给静态资源只发 Last-Modified，
+    #    不挂版本号浏览器会把旧 config.js 缓存很久。
+    if [ -f "$UI/index.html" ]; then
+        v=$(date -r "$UI/config.js" +%s 2>/dev/null || date +%s)
+        sed -i "s|src=\"config\.js[^\"]*\"|src=\"config.js?v=$v\"|" "$UI/index.html"
+    fi
+    # 面板升级会把 sw.js 换回带 NavigationRoute 的那份 → 每次铺完都重新收一遍
+    tame_panel_sw
+}
+
+# ── 默认配置（只在不存在时铺，绝不覆盖人家在跑的）──────────────────────────
+# ⚠️ 监听地址 = `127.0.0.1`：套件把内核的口子挂到 uhttpd 的端口上（`expose on`），
+#    面板 / 配置工具 / API 全走 80 同源 ⇒ 不必绑内网地址，9090 也不对外听。
+#    想内网设备也能直连 9090 就把这行写 `0.0.0.0:9090`。
+#    面板密码写死 `123456`：这份配置只是让内核先跑起来，密码好记才方便。
+write_default_cfg() {
+    # ⚠️ 用 -s 不用 -f：断电留下的 0 字节 config.yaml 也算"有"，那样内核永远起不来
+    [ -s "$CFG" ] && return 0
+    mkdir -p "$BASE"
+    cat > "$CFG.new" <<YAML
+external-ui: ui
+secret: "123456"
+external-controller: 127.0.0.1:9090
+YAML
+    # 同目录临时文件 + rename：写一半断电不会留下半截配置
+    mv -f "$CFG.new" "$CFG" || { rm -f "$CFG.new"; say "✘ 默认配置：写不进去"; return 1; }
+    say "→ 默认配置：铺一份"
+    # ⚠️ 面板密码 / 监听地址不在这儿打 —— 跟工具密码一起放到全流程最后（show_summary），
+    #    别散在各步里。
+}
+
+# ── 全流程最后统一打一次的三样信息 ───────────────────────────────────────────
+#   面板密码 / 工具密码 / 监听地址。名称都是四个字 → 天然对齐；值都是现读
+#   （config.yaml / toolpass），用户改过也跟得上。故意不写路径：那是排错用的，不是给他看的。
+show_summary() {
+    # 什么都不打印：密码状态和查询命令都不给（客户反馈无用，2026-11-18）。
+    # 需要时手动查：工具密码 cat /etc/mihomo-toolpass ／ 面板密码 grep '^secret:' config.yaml
+    :
+}
+
+# ── 核心 ──────────────────────────────────────────────────────────────────
+core_arch() {
+    local a
+    a=$(uname -m)
+    case "$a" in
+        x86_64|amd64) a=amd64 ;;
+        aarch64|arm64) a=arm64 ;;
+        armv7l|armv7) a=armv7 ;;
+        armv6l|armv6) a=armv6 ;;
+        mips64el) a=mips64le ;;
+        mipsel) a=mipsle ;;
+        mips) a=mips ;;
+        riscv64) a=riscv64 ;;
+        *) return 1 ;;
+    esac
+    printf '%s' "$a"
+}
+
+# 拉一份内核到 $1（没指定就落到 $BIN）。挑档、试跑、失败往下退。
+# $2 = 已经查好的版本号（升级那条路传进来，别在这儿再查一遍 —— 输出里会打两条
+# 「查最新版本」）。不传就自己查（安装那条路）。
+# ⚠️ 成功不打行：报版本是调用方的事（不然同一件事会出现两个 ✔）。
+fetch_core() {
+    local dest="${1:-$BIN}" ver="${2:-}" a files f flags want
+    if [ -z "$ver" ]; then
+        say "→ 核心：获取新版本"
+        ver=$(latest_tag MetaCubeX/mihomo) || { say "✘ 核心：版本号没取到（网络不通？）"; return 1; }
+    fi
+    say "→ 核心：拉取${ver#v}"
+    a=$(core_arch) || { say "✘ 核心：不认识的架构（$(uname -m)）"; return 1; }
+    if [ "$a" = "amd64" ]; then
+        flags=" $(grep -m1 '^flags' /proc/cpuinfo 2>/dev/null | cut -d: -f2-) "
+        case "$flags" in
+            *' avx2 '*)   files="mihomo-linux-amd64-v3-${ver}.gz mihomo-linux-amd64-${ver}.gz mihomo-linux-amd64-v2-${ver}.gz mihomo-linux-amd64-v1-${ver}.gz" ;;
+            *' sse4_2 '*) files="mihomo-linux-amd64-v2-${ver}.gz mihomo-linux-amd64-${ver}.gz mihomo-linux-amd64-v1-${ver}.gz" ;;
+            *)            files="mihomo-linux-amd64-v1-${ver}.gz mihomo-linux-amd64-${ver}.gz" ;;
+        esac
+    else
+        files="mihomo-linux-${a}-${ver}.gz"
+    fi
+
+    # ⚠️ 空间要按峰值算：/tmp 同时放 .gz 和解压出来的二进制；升级时 $BASE 还要多留一份
+    #    旧的（$BIN.bak，60 MB）—— 算少了会在写到一半时 ENOSPC。
+    need_kb "$TMP" 90000 "核心" || return 1
+    if [ -f "$BIN" ]; then
+        need_kb "$BASE" 130000 "核心" || return 1
+    else
+        need_kb "$BASE" 70000 "核心" || return 1
+    fi
+    for f in $files; do
+        rm -f "$TMP/mihomo.gz" "$TMP/mihomo"
+        want=$(release_asset_sha MetaCubeX/mihomo "$ver" "$f" 2>/dev/null) || want=''
+        if [ -z "$want" ]; then
+            if [ "$ALLOW_UNVERIFIED" != 1 ]; then
+                say "✘ 核心：拿不到官方 SHA-256，拒绝下载（确认风险后可设 MIHOMO_ALLOW_UNVERIFIED=1）"
+                return 1
+            fi
+            say "⚠️ 核心：官方 SHA-256 不可用，按 MIHOMO_ALLOW_UNVERIFIED=1 放行"
+        fi
+        dl "MetaCubeX/mihomo/releases/download/${ver}/${f}" "$TMP/mihomo.gz" "$want" \
+            || { say "    ⚠️ 下载或校验失败，换下一个"; continue; }
+        gzip -df "$TMP/mihomo.gz" 2>/dev/null || { say "    ⚠️ 解压失败，换下一个"; continue; }
+        chmod +x "$TMP/mihomo" 2>/dev/null || continue
+        "$TMP/mihomo" -v >/dev/null 2>&1 || { say "    ⚠️ 这个二进制在这台机器上跑不起来，换下一个"; continue; }
+        # ⚠️ /tmp 是 tmpfs、$BASE 是 flash —— 跨设备 mv 其实是"复制 + 删"，断电 / 没空间会在
+        #    目的地留下半截的 mihomo（而 [ -x ] 判不出来）。先复制到目的目录的 .new，再同盘 rename。
+        mkdir -p "$(dirname "$dest")"
+        if cp -f "$TMP/mihomo" "$dest.new" && mv -f "$dest.new" "$dest"; then
+            return 0
+        fi
+        rm -f "$dest.new"
+        say "✘ 核心：落盘失败"
+        return 1
+    done
+    say "✘ 核心：候选都失败了"
+    return 1
+}
+
+install_core() {   # 只在没有的时候装
+    if [ -x "$BIN" ]; then
+        say "✔ 核心：已有$(core_version)"
+        return 0
+    fi
+    say "→ 核心：下载核心"
+    local ver
+    ver=$(latest_tag MetaCubeX/mihomo) || { say "✘ 核心：版本号没取到（网络不通？）"; return 1; }
+    fetch_core "$BIN" "$ver" || return 1
+    say "✔ 核心：已装$(core_version)"
+    return 0
+}
+
+upgrade_core() {   # 换成最新（带回滚）
+    local ver cur i
+    say "→ 核心：获取新版本"
+    ver=$(latest_tag MetaCubeX/mihomo) || { say "✘ 核心：版本号没取到（网络不通？）"; return 1; }
+    cur=$(core_version)
+    cur=${cur#v}
+    # 已经是最新就跳过（跟面板那条一个规矩）。⚠️ 内核那份 60 MB —— 重下一遍不止慢，
+    # 还要多重启一次服务（代理断几秒）。
+    if [ -n "$cur" ] && [ "$cur" = "${ver#v}" ]; then
+        # ⚠️ 版本一样还不够：装着的二进制可能根本跑不起来（下载被打断 / 磁盘坏块），
+        #    那种机器会一路打「已是最新」，其实内核是死的。内核活着才跳过；
+        #    死了就当成「要重装」，走下面那套（带备份 + 回滚）。
+        if core_alive; then
+            say "✔ 核心：已是$cur"
+            return 0
+        fi
+        say "⚠️ 核心：版本是$cur，但它没在跑 —— 重装一次"
+    fi
+    say "→ 核心：${cur:-没装} → ${ver#v}"
+    if [ -f "$BIN" ]; then
+        # ⚠️ 备份失败就别往下走：`cp -f` 先截断目标，坏块 / 磁盘满会留下半截的 .bak，
+        #    后面那句"回滚"就把半截二进制换回去、还打 ✔ —— 比不回滚更糟。
+        cp -f "$BIN" "$BIN.bak" \
+            || { say "✘ 核心：备份旧版本失败（磁盘满？）—— 停止升级，现成的没动"; return 1; }
+    fi
+    if ! fetch_core "$BIN" "$ver"; then
+        [ -s "$BIN.bak" ] && { mv -f "$BIN.bak" "$BIN"; say "    ✔ 已回滚"; }
+        return 1
+    fi
+    /etc/init.d/mihomo restart >/dev/null 2>&1
+    say "→ 核心：等它起来…"
+    i=0
+    while [ "$i" -lt 15 ]; do
+        sleep 1
+        if core_alive; then
+            rm -f "$BIN.bak"
+            date +%s > "$START_STAMP" 2>/dev/null
+            say "✔ 核心：已装${ver#v}"
+            return 0
+        fi
+        i=$((i + 1))
+    done
+    say "✘ 核心：没起来，回滚"
+    if [ -s "$BIN.bak" ]; then
+        mv -f "$BIN.bak" "$BIN"
+        /etc/init.d/mihomo restart >/dev/null 2>&1
+        say "    ✔ 已回滚到 ${cur:-原来那版}"
+    fi
+    return 1
+}
+
+# ── 面板 ──────────────────────────────────────────────────────────────────
+# 旧版本（≤ 8.8.4）替换过面板入口 chunk 里的测速链接常量。装过旧版本的机器版本号没变，
+# 光看「已是最新」会跳过下载、点重置还是旧值 ⇒ 认一眼：入口 chunk 里有 hicloud，或
+# 有 cp.cloudflare 且没有 gstatic（官方只有 gstatic），就是被改过 → 重下一份官方原版。
+# ⚠️ 只重下官方产物，不改内容、不碰 localStorage —— 跟「干涉面板」是两回事。
+panel_patched() {
+    local ent
+    [ -f "$UI/index.html" ] || return 1
+    ent=$(grep -o 'src="\./_nuxt/[^"?]*\.js"' "$UI/index.html" | head -1 | cut -d'"' -f2)
+    [ -n "$ent" ] && [ -f "$UI/$ent" ] || return 1
+    if grep -qF 'connectivitycheck.platform.hicloud.com/generate_204' "$UI/$ent"; then
+        return 0
+    fi
+    if grep -qF 'cp.cloudflare.com/generate_204' "$UI/$ent" && \
+       ! grep -qF 'www.gstatic.com/generate_204' "$UI/$ent"; then
+        return 0
+    fi
+    return 1
+}
+
+upgrade_ui() {
+    local ver pv path restore=0 had_cfg=0 got want
+    # ⚠️ 先把 config.js 按本地现状铺一遍：它只依赖本地文件，跟"能不能问到面板新版本"无关。
+    #    放在联网查询前面是因为 latest_tag 失败会直接 return 1，把后面那趟铺一起跳过
+    #    （否则会留下"包文件/版本号都是新的、config.js 还是旧的" ⇒ 面板照旧闪登录界面）。
+    seed_panel_cfg
+    say "→ 面板：获取新版本"
+    # ⚠️ 上游偶尔「先打 tag、后传压缩包」（v1.275.0 刚发布时 assets=0）：
+    #    那种版本拿不到 compressed-dist.tgz 的摘要，直接拿它当目标就会失败。
+    #    这里挑最近一个**真带压缩包**的版本；一个都没有才退回旧逻辑。
+    ver=$(panel_latest_ver) || ver=$(latest_tag MetaCubeX/metacubexd) \
+        || { say "✘ 面板：版本号没取到（网络不通？）"; return 1; }
+    pv=$(panel_version)
+    # 已经是最新就跳过（省 2~3MB 下载）。⚠️ 只有面板**在**才跳 —— 全新装还是得下。
+    # ⚠️ GitHub 的 tag 带 v（v1.273.1），面板里读出来的不带（1.273.1）→ 比之前先把 v 抹掉。
+    # 跳之前照样跑一遍 seed_panel_cfg：那些修补（后端地址）是幂等的。
+    if [ -f "$UI/index.html" ] && [ -n "$pv" ] && [ "${pv#v}" = "${ver#v}" ]; then
+        # 版本一样、但面板文件被老版本改过 → 重下一份官方原版盖回去。
+        if panel_patched; then
+            restore=1
+        else
+            seed_panel_cfg
+            say "✔ 面板：已是${ver#v}"
+            return 0
+        fi
+    fi
+    # ⚠️ 「当前 → 最新」只在真不一样时才打（一样的上面已经 return 了）；
+    #    两边都把 v 抹掉 —— 别出现 1.273.1 → v1.273.1。
+    if [ "$restore" = 1 ]; then
+        say "→ 面板：恢复官方原版"
+    else
+        say "→ 面板：拉取${ver#v}"
+    fi
+    need_kb "$TMP" 10000 "面板" && need_kb "$BASE" 20000 "面板" || return 1
+    path="MetaCubeX/metacubexd/releases/download/$ver/compressed-dist.tgz"
+    want=$(release_asset_sha MetaCubeX/metacubexd "$ver" compressed-dist.tgz 2>/dev/null) || want=''
+    if [ -z "$want" ]; then
+        if [ "$ALLOW_UNVERIFIED" != 1 ]; then
+            say "✘ 面板：拿不到官方 SHA-256，拒绝下载（确认风险后可设 MIHOMO_ALLOW_UNVERIFIED=1）"
+            return 1
+        fi
+        say "⚠️ 面板：官方 SHA-256 不可用，按 MIHOMO_ALLOW_UNVERIFIED=1 放行"
+    fi
+    dl "$path" "$TMP/ui.tgz" "$want" \
+        || { say "✘ 下载或校验失败（所有镜像都试过了）"; return 1; }
+    mkdir -p "$TMP/ui"
+    tar -xzf "$TMP/ui.tgz" -C "$TMP/ui" --strip-components=1 2>/dev/null || { say "✘ 解压失败"; return 1; }
+    [ -f "$TMP/ui/index.html" ] || { say "✘ 解压出来没有 index.html，放弃（别把面板弄坏）"; return 1; }
+    # 版本对不上 = 下到的不是这一版（镜像缓存错 / 半截包）→ 别换，保住现成的。
+    got=$(sed -n 's/.*appVersion:"\([^"]*\)".*/\1/p' "$TMP/ui/index.html" | head -1 | tr -d '\r')
+    [ -n "$got" ] && [ "${got#v}" = "${ver#v}" ] || {
+        say "✘ 面板：下载到的版本不对（${got:-读不到}），放弃"; return 1; }
+
+    # ── 先把「整份新面板」在暂存目录里组出来，最后一步才换名 ────────────────────
+    # 新面板铺进 $UINEW（跟 $UI 同盘）→ 配置工具目录复制进去（不是挪：换名之前它一直在线）
+    # → 两次 rename 换上来。中途不能 rm -rf $UI：那一段里配置工具会整个不存在，撞上就 404。
+    # ⚠️ 峰值磁盘 = 旧 + 新两份；两次 rename 之间被打断时 $UIOLD 是唯一完整旧面板，先挪回去。
+    if [ ! -f "$UI/index.html" ] && [ -d "$UIOLD" ]; then
+        # $UI 可能是个残留的半个目录 —— 先清掉，否则 mv 会把它塞进 $UI 里面
+        [ -d "$UI" ] && rm -rf "$UI"
+        mv "$UIOLD" "$UI" 2>/dev/null && say "⚠️ 面板：上次换到一半，已恢复旧的一份"
+    fi
+    rm -rf "$UINEW"
+    mkdir -p "$UINEW"
+    if ! cp -r "$TMP/ui/." "$UINEW/"; then
+        say "✘ 铺暂存目录失败（$UINEW）"
+        rm -rf "$UINEW"
+        return 1
+    fi
+    if [ -d "$UI/config" ]; then
+        [ -f "$UI/config/index.html" ] && had_cfg=1
+        if ! cp -a "$UI/config" "$UINEW/config"; then
+            say "✘ 配置工具目录带不过去"
+            rm -rf "$UINEW"
+            return 1
+        fi
+    fi
+
+    # ── 换上去：同一个盘上的两次 rename，都是瞬间的 ──
+    # $UIOLD 在这一段里当"换名缓冲"：换名失败 / 换上去不完整 → 立刻挪回来。
+    # 全部校验通过后它会被删掉：面板是静态文件，装成就成，不留那份 8 MB 的旧备份。
+    rm -rf "$UIOLD"
+    if [ -d "$UI" ]; then
+        if ! mv "$UI" "$UIOLD"; then
+            say "✘ 面板：备份旧的一份失败，停止（现成的没动）"
+            rm -rf "$UINEW"
+            return 1
+        fi
+    fi
+    if ! mv "$UINEW" "$UI"; then
+        say "✘ 换上去失败，把旧的那份挪回来"
+        [ -d "$UIOLD" ] && mv "$UIOLD" "$UI"
+        rm -rf "$UINEW"
+        return 1
+    fi
+    # 换完再核一遍：必要文件在不在、配置工具有没有跟着过来。缺一样就整个回滚。
+    if [ ! -f "$UI/index.html" ] || [ ! -d "$UI/_nuxt" ] || \
+       { [ "$had_cfg" = 1 ] && [ ! -f "$UI/config/index.html" ]; }; then
+        say "✘ 面板：换上去的这份不完整，恢复旧的一份"
+        rm -rf "$UI"
+        [ -d "$UIOLD" ] && mv "$UIOLD" "$UI"
+        return 1
+    fi
+
+    [ -f "$UI/config/mihomo-apply" ] && ln -sf "$UI/config/mihomo-apply" "$CGI"
+    seed_panel_cfg
+    # 换完、校验也过了 → 旧的那份直接删掉（面板是静态文件，升级成功就没用了）。
+    # $UIOLD 只在这几十秒里当"换名失败能挪回来"的缓冲。
+    rm -rf "$UIOLD"
+    say "✔ 面板：已装${ver#v}"
+    # ⚠️ 配置工具必须补全：它是 $UI/config 这个子目录，理论上随面板一起复制，但两种情况下
+    #    会缺 —— 复制时那个目录正被生成器重铺（半截），或上次升级在两次 rename 之间被打断。
+    #    判据不能只看 index.html：半截复制常见的是 index.html 在、core/ 或 ui.js 缺
+    #    （表现是 LuCI 里「配置工具」页一片空白）。
+    if [ ! -f "$UI/config/index.html" ] || [ ! -f "$UI/config/core/render.js" ] \
+       || [ ! -f "$UI/config/ui.js" ] || [ ! -x "$UI/config/mihomo-apply" ]; then
+        say "→ 面板：补配置工具"
+        if ! install_tool; then
+            say "✘ 配置工具：补装失败（网络？）—— 之后手动跑 mtun-xd tool"
+        fi
+        [ -f "$UI/config/mihomo-apply" ] && ln -sf "$UI/config/mihomo-apply" "$CGI"
+    fi
+    # 同版本恢复：chunk 文件名没变，浏览器手里可能还是改过的那份。
+    [ "$restore" = 1 ] && say "⚠️ 浏览器要 Ctrl+F5 刷一次"
+    return 0
+}
+
+# ── 配置工具（**另一个项目**的东西，这里只调它的安装脚本）─────────────────
+install_tool() {
+    say "→ 配置工具：更新"
+    need_kb "$TMP" 8000 "配置工具" || return 1
+    # ⚠️ 没有 unzip（iStoreOS / Kwrt 的 busybox 常态）就下 tar.gz —— 给 zip 的话生成器的安装
+    #    脚本会丢掉我们下好的这份、自己去那个单一 URL 再拉一次，镜像回退就没有意义了。
+    local kit=mihomo-deploy.zip
+    command -v unzip >/dev/null 2>&1 || kit=mihomo-deploy.tar.gz
+    rm -f "$TMP/generator.sh" "$TMP/$kit"
+    local m src='' i=0
+    # ① 自己家（CF）：脚本 + 包都在同一个域名下，直接拿
+    #    ⚠️ 两样都拿到才算数（zip 才是要铺的东西，只拿到脚本没用）。
+    #    ⚠️ 带重试：CF 刚部署完、静态文件换的那一瞬会 404 一下 —— 隔几秒再来一次就好，
+    #       别让它把"配置工具"整步判死。
+    while [ "$i" -lt 3 ]; do
+        i=$((i + 1))
+        if curl -fL --retry 1 --connect-timeout 15 -m 120 --user-agent "Mozilla/5.0" \
+                -o "$TMP/generator.sh" "$KIT_CF/generator.sh" >/dev/null 2>&1 \
+           && grep -q 'install_gen' "$TMP/generator.sh" 2>/dev/null \
+           && curl -fL --retry 1 --connect-timeout 15 -m 300 --user-agent "Mozilla/5.0" \
+                -o "$TMP/$kit" "$KIT_CF/$kit" >/dev/null 2>&1; then
+            src="$KIT_CF"
+            break
+        fi
+        # ⚠️ 重试不出声：这一步重试就是为了让这种抖动对用户不存在，
+        #    三次都没拿到才由下面那两句报 ✘，那才是要人动手的。
+        sleep 3
+    done
+    # ② 老路：GitHub 的 genkit 滚动包 + 镜像回退（拿它记下哪个镜像通了，那个 zip 也从同一家拉）
+    if [ -z "$src" ]; then
+        rm -f "$TMP/generator.sh"
+        for m in $MIRRORS; do
+            if curl -fL --retry 1 --connect-timeout 15 -m 120 --user-agent "Mozilla/5.0" \
+                    -o "$TMP/generator.sh" "$m/$KIT_REL/generator.sh" >/dev/null 2>&1; then
+                src="$m"; break
+            fi
+        done
+        [ -n "$src" ] || { say "✘ 配置工具：没下来（CF 和 GitHub 都试过了）"; return 1; }
+        grep -q 'install_gen' "$TMP/generator.sh" 2>/dev/null || { say "✘ 配置工具：拉回来的不是安装脚本，放弃"; return 1; }
+        # ⚠️ 包我们自己下（`dl` 会把 MIRRORS 挨个试，跟面板一个待遇），下好再交给脚本 ——
+        #    交给它自己下的话它只打一个 URL：指到 github.com 会 302 到
+        #    release-assets.githubusercontent.com（国内基本连不上）。
+        dl "$KIT_REL/$kit" "$TMP/$kit" \
+            || { say "✘ 配置工具：包没下来（镜像都试过了）"; return 1; }
+    fi
+    # ── 校验：脚本和包必须对上「官方摘要」──
+    # 两个来源，任一匹配即可：
+    #   ① genkit Release 的资产 digest（GitHub 页面解析，经 CF 反代拿）
+    #   ② 自家 dist/SHA256SUMS（跟下载同一个来源，专治「CF 缓存了旧的 Release 元数据」）
+    # ⚠️ 2026-11-18 的坑：genkit 是滚动 tag，CF 按不可变缓存把旧摘要钉住了，
+    #    文件其实是新的 → 只认 ① 会把正常安装判死。加 ② 之后不再受这影响。
+    local kitok=1 kname kwant kgot ksums tries sums
+    sums=$(curl -fsSL -m 30 -H "Cache-Control: no-cache" --user-agent "MTUN-XD" "$KIT_CF/SHA256SUMS?v=$(date +%s)" 2>/dev/null)
+    for kname in generator.sh "$kit"; do
+        kwant=''
+        ksums=$(printf '%s\n' "$sums" | awk -v n="$kname" '$2 == n { print $1; exit }')
+        tries=0
+        while [ "$tries" -lt 2 ]; do
+            kwant=$(release_asset_sha "${KIT_REL%%/releases/*}" genkit "$kname" 2>/dev/null)
+            [ -n "$kwant" ] && break
+            tries=$((tries + 1))
+            [ "$tries" -lt 2 ] && sleep 2
+        done
+        if [ -z "$kwant" ] && [ -z "$ksums" ]; then
+            say "✘ 配置工具：拿不到官方摘要（$kname，网络问题？）"
+            kitok=0; break
+        fi
+        kgot=$(sha_file "$TMP/$kname" 2>/dev/null)
+        if [ -n "$kgot" ] && { [ "$kgot" = "$kwant" ] || [ "$kgot" = "$ksums" ]; }; then
+            continue
+        fi
+        # 对不上：很常见是 CDN 缓存滞后 / 下载被截断 —— 按已知摘要从 Release 链路重取一次
+        say "→ 配置工具：$kname 摘要不符，从 Release 链路重取…"
+        if dl "$KIT_REL/$kname" "$TMP/$kname" "${kwant:-$ksums}"; then
+            kgot=$(sha_file "$TMP/$kname" 2>/dev/null)
+        else
+            kgot=$(sha_file "$TMP/$kname" 2>/dev/null)
+        fi
+        if [ -z "$kgot" ] || { [ "$kgot" != "$kwant" ] && [ "$kgot" != "$ksums" ]; }; then
+            say "✘ 配置工具：$kname 校验失败（官方 ${kwant:-未知} ／ 校验和 ${ksums:-无} ／ 实际 ${kgot:-读不到}），已中止"
+            say "  → CDN 可能还在发布中，等一两分钟重跑；确认来源可信可设 MTUN_XD_ALLOW_UNVERIFIED=1"
+            kitok=0; break
+        fi
+    done
+    if [ "$kitok" != 1 ]; then
+        if [ "${MTUN_XD_ALLOW_UNVERIFIED:-0}" = 1 ]; then
+            say "⚠️ 配置工具：校验未完成，按 MTUN_XD_ALLOW_UNVERIFIED=1 继续"
+        else
+            say "  → 确认来源可信可设 MTUN_XD_ALLOW_UNVERIFIED=1 重试"
+            return 1
+        fi
+    fi
+
+    # ⚠️ MIHOMO_KIT_QUIET=1：让生成器别打那句工具密码 —— 那行由套件在最后统一打
+    #    （show_summary），不然同一把密码会出现两次。
+    kit_rc=0
+    if [ "$STEP_MODE" = 1 ] && [ "$STEP_QUIET" = 1 ]; then
+        MIHOMO_KIT_FILE="$TMP/$kit" MIHOMO_KIT_QUIET=1 \
+            sh "$TMP/generator.sh" i >>"$STEP_LOG" 2>&1 || kit_rc=$?
+    else
+        MIHOMO_KIT_FILE="$TMP/$kit" MIHOMO_KIT_QUIET=1 \
+            sh "$TMP/generator.sh" i || kit_rc=$?
+    fi
+    if [ "$kit_rc" = 0 ]; then
+        # ⚠️ 生成器的安装脚本会把 $UI/config 整个重铺，我们那份 theme.js（面板跟随路由器主题
+        #    用）就在里面 —— 不补种就没了，表现是「LuCI 亮色、面板还是黑的」。
+        #    seed_panel_cfg 只写本地文件、幂等，任何调用 install_tool 的路径都该走这一下。
+        seed_panel_cfg
+        TOOL_JUST_DONE=1
+        # ⚠️ 这里不再补一句"配置工具就位"—— 生成器自己已经打了「✔ 配置工具：已就位」，
+        #    同一件事说两遍就是噪音。
+        return 0
+    fi
+    say "✘ 配置工具：安装失败"
+    return 1
+}
+
+# ── 控制台（LuCI 包本体 + 配置工具，捆绑一次升完）────────────────────────────
+# 包本身的安装语义只在 install.sh 里写一份，这里拉下来用 pkg 模式跑（只换包 + 对齐配置
+# 工具，核心 / 面板不碰）。⚠️ 调度已把它放进临时副本（install.sh 会原地覆盖本脚本），
+# 并用 MTUN_XD_LOCKED=1 让收尾的 `mtun-xd tool` 不再抢锁。
+upgrade_console() {
+    local i=0
+    say "→ 控制台：升级"
+    while [ "$i" -lt 3 ]; do
+        i=$((i + 1))
+        if curl -fL --retry 1 --connect-timeout 15 -m 60 --user-agent "Mozilla/5.0" \
+                -o "$TMP/install.sh" "$KIT_CF/install.sh" >/dev/null 2>&1 \
+           && grep -q '^REPO=' "$TMP/install.sh" 2>/dev/null; then
+            MTUN_XD_LOCKED=1 MTUN_XD_CONSOLE=1 sh "$TMP/install.sh" pkg
+            return $?
+        fi
+        sleep 3
+    done
+    say "✘ 控制台：安装脚本没下来（网络？）"
+    return 1
+}
+
+
+# ── 给 LuCI 页面用的只读查询 ────────────────────────────────────────────────
+# 页面需要「面板在哪个地址、外部前缀是什么、secret 是多少」这三样；直接把整份
+# config.yaml 的读权限开给 ACL 等于把节点密码、订阅地址一起交出去。这里只吐这三个字段。
+# 输出是一行 JSON，前端 JSON.parse 直接用。
+panelinfo() {
+    local host port ui sec ctrl
+    sec=$(cfg_get secret)
+    ctrl=$(cfg_get external-controller)
+    host='127.0.0.1'; port='9090'
+    if [ -n "$ctrl" ]; then
+        case "$ctrl" in
+            \[*\]:*) host=${ctrl%%]*}; host=${host#\[}; port=${ctrl##*:} ;;
+            *:*)     host=${ctrl%:*}; port=${ctrl##*:} ;;
+            *)       port=$ctrl ;;
+        esac
+        [ -n "$host" ] || host='127.0.0.1'
+    fi
+    ui=$(cfg_get external-ui)
+    printf '{"host":"%s","port":"%s","secret":"%s","ui":"%s"}\n' \
+        "$host" "$port" "$sec" "$ui"
+}
+
+# 配置工具的登录密码（生成器那个 iframe 要用）。同样是「只给这一样」而不是整份文件。
+toolpass() {
+    cat "$TOOLFILE" 2>/dev/null || true
+}
+
+# 日志裁剪：超过 512 KB 就只保留最后 128 KB（日志是排错用的，不是档案）。
+# 只在写日志前后调用，不影响正在追加的进程（tail 到临时文件再 mv 回去）。
+log_trim() {
+    local f="$1" size
+    [ -s "$f" ] || return 0
+    size=$(wc -c <"$f" 2>/dev/null || echo 0)
+    [ "$size" -gt 524288 ] || return 0
+    tail -c 131072 "$f" >"$f.new" 2>/dev/null && mv -f "$f.new" "$f" || rm -f "$f.new"
+}
+
+# 内核到底在不在跑 —— 只输出 on / off，给脚本判断用。
+# 这样「显示文案」和「机器判据」彻底解耦：status 那行想怎么写都行，
+# 判据永远是这一条命令的退出码 / 输出。
+corestate() {
+    if core_alive; then echo on; else echo off; return 1; fi
+}
+
+# ── 系统诊断 ────────────────────────────────────────────────────────────────
+# 只读检查，不改任何文件：出问题先跑这个，比翻日志快。
+# 退出码：0 = 没有错误（可能有警告）；1 = 有错误。
+doctor() {
+    local bad=0 warn=0 geo g days kb sz
+    _ok()  { printf '[正常] %s\n' "$1"; }
+    _wrn() { printf '[警告] %s\n' "$1"; warn=$((warn + 1)); }
+    _err() { printf '[错误] %s\n' "$1"; bad=$((bad + 1)); }
+
+    printf 'MTUN-XD 系统诊断\n\n'
+
+    if [ -x /usr/sbin/mtun-xd ] \
+       && [ -f /usr/share/luci/menu.d/luci-app-mtun-xd.json ] \
+       && [ -f /usr/share/rpcd/acl.d/luci-app-mtun-xd.json ]; then
+        _ok "套件文件完整（$(installed_pkg_ver 2>/dev/null)）"
+    else
+        _err "套件文件缺失（sh install.sh pkg 重装）"
+    fi
+
+    if [ -x "$BIN" ]; then
+        if core_alive; then _ok "Mihomo 内核运行中（$(core_version 2>/dev/null)）"
+        else _err "Mihomo 内核未运行（/usr/sbin/mtun-xd console 或查日志）"; fi
+    else
+        _err "Mihomo 内核未安装"
+    fi
+
+    if [ -s "$CFG" ]; then
+        if "$BIN" -t -d "$BASE" >/dev/null 2>&1; then _ok "config.yaml 校验通过"
+        else _err "config.yaml 校验失败（mihomo -t 查看详情）"; fi
+    else
+        _err "config.yaml 不存在"
+    fi
+
+    if [ -s "$UI/index.html" ]; then
+        _ok "MetaCubeXD 面板完整（$(panel_version 2>/dev/null)）"
+    else
+        _err "面板文件缺失（/usr/sbin/mtun-xd ui 重装）"
+    fi
+
+    if [ -s "$UI/config/index.html" ]; then
+        _ok "配置工具完整"
+    else
+        _wrn "配置工具未安装（/usr/sbin/mtun-xd tool）"
+    fi
+
+    if [ -e /dev/net/tun ]; then _ok "TUN 设备可用"
+    else _wrn "缺少 /dev/net/tun（TUN 模式不可用）"; fi
+
+    case "$(expose_status 2>/dev/null)" in
+        on) _ok "80 端口转发正常" ;;
+        *)  _wrn "80 端口未挂载（面板 / 配置工具需带端口访问）" ;;
+    esac
+
+    geo="$BASE/GeoSite.dat"
+    [ -s "$geo" ] || geo="$BASE/geoip.metadb"
+    if [ -s "$geo" ]; then
+        g=$(file_mtime "$geo")
+        days=$(( ($(date +%s) - g) / 86400 ))
+        if [ "$days" -gt 45 ]; then _wrn "GEO 数据已 $days 天未更新"
+        else _ok "GEO 数据正常（$days 天前）"; fi
+    else
+        _wrn "GEO 数据缺失（规则匹配会退化）"
+    fi
+
+    kb=$(df -k /overlay 2>/dev/null | awk 'NR==2{print $4}')
+    if [ -n "$kb" ] && [ "$kb" -lt 51200 ]; then _wrn "磁盘剩余不足 50 MB"
+    else _ok "磁盘空间充足"; fi
+
+    if [ -f "$LOG" ]; then
+        sz=$(wc -c <"$LOG" 2>/dev/null || echo 0)
+        if [ "$sz" -gt 1048576 ]; then _wrn "日志超过 1 MB（可删 $LOG）"
+        else _ok "日志大小正常"; fi
+    fi
+
+    printf '\n诊断完成：%s 项错误，%s 项警告\n' "$bad" "$warn"
+    [ "$bad" = 0 ]
+}
+
+# ── 命令 ──────────────────────────────────────────────────────────────────
+show_status() {
+    # $1 = brief：日志里用（不带「（运行中）」这类给人看的后缀，避免日志行被文案绑死）
+    local v cv a b tv brief=0
+    [ "${1:-}" = brief ] && brief=1
+    if [ -x "$BIN" ]; then
+        # ⚠️ 版本号是装着的那份二进制的，内核死没死它一个字都不说明 —— 只打「内核：1.19.32」
+        #    会让人以为内核在跑，所以后面必须跟（运行中）/（未运行），以 core_alive 为准。
+        v="$(core_version)"
+        if [ "$brief" = 1 ]; then
+            echo "内核：${v:-装是装了，读不出版本号}"
+        elif core_alive; then
+            echo "内核：${v:-装是装了，读不出版本号}（运行中）"
+        else
+            echo "内核：${v:-装是装了，读不出版本号}（未运行）"
+        fi
+    else
+        echo "内核：没装"
+    fi
+    v=$(panel_version)
+    if [ -n "$v" ]; then
+        echo "面板：$v"
+    elif [ -f "$UI/index.html" ]; then
+        echo "面板：装了，但读不出版本号"
+    else
+        echo "面板：没装"
+    fi
+    cv=$(installed_pkg_ver)
+    if [ -f "$UI/config/index.html" ] || [ "$brief" = 1 ]; then
+        echo "控制台：${cv:-装是装了，读不出版本号}"
+    else
+        echo "控制台：${cv:-装是装了，读不出版本号}（配置工具没装）"
+    fi
+    # ⚠️ 顺序：内核必须留在**第一行** —— install.sh 的 core_running() 是
+    #    `status | head -1 | grep 运行中`；其余三行按「内核 / 面板 / 控制台 / 配置工具」排，
+    #    纯显示，解析方都是按行首关键字匹配，跟顺序无关。
+    tv=$(sed -n "s/.*APP_VERSION *= *'\(v[^']*\)'.*/\1/p" "$UI/config/state.js" 2>/dev/null | head -1)
+    if [ -n "$tv" ]; then
+        echo "配置工具：$tv"
+    elif [ -f "$UI/config/index.html" ]; then
+        echo "配置工具：装了，但读不出版本号"
+    else
+        echo "配置工具：没装"
+    fi
+    # ⚠️ 文件跟跑着的内核可以不是一回事（「载入配置文件」是新配置落盘 + 热载，而热载不换监听）
+    #    —— 两个地址不一样就点一句，别让人对着文件瞎猜。
+    a=$(expose_pick 2>/dev/null) || a=''
+    b=$(expose_addr)
+    [ -z "$a" ] || [ "$a" = "$b" ] || \
+        echo "监听：实际 $a ／ config.yaml 里是 $b（改了要 /etc/init.d/mihomo restart 才生效）"
+}
+
+# ── GEO 数据：装的时候就放好，别等内核启动自己去拉 ────────────────────────────
+#   本地没有 GeoSite.dat / geoip.metadb 时内核会照配置里的 geox-url 去 GitHub 拉，
+#   国内那一趟会把启动卡住 ⇒ 安装时先下好放进 $BASE（已有的跳过，geo-auto-update 会接着更新）。
+#   ⚠️ 落盘名按内核源码 constant/path.go：`GeoSite.dat`（大写 S）、`geoip.metadb`（小写），
+#      跟下载下来的资产名 geosite.dat 不一样，要改名；配置里那三行 geox-url 一个字不动。
+install_geodata() {
+    local got=0 need=''
+    # 真正的 GeoSite / geoip.metadb 都是几 MB；某个镜像返回 200 的 HTML / 错误页时 `dl` 也会
+    # "成功"，所以文件太小一律当没下来（不然会打印"已就位"、内核起不来）。
+    big() { [ -f "$1" ] && [ "$(wc -c < "$1" 2>/dev/null | tr -d ' ')" -ge 500000 ] 2>/dev/null; }
+    big "$BASE/GeoSite.dat" || need="$need geosite.dat"
+    big "$BASE/geoip.metadb" || need="$need geoip.metadb"
+    [ -n "$need" ] || return 0          # 都在 → 一声不吭
+    say "→ GEO 数据：下载中"
+    # ⚠️ 先下到 .part 再换名：直接往正式文件名上下，断电 / 没空间会留下半截文件，
+    #    而 big() 只看"够不够 500 KB" ⇒ 半截的会被当成好的，一直用下去。
+    if ! big "$BASE/GeoSite.dat"; then
+        if ! dl "MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat" "$BASE/.GeoSite.dat.part" \
+           || ! big "$BASE/.GeoSite.dat.part" \
+           || ! mv -f "$BASE/.GeoSite.dat.part" "$BASE/GeoSite.dat"; then
+            rm -f "$BASE/.GeoSite.dat.part"
+            say "✘ GEO 数据：geosite.dat 没下来"
+            return 1
+        fi
+        got=1
+    fi
+    if ! big "$BASE/geoip.metadb"; then
+        if ! dl "MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb" "$BASE/.geoip.metadb.part" \
+           || ! big "$BASE/.geoip.metadb.part" \
+           || ! mv -f "$BASE/.geoip.metadb.part" "$BASE/geoip.metadb"; then
+            rm -f "$BASE/.geoip.metadb.part"
+            say "✘ GEO 数据：geoip.metadb 没下来"
+            return 1
+        fi
+        got=1
+    fi
+    [ "$got" = 1 ] && say "✔ GEO 数据：已就位"
+    return 0
+}
+
+# 本机装的是哪一版（LuCI 三个页面右上角那个版本标记问的就是它）。
+# ⚠️ 现问包管理器，别写死 —— apk / opkg 两种机器，而且升级后要跟着变。
+installed_pkg_ver() {  # 
+    if command -v apk >/dev/null 2>&1; then
+        apk list -I luci-app-mtun-xd 2>/dev/null             | sed -n 's/^luci-app-mtun-xd-\([^ ]*\) .*/\1/p' | head -1
+    else
+        opkg info luci-app-mtun-xd 2>/dev/null | sed -n 's/^Version: *//p' | head -1
+    fi
+}
+
+# 包在数据库里还挂着吗（文件在 ≠ 包装着：固件升级会把登记刷掉）
+pkg_registered() {
+    if command -v apk >/dev/null 2>&1 && apk info -e luci-app-mtun-xd >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v opkg >/dev/null 2>&1 \
+       && opkg list-installed 2>/dev/null | grep -q '^luci-app-mtun-xd '; then
+        return 0
+    fi
+    return 1
+}
+
+# ── 开机自检（固件升级重启后自动补齐，别让人手动重装）──────────────────────────
+# 只有三种情况才动手，正常机器上一个字都不打：
+#   ① 包登记丢了（固件升级最常见）→ 用发布出去的安装脚本重装，把登记补回来
+#   ② 登记在，但核心 / 面板 / 配置工具缺 → setup
+#   ③ 内核没在跑 → 起一次
+selfcheck() {
+    local i=0 tmp="$TMP/selfcheck-install.sh"
+
+    # 开机自检也会动 /etc/mihomo、还会调 setup —— 跟用户的安装 / 升级**共用一把锁**。
+    # 锁在别人手上就安静退出（下次开机再说）：别去抢，也别报错。
+    if [ "${MTUN_XD_LOCKED:-0}" != 1 ]; then
+        lock_acquire || return 0
+        export MTUN_XD_LOCKED=1
+    fi
+
+    if ! pkg_registered; then
+        say "⚠️ 开机自检：包登记丢了（固件升级常见）—— 重装一次"
+        # ⚠️ 不能 `curl … | sh`：管道的退出码取的是后面那个 sh —— curl 失败时 sh 读到空输入
+        #    照样退出 0，于是断网也打「✔ 已重装」，而且再也不重试。先落盘、确认是安装脚本，再执行。
+        if curl -fsSL --retry 1 --connect-timeout 8 -m 120 "$KIT_CF/install.sh" \
+                -o "$tmp" 2>/dev/null \
+           && [ -s "$tmp" ] && grep -q '^REPO=' "$tmp" 2>/dev/null; then
+            if sh "$tmp" >/dev/null 2>&1; then
+                say "✔ 开机自检：已重装"
+            else
+                say "✘ 开机自检：重装失败（网络？）—— 下次开机再试"
+            fi
+        else
+            say "✘ 开机自检：安装脚本没下来（网络？）—— 下次开机再试"
+        fi
+        rm -f "$tmp"
+        return 0
+    fi
+
+    if [ ! -x "$BIN" ] || [ ! -s "$CFG" ] || [ ! -f "$UI/index.html" ] || [ ! -x "$CGI" ]; then
+        say "→ 开机自检：核心 / 面板 / 配置工具有缺，跑一次 setup"
+        setup
+        return 0
+    fi
+
+    # 内核可能刚起来还没应答，给它几秒
+    while [ "$i" -lt 3 ]; do
+        if core_alive; then
+            # 固件升级可能重置 uhttpd、移除 HAProxy 包或恢复原生代理能力。
+            # 每次开机都把 80 路由收敛一次；用户主动 expose off 的标记仍会生效。
+            expose_ensure >/dev/null 2>&1 || true
+            return 0
+        fi
+        i=$((i + 1))
+        [ "$i" -lt 3 ] && sleep 2
+    done
+    say "→ 开机自检：内核没在跑，起一次"
+    /etc/init.d/mihomo restart >/dev/null 2>&1 || /etc/init.d/mihomo start >/dev/null 2>&1
+    # ⚠️ 开机 5 分钟内启动会先等 40 秒（init 脚本里的开机延迟），这里得跟着等
+    i=0
+    while [ "$i" -lt 60 ]; do
+        core_alive && break
+        i=$((i + 1))
+        sleep 1
+    done
+    core_alive && { expose_ensure >/dev/null 2>&1 || true; }
+    return 0
+}
+
+# ── uhttpd 反代：把内核的口子挂到 uhttpd 那个端口上（on|off|status|ensure）─────
+# ⚠️ 目标地址不能只信 config.yaml：「载入配置文件」是新配置落盘 + 热载，而内核热载不重新
+#    绑定监听 ⇒ 文件和内核就此错开，照着文件挂的前缀全打 502。所以挂之前先问一遍谁能答
+#    （expose_pick），答不上就挨个试配置里的地址、127.0.0.1、本机各内网地址。
+# ⚠️ 0.0.0.0 / * / :: 是"全听"不是真地址，换成回环。
+expose_host() {
+    local a
+    a=$(cfg_get external-controller)
+    [ -n "$a" ] || a=127.0.0.1:9090
+    a=${a%:*}
+    case "$a" in 0.0.0.0|''|'*'|'[::]'|'::'|':') a=127.0.0.1 ;; esac
+    printf '%s' "$a"
+}
+expose_port() {
+    local a
+    a=$(cfg_get external-controller)
+    [ -n "$a" ] || a=127.0.0.1:9090
+    printf '%s' "${a##*:}"
+}
+expose_addr() { printf '%s:%s' "$(expose_host)" "$(expose_port)"; }
+EXPOSE_N=$(printf '%s\n' $EXPOSE_PFX | wc -l | tr -d ' ')
+
+# 本机所有全局 IPv4（内网口那些）
+expose_lan_ips() {
+    ip -4 addr show scope global 2>/dev/null | sed -n 's/.*inet \([0-9][0-9.]*\)\/.*/\1/p'
+}
+
+# 内核在那个地址上**真的**应答吗：状态码 200/401 且主体是 JSON（mihomo 的 /version
+# 和那句 Unauthorized 都是 JSON）。⚠️ 不能只看"端口上有东西"—— 那上面可能蹲着别的服务。
+expose_probe() {
+    local out code
+    [ -n "$1" ] || return 1
+    out=$(curl -s -m 2 -o - -w '\n@@%{http_code}' \
+              -H "Authorization: Bearer $(cfg_get secret)" "http://$1/version" 2>/dev/null)
+    code=${out##*@@}
+    # ⚠️ 401 只凭状态码就算：反代 / 别的东西可能回一个空的 401，正文不是 JSON，
+    #    但那仍然是"内核在听"（要求正文以 { 开头会把活着的内核判死）。
+    case "$code" in
+        401) return 0 ;;
+        200) ;;
+        *) return 1 ;;
+    esac
+    case "$out" in '{'*) return 0 ;; esac
+    return 1
+}
+
+# 「实际连得上内核的那个地址」—— 结果记一份缓存，别每次都全套试一遍
+# （升级那个循环会问它十几遍）。
+EXPOSE_ADDR_CACHE=/etc/mtun-xd.expose-addr
+expose_pick() {
+    local c p ip
+    c=$(cat "$EXPOSE_ADDR_CACHE" 2>/dev/null | tr -d '\r\n')
+    if [ -n "$c" ] && expose_probe "$c"; then printf '%s' "$c"; return 0; fi
+    for p in "$(expose_port)" 9090; do
+        for c in "$(expose_host):$p" "127.0.0.1:$p"; do
+            if expose_probe "$c"; then
+                printf '%s' "$c" > "$EXPOSE_ADDR_CACHE"
+                printf '%s' "$c"; return 0
+            fi
+        done
+        for ip in $(expose_lan_ips); do
+            c="$ip:$p"
+            if expose_probe "$c"; then
+                printf '%s' "$c" > "$EXPOSE_ADDR_CACHE"
+                printf '%s' "$c"; return 0
+            fi
+        done
+    done
+    return 1
+}
+
+# 无 uhttpd 原始流代理时，可由 HAProxy 在 80 做路径分流。
+# marker 里只存内核地址；同时要求 HAProxy 真在跑、目标真能答。
+haproxy_ready() {
+    local tgt
+    [ -f "$HAPROXY_STATE" ] || return 1
+    command -v haproxy >/dev/null 2>&1 || return 1
+    pidof haproxy >/dev/null 2>&1 || return 1
+    tgt=$(cat "$HAPROXY_STATE" 2>/dev/null | tr -d '\r\n')
+    [ -n "$tgt" ] && expose_probe "$tgt"
+}
+
+# nginx 那套（Kwrt / QWRT）：state + locations 都在、nginx 在跑、挂的内核地址真能答。
+# ⚠️ 少了这条判据的话，nginx 明明挂好了 `expose status` 还回 off，`expose ensure` 每次
+#    都当成"没挂"再跑一遍适配脚本、多 reload 一次 nginx。
+nginx_ready() {
+    local tgt
+    [ -f "$NGINX_STATE" ] || return 1
+    [ -f "$NGINX_LOC" ] || return 1
+    pidof nginx >/dev/null 2>&1 || return 1
+    tgt=$(cat "$NGINX_ADDR" 2>/dev/null | tr -d ' \r\n')
+    [ -n "$tgt" ] || return 1
+    expose_probe "$tgt"
+}
+
+# uhttpd 原生那 16 条（全在、且指向同一个地址才算挂齐）
+uhttpd_cur() {
+    local e name tgt first='' n=0 seen=''
+    for e in $(uci -q show uhttpd.main.proxy_prefix 2>/dev/null | tr ' ' '\n'); do
+        e=${e#*proxy_prefix=}
+        e=${e#\'}
+        e=${e%\'}
+        name=${e%%=*}
+        name=${name#/}
+        case " $EXPOSE_PFX " in *" $name "*) ;; *) continue ;; esac
+        # 同一条挂两遍不能算两个：否则重复的 /ui + 缺一个 /upgrade 也会被当成"挂齐了"
+        case " $seen " in *" $name "*) continue ;; esac
+        seen="$seen $name"
+        tgt=${e#*=}
+        tgt=${tgt#http://}
+        [ -n "$first" ] || first=$tgt
+        [ "$first" = "$tgt" ] || return 0          # 指向不一致 → 当没挂
+        n=$((n + 1))
+    done
+    [ "$n" = "$EXPOSE_N" ] || return 0
+    printf '%s' "$first"
+}
+
+# 现在**挂着**的那套指向哪儿（HAProxy marker 有效 / nginx 那套完整 / uhttpd 16 条齐全）
+expose_cur() {
+    if haproxy_ready; then
+        cat "$HAPROXY_STATE" 2>/dev/null | tr -d '\r\n'
+        return 0
+    fi
+    if nginx_ready; then
+        cat "$NGINX_ADDR" 2>/dev/null | tr -d ' \r\n'
+        return 0
+    fi
+    uhttpd_cur
+}
+
+# 挂齐了没（齐了就一个字都不动 —— 免得每次 setup 都多重启一遍 uhttpd）
+expose_ready() { [ -n "$(expose_cur)" ]; }
+
+# 给 LuCI 那页看的：on / off
+# ⚠️ 不能只看"配置里挂着"（expose_cur）—— 内核在答、但 80 上 uhttpd 其实没起来时，
+#    那也叫挂着。用户要的是"现在能不能从 80 打开面板"。
+expose_status() {
+    if [ -n "$(expose_cur)" ] && expose_live; then echo on; else echo off; fi
+}
+
+# 80 口上真的能打开面板吗（/ui/ 2xx/3xx）。uhttpd 的监听端口被改过时也认。
+expose_live() {
+    local p code ports='80'
+    p=$(uci -q show uhttpd.main.listen_http 2>/dev/null \
+          | sed -n "s/.*='\([^']*\)'.*/\1/p" | grep -v '^\[' | head -1 | sed 's/.*://')
+    [ -n "$p" ] && [ "$p" != 80 ] && ports="$ports $p"
+    for p in $ports; do
+        code=$(curl -sL -o /dev/null -w '%{http_code}' -m 4 "http://127.0.0.1:$p/ui/" 2>/dev/null)
+        case "$code" in 2??|3??) return 0 ;; esac
+    done
+    return 1
+}
+
+# 给 LuCI 那页兜底用的「自己好」：只打印最终状态（on/off）。
+#   · 没挂 → 挂上
+#   · 挂着、但那个地址已经不通了（载入配置文件把文件和内核弄错开了）→ 重挑一个能答的挂上
+# ⚠️ 人主动关过的（expose off 留了标记）不动。
+expose_ensure() {
+    [ -f "$EXPOSE_OFF_MARK" ] && { echo off; return 0; }
+    expose_on >/dev/null 2>&1
+    local cur
+    cur=$(expose_cur)
+    # 跟 expose_status 一个口径：**配置挂着**且**80 上真能打开**才算 on
+    if [ -n "$cur" ] && expose_probe "$cur" && expose_live; then echo on; else echo off; fi
+}
+
+expose_on() {
+    # 80 口归谁管，决定走哪条路：
+    #   ① uhttpd + 原始流代理补丁（iStoreOS）→ 挂 proxy_prefix（下面那段）
+    #   ② nginx 占着 80（Kwrt / QWRT）→ 调随包的 nginx 适配脚本
+    #   ③ uhttpd 没有原始流代理 → HAProxy 路径分流；两个都不沾 → 明说跳过，面板直连 :端口
+    local native=0 a port code i=0 cur
+    if command -v uhttpd >/dev/null 2>&1 \
+       && uhttpd -h 2>&1 | grep -q 'Proxy raw stream'; then
+        native=1
+    fi
+    # 固件升级后可能重新带回原始流代理（例如 iStoreOS 24.10.7 → 24.10.8）。
+    # 原生能力优先：有 helper 就先恢复 uhttpd，再继续走下面的原生 proxy_prefix。
+    if [ -f "$HAPROXY_STATE" ] && [ "$native" = 1 ] \
+       && [ -x "$HAPROXY_HELPER" ] \
+       && sh "$HAPROXY_HELPER" off >/dev/null 2>&1; then
+        say "→ 80 端口：固件已恢复原生能力，从 HAProxy 迁回 uhttpd"
+    elif haproxy_ready; then
+        say "✔ 80 端口：已挂好（HAProxy）"
+        return 0
+    elif nginx_ready; then
+        # 已经由 nginx 那套挂着、而且真的通 → 不要重写配置 + reload
+        # （开机自检每次都会调 ensure，多 reload 一次没有意义）。
+        say "✔ 80 端口：已挂好（nginx $(cat "$NGINX_ADDR" 2>/dev/null | tr -d ' \r\n')）"
+        return 0
+    fi
+    if [ "$native" = 0 ]; then
+        if [ -x "$NGINX_HELPER" ] && pidof nginx >/dev/null 2>&1 \
+           && netstat -lnt 2>/dev/null | grep -q ':80 '; then
+            say "→ 80 端口：nginx 前端，走随包的适配脚本"
+            if sh "$NGINX_HELPER" install; then
+                say "✔ 80 端口：已挂好（nginx）"
+                return 0
+            fi
+            say "✘ 80 端口：nginx 适配失败（看上面；要退就跑 mtun-xd expose off）"
+            return 1
+        fi
+        if command -v uhttpd >/dev/null 2>&1; then
+            if [ -x "$HAPROXY_HELPER" ]; then
+                # ⚠️ 后端地址要跟内核实际应答的那个一致：HAProxy 那份配置写死 127.0.0.1:9090 的话，
+                #    配置里换过端口 / 只绑内网地址的机器就会全 502。
+                a=$(expose_pick 2>/dev/null) || a=$(expose_addr)
+                say "→ 80 端口：uhttpd 无原始流代理，使用 HAProxy 路径分流（$a）"
+                if sh "$HAPROXY_HELPER" install "$a"; then
+                    say "✔ 80 端口：已挂好（HAProxy $a）"
+                    return 0
+                fi
+                say "✘ 80 端口：HAProxy 分流失败（看上面；面板可直连 :端口）"
+            else
+                say "⚠️ 80 端口：uhttpd 不带原始流代理 —— 跳过（面板请直连 :端口）"
+            fi
+        else
+            say "⚠️ 80 端口：没有 uhttpd、也没有 nginx —— 跳过（面板请直连 :端口）"
+        fi
+        return 1
+    fi
+    # 这条路只看 uhttpd 自己的 16 条（HAProxy / nginx 那两套上面已经判过了）
+    cur=$(uhttpd_cur)
+    # 挂着、那个地址能答、80 口上也真能打开面板 → 一个字都不动（不多重启 uhttpd）
+    if [ -n "$cur" ] && expose_probe "$cur" && expose_live; then
+        say "✔ 80 端口：已挂好（$cur）"
+        return 0
+    fi
+    a=$(expose_pick) || a=''
+    if [ -z "$a" ]; then
+        # 内核哪儿都不应答（没起来 / 正在重启）—— 别乱动已经挂好的那套，
+        # 它多半只是内核没跑，起来之后那条路自己就通了。
+        if [ -n "$cur" ]; then
+            say "⚠️ 80 端口：内核没应答（挂着的还是 $cur）"
+            return 1
+        fi
+        a=$(expose_addr)
+    fi
+    # ⚠️ **先摘陈条** —— 地址变过的话，留着上一轮那条 uhttpd 会先匹配上它 ⇒ 502。
+    #    摘完不重启（strip 自己只 commit），下面 add 完统一重启一次。
+    expose_strip
+    say "→ 80 端口：挂上内核的口子"
+    for p in $EXPOSE_PFX; do
+        uci add_list uhttpd.main.proxy_prefix="/$p=http://$a" 2>/dev/null \
+            || { say "✘ 80 端口：uci 写不进去"; return 1; }
+    done
+    uci commit uhttpd 2>/dev/null || { say "✘ 80 端口：uci commit 失败"; return 1; }
+    # 记下**这一次**写进去的原文：以后只摘这些（别人的同名条目一条不碰）
+    : > "$EXPOSE_STATE" 2>/dev/null
+    for p in $EXPOSE_PFX; do
+        printf '%s\n' "/$p=http://$a" >> "$EXPOSE_STATE" 2>/dev/null
+    done
+    /etc/init.d/uhttpd restart >/dev/null 2>&1 \
+        || { say "✘ 80 端口：uhttpd 重启失败（看 logread）"; return 1; }
+    port=$(uci -q show uhttpd.main.listen_http 2>/dev/null \
+            | sed -n "s/.*='\([^']*\)'.*/\1/p" | grep -v '^\[' | head -1 | sed 's/.*://')
+    [ -n "$port" ] || port=80
+    # ⚠️ 别只探一次：restart 是异步的，新进程接管前那一下打的还是旧配置
+    #    （连续 off→on 时会探到 404，误报「挂上了但没通」）。最多等 10 秒。
+    code=''
+    while [ "$i" -lt 10 ]; do
+        i=$((i + 1))
+        code=$(curl -sL -o /dev/null -w '%{http_code}' -m 5 "http://127.0.0.1:$port/ui/" 2>/dev/null)
+        case "$code" in 2??|3??) break ;; esac
+        sleep 1
+    done
+    case "$code" in
+        2??|3??)
+            say "✔ 80 端口：已挂好（$a）"
+            return 0 ;;
+    esac
+    say "✘ 80 端口：挂上了但没通（/ui/ → ${code:-无响应}）"
+    return 1
+}
+
+expose_off() {
+    local changed=0 failed=0
+    # HAProxy 路径分流：停服务、恢复 uhttpd 原来的 80 监听。
+    if [ -f "$HAPROXY_STATE" ]; then
+        if [ -x "$HAPROXY_HELPER" ] && sh "$HAPROXY_HELPER" off >/dev/null 2>&1; then
+            changed=1
+        else
+            /etc/init.d/haproxy stop >/dev/null 2>&1
+            /etc/init.d/haproxy disable >/dev/null 2>&1
+            if [ -f "$HAPROXY_UHTTPD_BAK" ]; then
+                # 还原失败就别把唯一的快照删了 —— 下次还能再试
+                cp -p "$HAPROXY_UHTTPD_BAK" /etc/config/uhttpd || failed=1
+            else
+                uci -q delete uhttpd.main.listen_http
+                uci add_list uhttpd.main.listen_http='0.0.0.0:80'
+                uci add_list uhttpd.main.listen_http='[::]:80'
+                uci commit uhttpd || failed=1
+            fi
+            /etc/init.d/uhttpd restart >/dev/null 2>&1 || failed=1
+            [ "$failed" = 1 ] || rm -f "$HAPROXY_STATE" "$HAPROXY_UHTTPD_BAK"
+            changed=1
+        fi
+    fi
+    # nginx 那套（Kwrt / QWRT）先摘：它会删掉 nginx 的 locations、把 uhttpd.main 的
+    # enabled 还原回去，并留一个 expose-off 标记（跟我们这里的语义一致）。
+    if [ -x "$NGINX_HELPER" ] && [ -f "$NGINX_STATE" ]; then
+        sh "$NGINX_HELPER" off >/dev/null 2>&1 || failed=1
+    fi
+    # ⚠️ 只摘我们挂的那 16 条，不整份还原备份 —— 备份是第一次挂上去那一刻的快照，
+    #    整份 cp 回去会把那之后用户自己对 uhttpd 的改动（别的 proxy_prefix、别的 listen
+    #    端口…）一起抹掉。strip 只碰我们的条目。
+    expose_strip && changed=1
+    # ⚠️ 不删 $EXPOSE_STATE：它记的是"我们写过哪几条"。删了它，下一次 `expose on` 的
+    #    strip 就只能退回按名字判 —— 用户自己挂的 /ui、/dns 会被一起当我们的删掉。
+    #    条目已经摘干净了，留着这份记录没有副作用。
+    rm -f "$EXPOSE_ADDR_CACHE" "$EXPOSE_BAK"
+    : > "$EXPOSE_OFF_MARK"            # 记下"是人主动关的" ⇒ setup / install.sh 不再自动开回来
+    [ "$changed" = 1 ] && /etc/init.d/uhttpd restart >/dev/null 2>&1
+    if [ "$failed" = 1 ]; then
+        say "✘ 80 端口：没完全还原（看上面）—— 再跑一次 mtun-xd expose off；快照没删"
+        return 1
+    fi
+    say "✔ 80 端口：已还原"
+    return 0
+}
+
+# 把我们挂的那些条从 uhttpd 配置里摘掉（别人的一条不碰）。
+# ⚠️ 不整份还原备份 —— 备份是装机那一刻的快照，整份还原会把那之后
+#    用户自己对 uhttpd 的改动一起抹了。
+# 返回 0 = 确实摘掉了东西（已 commit，没重启，调用方自己决定要不要重启）。
+expose_strip() {
+    local e name keep='' dropped=0 ours=''
+    command -v uci >/dev/null 2>&1 || return 1
+    uci -q show uhttpd.main.proxy_prefix >/dev/null 2>&1 || return 1
+    # 我们写过的原文（一行一条）；老机器上没有这份 → ours 为空，退回按名字判
+    [ -f "$EXPOSE_STATE" ] && ours=" $(tr '\n' ' ' < "$EXPOSE_STATE" 2>/dev/null) "
+    for e in $(uci -q show uhttpd.main.proxy_prefix 2>/dev/null | tr ' ' '\n'); do
+        # ⚠️ `uci show` 的多值形态：只有第一条带 `uhttpd.main.proxy_prefix=` 前缀，
+        #    后面几条是裸的 `'值'`。所以三刀都要：去前缀、去开头引号、去结尾引号
+        #    （只写 `#*=\'` 的话，第二条起 name 会变成 `'/ui`，永远匹配不上）。
+        e=${e#*proxy_prefix=}
+        e=${e#\'}
+        e=${e%\'}
+        name=${e%%=*}                      # '/ui=http://…' → '/ui'
+        name=${name#/}
+        if [ -n "$ours" ]; then
+            case "$ours" in
+                *" $e "*) dropped=1 ;;     # 一字不差是我们写的 → 丢
+                *) [ -n "$e" ] && keep="$keep $e" ;;   # 别的（包括同名的用户条目）→ 留
+            esac
+        else
+            # 老机器（没有 state 文件）：只能按名字判（没有别的依据）
+            case " $EXPOSE_PFX " in
+                *" $name "*) dropped=1 ;;
+                *) if [ -n "$e" ]; then keep="$keep $e"; fi ;;
+            esac
+        fi
+    done
+    if [ "$dropped" = 1 ]; then
+        uci -q delete uhttpd.main.proxy_prefix
+        for e in $keep; do
+            uci -q add_list uhttpd.main.proxy_prefix="$e"
+        done
+        uci commit uhttpd 2>/dev/null
+        return 0                          # 0 = 摘掉了东西（已 commit）
+    fi
+    return 1                              # 1 = 本来就没我们的条
+}
+
+# 卸载时用：摘掉 + 重启 + 清标记。
+# ⚠️ `$EXPOSE_BAK` 是老版本（整份还原那套）留下的快照，现在只会被删；
+#    留着它会让人以为还有"整份还原"这条路。
+expose_purge() {
+    [ -f "$HAPROXY_STATE" ] && expose_off
+    if expose_strip; then
+        /etc/init.d/uhttpd restart >/dev/null 2>&1
+    fi
+    rm -f "$EXPOSE_BAK" "$EXPOSE_OFF_MARK" "$EXPOSE_ADDR_CACHE" "$EXPOSE_STATE" \
+          "$HAPROXY_STATE" "$HAPROXY_UHTTPD_BAK"
+    return 0
+}
+
+# ── TUN：没有 /dev/net/tun 的固件 ─────────────────────────────────────────
+# 自编译 / 精简版 OpenWrt 常常没编 tun、也没装 kmod-tun ⇒ /dev/net/tun 不存在，而配置
+# 里 tun.enable: true 时内核会起不来（表现就是「核心：没在跑」）。按需补 kmod-tun、
+# 设备节点和开机重建（/dev 是 tmpfs）；补不上就明说，别让人对着「核心没起来」猜。
+ensure_tun() {
+    local created='' have_drv=0
+
+    # ⚠️ /proc/misc 里有 tun 只说明驱动在（编进内核 / 模块已加载）——
+    #    静态 /dev、devtmpfs 没挂、节点被清掉的机器正是这里要补的场景，
+    #    所以只有设备节点真的在才提前返回。
+    [ -e /dev/net/tun ] && return 0
+    grep -qi ' tun' /proc/misc 2>/dev/null && have_drv=1
+    say "→ TUN：这台没有 /dev/net/tun，先补上"
+
+    # ① 模块包（有的固件把 tun 编进内核了，modprobe 直接成功）
+    if [ "$have_drv" = 0 ]; then
+        modprobe tun 2>/dev/null || {
+            if command -v apk >/dev/null 2>&1; then
+                apk info -e kmod-tun >/dev/null 2>&1 || apk add kmod-tun >/dev/null 2>&1 || true
+            elif command -v opkg >/dev/null 2>&1; then
+                opkg list-installed 2>/dev/null | grep -q '^kmod-tun ' || {
+                    opkg update >/dev/null 2>&1 || true
+                    opkg install kmod-tun >/dev/null 2>&1 || true
+                }
+            fi
+            modprobe tun 2>/dev/null || true
+        }
+    fi
+
+    # ② 设备节点
+    if [ ! -e /dev/net/tun ]; then
+        mkdir -p /dev/net 2>/dev/null
+        mknod /dev/net/tun c 10 200 2>/dev/null && chmod 600 /dev/net/tun 2>/dev/null
+    fi
+    if [ ! -e /dev/net/tun ]; then
+        say "⚠️ TUN：补不上（内核没编 tun、源里也没有 kmod-tun？）"
+        say "    这台的配置里 tun.enable 是 true 的话内核起不来 —— 改成 false 走 redirect，或者换固件"
+        return 1
+    fi
+
+    # ③ 开机自动重建（/dev 是 tmpfs，重启就没了）
+    if [ ! -x "$TUN_INIT" ]; then
+        {
+            printf '%s\n' '#!/bin/sh /etc/rc.common'
+            printf '%s\n' 'START=98'
+            printf '%s\n' 'boot() {'
+            printf '%s\n' '    mkdir -p /dev/net'
+            printf '%s\n' '    [ -e /dev/net/tun ] || mknod /dev/net/tun c 10 200'
+            printf '%s\n' '    chmod 600 /dev/net/tun'
+            printf '%s\n' '    modprobe tun 2>/dev/null'
+            printf '%s\n' '}'
+            printf '%s\n' 'start() { boot; }'
+        } > "$TUN_INIT"
+        chmod +x "$TUN_INIT" 2>/dev/null
+        created="$created init"
+    fi
+    "$TUN_INIT" enable >/dev/null 2>&1 && created="$created rc"
+
+    # ④ fw4 reload 最后一句是 `test -f /etc/firewall.include && sh …` —— 文件不在就返回 1，
+    #    TUN 的 auto-redirect 会失败。
+    if [ ! -e /etc/firewall.include ]; then
+        : > /etc/firewall.include 2>/dev/null && created="$created fwinclude"
+    fi
+
+    [ -n "$created" ] && printf '%s\n' $created > "$TUN_MARK" 2>/dev/null
+    say "✔ TUN：已就绪（重启后自动重建 /dev/net/tun）"
+    return 0
+}
+
+# ── 装之前先看这台"能不能跑起来" ───────────────────────────────────────────
+# 这里只查会影响运行的东西：空间、时钟（TLS 证书）、必需工具、TUN。
+# 查出来也别半路退出 —— 每样打一行 ✘，最后统一判失败（install.sh 会 exit 1）。
+preflight() {
+    local bad=0 y t
+
+    need_kb "/tmp" 90000 "安装" || bad=1
+    need_kb "$BASE" 130000 "安装" || bad=1
+
+    # ⚠️ 时钟差几年 → HTTPS 证书"未生效 / 已过期"，下载全挂，报出来的却只是"网络不好"。
+    y=$(date +%Y 2>/dev/null)
+    if [ -z "$y" ] || [ "$y" -lt 2025 ]; then
+        say "⚠️ 系统时间是 ${y:-未知} 年 —— HTTPS 会证书报错，先校准时间（ntpd 或手动 date）"
+        bad=1
+    fi
+
+    for t in curl tar gzip; do
+        command -v "$t" >/dev/null 2>&1 || { say "✘ 缺 $t（拉核心 / 铺面板要用）"; bad=1; }
+    done
+    if [ "$ALLOW_UNVERIFIED" != 1 ] \
+       && ! command -v sha256sum >/dev/null 2>&1 \
+       && ! command -v openssl >/dev/null 2>&1; then
+        say "✘ 缺 sha256sum / openssl（下载核心和面板要先校验官方 SHA-256）"
+        bad=1
+    fi
+
+    # TUN：配置里 tun.enable: true 的机器没它起不来（生成器出来的配置都是）
+    ensure_tun || bad=1
+
+    return $bad
+}
+
+setup() {
+    local ok=1 i rc cfg_bad=0 corev panelv expose_ok=0 mounted
+    : > "$STEP_LOG" 2>/dev/null
+    if [ "$STEP_MODE" = 1 ]; then
+        if [ "${MTUN_XD_EMBEDDED:-0}" != 1 ]; then
+            ui_step "1/6 安装套件"
+            corev=$(installed_pkg_ver)
+            [ -n "$corev" ] && ui_ok "已安装 luci-app-mtun-xd $corev" \
+                            || ui_warn "套件版本未知"
+        fi
+        ui_step "2/6 部署核心"
+        STEP_QUIET=1
+    fi
+    preflight || ok=0
+    install_core || ok=0
+    if [ "$STEP_MODE" = 1 ]; then
+        STEP_QUIET=0
+        corev=$(core_version)
+        if [ -x "$BIN" ] && [ -n "$corev" ]; then
+            ui_ok "mihomo $corev"
+        else
+            ui_fail "mihomo 核心未就位"
+        fi
+        ui_step "3/6 初始化默认配置"
+        STEP_QUIET=1
+    fi
+    write_default_cfg || ok=0
+    if [ "$STEP_MODE" = 1 ]; then
+        STEP_QUIET=0
+        [ -s "$CFG" ] && ui_ok "config.yaml" || ui_fail "默认配置写入失败"
+        ui_step "4/6 部署 GEO 数据"
+        STEP_QUIET=1
+    fi
+    # GEO 数据（12 MB）必须赶在起服务之前，否则内核第一次启动会自己去 GitHub 拉，
+    # 国内那一趟就把启动卡住了。失败只警告：内核之后自己也会试着拉（慢，但能起来）。
+    install_geodata || say "⚠️ GEO 数据：没下来（网络？）—— 内核启动可能自己去拉"
+    if [ "$STEP_MODE" = 1 ]; then
+        STEP_QUIET=0
+        if [ -s "$BASE/GeoSite.dat" ] && [ -s "$BASE/geoip.metadb" ]; then
+            ui_ok "GEO 数据已就位"
+        else
+            ui_warn "GEO 数据未就绪，内核启动时可能自行拉取"
+        fi
+        ui_step "5/6 部署面板与配置工具"
+        STEP_QUIET=1
+    fi
+    # 面板不在包里（塞进去的那一刻就过时了）→ 装的时候去官方拉最新的；已经是最新就跳过。
+    # ⚠️ 失败只警告、保留现成那份，绝不把面板弄没。
+    upgrade_ui || { say "⚠️ 面板：没下来（网络？）—— 保留现成那份"; [ -f "$UI/index.html" ] || ok=0; }
+    # TUN：没有 /dev/net/tun 的固件（自编译 / 精简版）先补上 —— 补不上只警告，
+    # 但要说清"核心可能起不来"，别让人对着日志猜。
+    ensure_tun || say "⚠️ TUN：没就绪 —— 内核可能起不来（见上面的说明）"
+    # 配置让内核自己过一遍（语法 / 字段 / 引用的 provider）——"能不能起来"最硬的判据。
+    # ⚠️ 通过就一句话都不说（机器正常时别每次安装都念一遍环境）。
+    # ⚠️ 坏配置不重启：否则正跑着的内核会被弄死，用户只是重跑一次安装就断网了。
+    if [ -x "$BIN" ] && [ -s "$CFG" ]; then
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 25 "$BIN" -t -d "$BASE" -f "$CFG" >/tmp/mtun-xd.cfgtest 2>&1
+        else
+            "$BIN" -t -d "$BASE" -f "$CFG" >/tmp/mtun-xd.cfgtest 2>&1
+        fi
+        rc=$?
+        if [ "$rc" = 124 ] || [ "$rc" = 143 ]; then
+            say "⚠️ 配置校验超时（多半有 rule-provider 拉不动）—— 继续"
+        elif [ "$rc" != 0 ]; then
+            say "✘ 配置校验没过（$CFG）："
+            tail -5 /tmp/mtun-xd.cfgtest 2>/dev/null | sed 's/^/    /'
+            cfg_bad=1
+            ok=0
+        fi
+    fi
+    if [ "$cfg_bad" = 1 ]; then
+        say "   配置没动、服务也没重启 —— 改好 config.yaml 再跑一次 mtun-xd setup"
+    elif [ -x /etc/init.d/mihomo ]; then
+        /etc/init.d/mihomo enable >/dev/null 2>&1
+        # ⚠️ 只在真有必要时重启（核心换过 / 配置改过 / 没在跑）。
+        #    重跑一次安装补面板、对齐工具、修环境，不该把走代理的连接踢断。
+        if restart_needed; then
+            if ! { /etc/init.d/mihomo restart >/dev/null 2>&1 || /etc/init.d/mihomo start >/dev/null 2>&1; }; then
+                say "⚠️ 服务：起不来（看 logread）"
+                ok=0
+            fi
+        fi
+    else
+        say "⚠️ 服务：/etc/init.d/mihomo 不在（包不全？）"
+        ok=0
+    fi
+    # ⚠️ 每次都对齐一遍（不是"缺了才装"）：生成器那一套 = 页面 + 绿点 + 写盘 CGI，装/升级
+    #    套件就该把两种入口一起带到最新，否则升完套件绿点还是不出来。
+    # ⚠️ 失败只是警告，不破坏现成那份：生成器的安装脚本先下好、验过 index.html +
+    #    mihomo-apply 才 rm -rf $G。upgrade_ui 刚补过就别再来一遍（会连打两遍）。
+    if [ "${TOOL_JUST_DONE:-0}" != 1 ]; then
+        install_tool || { say "⚠️ 配置工具：没对齐（网络？）—— 之后重跑 mtun-xd setup"; [ -f "$UI/config/index.html" ] || ok=0; }
+    fi
+    [ -f "$UI/config/mihomo-apply" ] && { chmod +x "$UI/config/mihomo-apply" 2>/dev/null; mkdir -p /www/cgi-bin; ln -sf "$UI/config/mihomo-apply" "$CGI"; }
+    # ⚠️ 生成器的安装脚本会把 $UI/config 整个重铺一遍（我们那份 theme.js 也在里面），
+    #    所以铺完再种一次 —— 不然刚装完 theme.js 就没了。
+    seed_panel_cfg
+    if [ "$STEP_MODE" = 1 ]; then
+        STEP_QUIET=0
+        panelv=$(panel_version)
+        [ -f "$UI/index.html" ] && ui_ok "面板 ${panelv:-已安装}" \
+                                || ui_fail "面板未就位"
+        [ -f "$UI/config/index.html" ] && ui_ok "配置工具已更新" \
+                                      || ui_fail "配置工具未就位"
+        ui_step "6/6 配置面板转发"
+        STEP_QUIET=1
+    fi
+    # 把内核的口子挂到 uhttpd 那个端口上（只开 80 就能完全管理这套）。
+    # ⚠️ 失败只警告：挂不上不影响 9090 那条老路，别把整套 setup 判死。
+    # ⚠️ 人主动关过（expose off 留了标记）就别擅自开回来。
+    if [ -f "$EXPOSE_OFF_MARK" ]; then
+        say "⚠️ 80 端口：你手动关过（expose off）—— 要开回来跑 mtun-xd expose on"
+    else
+        if expose_on; then expose_ok=1; fi
+    fi
+    if [ "$STEP_MODE" = 1 ]; then
+        STEP_QUIET=0
+        if [ "$expose_ok" = 1 ]; then
+            # 打实际挂上的那个地址：HAProxy 路径分流时后端可能不是 config.yaml 里写的那一个
+            # （expose_pick 挑的是"真能应答"的），打错会把人带偏。
+            mounted=$(expose_cur)
+            ui_ok "${mounted:-$(expose_addr)}"
+        elif [ -f "$EXPOSE_OFF_MARK" ]; then
+            ui_warn "80 端口转发曾被手动关闭，保持关闭"
+        else
+            ui_warn "80 端口未挂载，仍可使用 9090"
+        fi
+    fi
+    # ⚠️ 最后核一眼内核真在跑没有：上面任何一步"看起来成功"都不代表它起来了
+    #    （配置坏 / 端口被占 / 缺 GEO 都会让进程秒退）。
+    # ⚠️ 开机 5 分钟内启动内核会先等 40 秒（init 脚本里的开机延迟）→ 最多等 60 秒。
+    i=0
+    while [ "$i" -lt 60 ]; do
+        core_alive && break
+        i=$((i + 1))
+        [ "$i" -lt 60 ] && sleep 1
+    done
+    core_alive || { say "⚠️ 核心：没在跑（/etc/init.d/mihomo restart 看输出）"; ok=0; }
+    core_alive && date +%s > "$START_STAMP" 2>/dev/null
+    if [ "$ok" = "1" ]; then
+        [ "$STEP_MODE" = 1 ] && printf '✔ MTUN-XD 安装完成\n'
+    else
+        [ "$STEP_MODE" = 1 ] && ui_fail "安装未完成"
+        # 失败路径会进 /tmp/mtun-xd.log —— 用 brief 形式，日志里不带「（运行中）」
+        show_status brief
+        if [ -s "$STEP_LOG" ]; then
+            printf '\n  详细日志：%s\n' "$STEP_LOG"
+            tail -n 12 "$STEP_LOG" | sed 's/^/    /'
+        fi
+    fi
+    # 收尾不补空行：多出来的那条空行会顶在 shell 提示符前面
+    # ⚠️ 成功/失败要如实返回 —— install.sh 靠它决定 exit 0 还是 1
+    [ "$ok" = "1" ] && return 0
+    return 1
+}
+
+ask_purge() {
+    # stdin 可能不是终端（脚本 / SSH 非交互）；只有当前 stdin 真是终端时才询问。
+    # ⚠️ 不用 `[ -r /dev/tty ]`：OpenWrt 上文件存在，但无控制终端时 open 会报错。
+    local ans=''
+    [ -t 0 ] || return 1
+    printf '  默认保留：\n'
+    printf '  ├─ config.yaml\n'
+    printf '  ├─ 工具密码\n'
+    printf '  └─ GEO 数据\n'
+    printf '  是否彻底清除所有数据？[y/N]: '
+    IFS= read -r ans || return 1
+    case "$ans" in
+        y|Y|yes|YES) return 0 ;;
+    esac
+    return 1
+}
+
+uninstall_all() {
+    # 我们自己叫的包管理器又绕回 prerm 来了（见下面）—— 运行时那会儿就清完了，不要再打一遍。
+    [ "${MTUN_XD_DONE:-0}" = 1 ] && return 0
+    # ⚠️ apk 跑 prerm 时**不传我们的环境变量**（DONE 进不去）⇒ 用标记文件再挡一道，
+    #    不然会看到两遍「→ 停止服务 … ✔ 已成功卸载」。
+    if [ -f /tmp/mtun-xd.uninstalling ]; then
+        mpid=$(cat /tmp/mtun-xd.uninstalling 2>/dev/null)
+        if [ -n "$mpid" ] && kill -0 "$mpid" 2>/dev/null; then return 0; fi
+        rm -f /tmp/mtun-xd.uninstalling
+    fi
+
+    : > "$STEP_LOG" 2>/dev/null
+    STEP_QUIET=1
+    ui_step "1/4 停止服务"
+    # 开机自检那个 init 脚本也别留个指向空文件的 S99 链接
+    /etc/init.d/mtun-xd-selfcheck disable >/dev/null 2>&1 || true
+    [ -x /etc/init.d/mihomo ] && { /etc/init.d/mihomo stop >/dev/null 2>&1; /etc/init.d/mihomo disable >/dev/null 2>&1; }
+    ui_ok "服务已停止"
+
+    ui_step "2/4 删除核心"
+    rm -f "$BIN" "$BIN.bak"
+    rm -f /tmp/mtun-xd.log* /tmp/mtun-xd.done 2>/dev/null
+    rm -rf /tmp/mtun-xd.self.* /tmp/mtun-xd.install.lock /tmp/mtun-xd.pkg-only 2>/dev/null
+    ui_ok "核心已删除"
+
+    ui_step "3/4 卸载面板与配置工具"
+    rm -rf "$UI" "$CGI"
+    # 暂存目录（换面板 / 换配置工具时铺到一半剩下的）—— 正常装完就清了，装到一半被打断会留下
+    rm -rf "$UINEW" "$UIOLD" "$BASE/.config.new" "$BASE/.config.old"
+    # LuCI 把菜单 / 模块缓存放在 /tmp —— 不清的话，包都卸了、刷新还可能看到那一栏。
+    # ⚠️ 只清这两个缓存的：**别碰 /tmp/luci-sessions**（那会把人从 LuCI 里踢出去）。
+    rm -rf /tmp/luci-modulecache /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
+    # 生成器装的那条「取信」cron（只映射了 9090 的机器靠它落盘）和那个脚本 ——
+    # 也是我们装上去的，一并收掉（不然留一条每分钟跑一次的孤儿）。
+    rm -f /usr/bin/mihomo-gen-pull
+    # uhttpd 上挂的那些口子（expose on 挂上去的）—— 也收掉，别留一堆指向死端口的孤儿
+    expose_purge
+    if [ -f /etc/crontabs/root ] && grep -q 'mihomo-gen-pull' /etc/crontabs/root 2>/dev/null; then
+        grep -v 'mihomo-gen-pull' /etc/crontabs/root > /etc/crontabs/root.tmp 2>/dev/null
+        mv /etc/crontabs/root.tmp /etc/crontabs/root
+        /etc/init.d/cron restart >/dev/null 2>&1
+    fi
+    ui_ok "面板与配置工具已删除"
+
+    ui_step "4/4 清理数据"
+    # TUN 补的那几样（只撤我们自己建的；标记文件里记着建过什么）
+    if [ -f "$TUN_MARK" ]; then
+        [ -x "$TUN_INIT" ] && "$TUN_INIT" disable >/dev/null 2>&1
+        rm -f "$TUN_INIT" /etc/rc.d/S98mihomo-tun
+        grep -qx 'fwinclude' "$TUN_MARK" 2>/dev/null && rm -f /etc/firewall.include
+        rm -f "$TUN_MARK"
+    fi
+
+    # ── nginx 那套（Kwrt / QWRT：80 归 nginx）先撤 ──────────────────────
+    #    删 nginx 的 locations、删 9091 那个 uhttpd 段、还原 uhttpd.main、清状态文件。
+    #    ⚠️ 必须在**删包之前**（脚本本身就在包里）。
+    if [ -x "$NGINX_HELPER" ] && [ -f "$NGINX_STATE" ]; then
+        sh "$NGINX_HELPER" uninstall >/dev/null 2>&1 \
+            || printf '%s\n' 'nginx 那套没撤干净（看 /etc/nginx/conf.d/mtun-xd.locations）' >>"$STEP_LOG"
+    fi
+    rm -f "$NGINX_STATE" "$NGINX_ADDR"
+
+    # ── 「毫无保留」那两样（默认保留 / --purge 全删）────────────────────────
+    #    默认保留：config.yaml、GeoIP/GeoSite、工具密码都不动。
+    #    只有 `--purge` 或交互时明确答 y 才全删；`--keep-config` 强制保留。
+    #    ⚠️ 不可逆：toolpass 删了下次装会现生成一把新的，之前发出去的全都作废。
+    if [ "$KEEP_CONFIG" = 1 ]; then
+        ui_ok "配置 / 密码 / GEO 数据已保留"
+    else
+        rm -rf "$BASE"
+        rm -f "$TOOLFILE"
+        ui_ok "配置 / 密码 / GEO 数据已删除"
+    fi
+    # 我们散在 /etc 下的状态文件（expose 的标记 / 地址缓存 / nginx 那套的 state）
+    rm -f /etc/mtun-xd.* 2>/dev/null
+
+    # ── 包自己的文件（LuCI 菜单 / 权限 / 那三页 / 这个脚本 / init 脚本）──
+    #    只有包管理器删得掉，所以「全卸」得把它也叫上；从 prerm 进来时不叫（那是它在卸，
+    #    再叫一遍就是递归，prerm 会带 MTUN_XD_FROM_PRERM=1 说明）。
+    #    ⚠️ 用 exec 换掉进程（本脚本会被删）；exec 不跑 EXIT trap ⇒ 临时目录得自己收。
+    if [ "${MTUN_XD_FROM_PRERM:-0}" != 1 ]; then
+        if [ "$KEEP_CONFIG" = 1 ]; then
+            finalmsg='mtun-xd 已卸载（配置已保留）'
+        else
+            finalmsg='mtun-xd 已完全卸载'
+        fi
+        if command -v apk >/dev/null 2>&1 && apk info -e luci-app-mtun-xd >/dev/null 2>&1; then
+            echo $$ > /tmp/mtun-xd.uninstalling
+            exec sh -c "rm -rf '$TMP' '$SUITE_LOCK'; MTUN_XD_DONE=1 apk del luci-app-mtun-xd >/tmp/mtun-xd.uninstall.log 2>&1; del_rc=\$?; rm -f /tmp/mtun-xd.uninstalling; rmdir /usr/share/mtun-xd /www/luci-static/resources/view/mtun-xd 2>/dev/null; if apk info -e luci-app-mtun-xd >/dev/null 2>&1; then printf '  ✘ 套件包未卸载（apk 退出码 %s）\\n' \"\$del_rc\"; tail -n 15 /tmp/mtun-xd.uninstall.log 2>/dev/null | sed 's/^/    /'; rm -f /tmp/mtun-xd.uninstall.log; exit 1; fi; rm -f /tmp/mtun-xd.uninstall.log; printf '✔ %s\\n' '$finalmsg'"
+        elif command -v opkg >/dev/null 2>&1 && opkg list-installed 2>/dev/null | grep -q '^luci-app-mtun-xd '; then
+            echo $$ > /tmp/mtun-xd.uninstalling
+            exec sh -c "rm -rf '$TMP' '$SUITE_LOCK'; MTUN_XD_DONE=1 opkg remove luci-app-mtun-xd >/tmp/mtun-xd.uninstall.log 2>&1; del_rc=\$?; rm -f /tmp/mtun-xd.uninstalling; rmdir /usr/share/mtun-xd /www/luci-static/resources/view/mtun-xd 2>/dev/null; if opkg list-installed 2>/dev/null | grep -q '^luci-app-mtun-xd '; then printf '  ✘ 套件包未卸载（opkg 退出码 %s）\\n' \"\$del_rc\"; tail -n 15 /tmp/mtun-xd.uninstall.log 2>/dev/null | sed 's/^/    /'; rm -f /tmp/mtun-xd.uninstall.log; exit 1; fi; rm -f /tmp/mtun-xd.uninstall.log; printf '✔ %s\\n' '$finalmsg'"
+        else
+            # 包登记不在了（固件升级刷掉登记很常见）—— 包管理器不会替我们删包内文件，
+            # 什么都不做还打「已完全卸载」就是撒谎：菜单还指着不存在的页面、init 脚本还在、CLI 还在。
+            # 按已知路径清掉（清单跟 build.py 的进包列表一致）。
+            say "⚠️ 包登记不在（固件升级常见）—— 按已知路径清理包内文件"
+            rm -f /usr/share/luci/menu.d/luci-app-mtun-xd.json \
+                  /usr/share/rpcd/acl.d/luci-app-mtun-xd.json \
+                  /etc/init.d/mihomo /etc/init.d/mtun-xd-selfcheck \
+                  /etc/rc.d/S99mihomo /etc/rc.d/K10mihomo \
+                  /etc/rc.d/S99mtun-xd-selfcheck
+            rm -rf /usr/share/mtun-xd /www/luci-static/resources/mtun-xd
+            rm -rf /www/luci-static/resources/view/mtun-xd
+            rm -rf /tmp/luci-modulecache /tmp/luci-indexcache.* 2>/dev/null
+            # ⚠️ 本脚本自己也在删的清单里：等一秒再删，别让正在读它的 shell 报怪话。
+            ( sleep 1; rm -f /usr/sbin/mtun-xd ) >/dev/null 2>&1 &
+            printf '✔ %s\n' "$finalmsg"
+            exit 0
+        fi
+    fi
+    printf '✔ %s\n' "${finalmsg:-mtun-xd 已卸载}"
+}
+
+case "${1:-}" in
+    status) show_status ;;
+    version) installed_pkg_ver ;;
+    doctor) doctor ;;
+    corestate) corestate ;;
+    panelinfo) panelinfo ;;
+    toolpass) toolpass ;;
+    core-state)
+        # 给 LuCI「启动/停止核心」按钮查状态用：只回一行 running / stopped（别加花）
+        if pidof mihomo >/dev/null 2>&1; then echo running; else echo stopped; fi
+        ;;
+    core-start)
+        [ -x /etc/init.d/mihomo ] && /etc/init.d/mihomo start >/dev/null 2>&1
+        sleep 1
+        if pidof mihomo >/dev/null 2>&1; then echo running; else echo stopped; fi
+        ;;
+    core-stop)
+        [ -x /etc/init.d/mihomo ] && /etc/init.d/mihomo stop >/dev/null 2>&1
+        sleep 1
+        if pidof mihomo >/dev/null 2>&1; then echo running; else echo stopped; fi
+        ;;
+    selfcheck)
+        # 开机自检（由 /etc/init.d/mtun-xd-selfcheck 调；也可以手跑看它要修什么）
+        selfcheck
+        ;;
+    install-log)
+        # 后台安装（`curl … | sh -s -- bg`）的日志 —— 断线重连后用它看装到哪了
+        [ -f /tmp/mtun-xd.install.log ] || {
+            say "没有后台安装日志（跑过 sh -s -- bg 才会有）"
+            exit 1
+        }
+        tail -n "${2:-40}" /tmp/mtun-xd.install.log
+        ;;
+    setup)
+        # 同一时间只允许一个会动 /etc/mihomo/ui 的流程（两个标签页同时点升级 /
+        # 页面升级和 setup 撞在一起 → 互相 rm 暂存目录）
+        if lock_acquire; then export MTUN_XD_LOCKED=1; setup
+        else say "⚠️ 另一个套件操作正在进行，稍后再试"; exit 1; fi
+        ;;
+    seed-panel)
+        # 只写本地文件，但**别跟换面板撞上**（那边会把 $UI 整个换名）
+        if lock_acquire; then seed_panel_cfg
+        else say "⚠️ 另一个套件操作正在进行，稍后再试"; exit 1; fi
+        ;;
+    update-panel)
+        # 单独的一步：只换面板，核心 / 配置工具一概不碰。
+        if lock_acquire; then upgrade_ui
+        else say "⚠️ 另一个套件操作正在进行，稍后再试"; exit 1; fi
+        ;;
+    ui|core|tool|console)
+        case "${2:-}" in
+            --bg)   # fork 到后台：rpcd 的 file exec 要等管道 EOF，同步跑必然把前端拖超时
+                log_trim "$LOG"
+                : > "$LOG"
+                rm -f "$DONE"
+                if [ "$1" = console ]; then
+                    # 控制台升级会覆盖本脚本 ⇒ 从副本跑；这层子 shell 留着写 DONE
+                    cp "$0" "$SELFCOPY" 2>/dev/null || {
+                        echo "✘ 控制台：临时副本写不进去（/tmp 满了？）" > "$LOG"
+                        echo 1 > "$DONE"
+                        exit 1
+                    }
+                    ( MTUN_XD_SELFCOPY=1 sh "$SELFCOPY" console --run 2>&1 </dev/null | scrub_stream >>"$LOG"
+                      rc=$?
+                      rm -f "$SELFCOPY"
+                      echo $rc > "$DONE" ) >/dev/null 2>&1 </dev/null &
+                else
+                    ( "$0" "$1" --run 2>&1 </dev/null | scrub_stream >>"$LOG"; echo $? > "$DONE" ) >/dev/null 2>&1 </dev/null &
+                fi
+                exit 0
+                ;;
+            --run|'')
+                if [ "$1" = console ] && [ "${MTUN_XD_SELFCOPY:-0}" != 1 ]; then
+                    # 前台：换成副本再 exec（pid 不变，锁 / 日志口径跟前台一样）
+                    cp "$0" "$SELFCOPY" 2>/dev/null \
+                        || { say "✘ 控制台：临时副本写不进去（/tmp 满了？）"; exit 1; }
+                    MTUN_XD_SELFCOPY=1 exec sh "$SELFCOPY" console --run
+                fi
+                # 后台子进程 / 直接 CLI 调用都在这里拿锁（拿不到就记一行、退出 1，
+                # 页面会从 LOG/DONE 里看到失败）
+                lock_acquire || { say "⚠️ 另一个套件操作正在进行，稍后再试"; exit 1; }
+                # 锁在这层手上 —— 子进程（install.sh / generator.sh / seed-panel）不要再抢一次
+                # （抢不到会直接判失败：控制台升级那趟就是这么串起来的）。
+                export MTUN_XD_LOCKED=1
+                ;;
+            *) echo "用法: $0 ui|core|tool|console [--bg]"; exit 2 ;;
+        esac
+        case "$1" in
+            ui)      upgrade_ui ;;
+            core)    upgrade_core ;;
+            tool)    install_tool ;;
+            console) upgrade_console ;;
+        esac
+        ;;
+    uninstall)
+        # 默认保留配置（安全）；`--purge` 才全删，`--keep-config` 强制保留。
+        # ⚠️ 包管理器卸载（prerm 那条）默认也留配置 —— `apk del` / LuCI 里点卸载，
+        #    不该顺手把人家在跑的 config.yaml 抹了；要真全删就跑 `uninstall --purge`。
+        [ "${MTUN_XD_FROM_PRERM:-0}" = 1 ] || printf '▶ 卸载 MTUN-XD\n'
+        case "${2:-}" in
+            --keep-config|keep) KEEP_CONFIG=1 ;;
+            --purge|--all|purge) KEEP_CONFIG=0 ;;
+            '')
+                if [ "${MTUN_XD_FROM_PRERM:-0}" != 1 ] && ask_purge; then
+                    KEEP_CONFIG=0
+                else
+                    KEEP_CONFIG=1
+                fi
+                ;;
+            *) echo "用法: $0 uninstall [--purge|--keep-config]"; exit 2 ;;
+        esac
+        # 卸的时候别跟正在跑的升级撞上（那会把正在写的目录删掉）
+        if lock_acquire; then uninstall_all
+        else say "⚠️ 另一个套件操作正在进行，稍后再试"; exit 1; fi
+        ;;
+    expose)
+        # 没带参数就当 status（安全默认）：on / off / status
+        case "${2:-status}" in
+            on)     rm -f "$EXPOSE_OFF_MARK"; expose_on ;;
+            off)    expose_off ;;
+            status) expose_status ;;
+            ensure) expose_ensure ;;
+            *) echo "用法: $0 expose on|off|status|ensure"; exit 2 ;;
+        esac
+        ;;
+    *)
+        echo "用法: $0 setup|status|version|ui|core|tool|console|seed-panel|expose"
+        echo "      $0 uninstall [--purge|--keep-config]"
+        echo "          默认保留 config.yaml / 密码 / GEO；--purge 连这些一起删"
+        echo "      $0 update-panel | install-log | selfcheck | doctor | panelinfo | toolpass | corestate"
+        exit 2
+        ;;
+esac

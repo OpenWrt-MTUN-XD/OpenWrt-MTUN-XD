@@ -1,0 +1,176 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 版本已经发过也重跑一次
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: 查版本
+    # ⚠️ 发布流程自己会把 dist/ 提交回 main（bot push）—— 那次推送不能再触发一轮发布：
+    #    它会在 Release 还没建好时就跑起来，看到「dist 已是这版、Release 还没有」，
+    #    于是又打一遍包。人推的、手动 dispatch 的照常跑。
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # ⚠️ 版本号只从 build.py 读一份（生成器 state.js 的写法变了也不会两边对不上）
+          V=$(python3 build.py version)
+          [ -n "$V" ] || { echo "✘ 读不到版本号"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          # ⚠️ 「发过没有」要**两样都齐**才算：dist 已经是这版，且 Release 也在。
+          #    只看 Release 的话：Release 建好了、dist 没提交成功（推送被拒/半路失败），
+          #    之后再怎么推都判「发过」→ 永远补不回来（2026-10-26 审出来）。
+          DIST=$(git show HEAD:dist/latest.txt 2>/dev/null | tr -d '\r\n')
+          DONE=0
+          if [ "$DIST" = "v$V" ] && gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            DONE=1
+          fi
+          if [ "${{ inputs.force }}" != "true" ] && [ "$DONE" = 1 ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "v$V 已经发过（dist + Release 都在）→ 跳过"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "准备发布 v$V（dist=v${DIST:-无}）"
+          fi
+
+  test:
+    name: 测试
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: 生成器单测
+        working-directory: generator
+        run: bun test tests/unit
+      - name: shell 语法
+        run: |
+          sh -n install.sh
+          sh -n package/usr/sbin/mtun-xd
+          sh -n control/postinst
+          sh -n control/prerm
+          sh -n deploy/mihomo-haproxy.sh
+          sh -n deploy/mihomo-kwrt-nginx.sh
+          sh -n generator/deploy/generator.sh
+          sh -n generator/deploy/mihomo-apply
+          sh -n openwrt/files/mtun-xd-firstboot
+      - name: 打包自检
+        # 发版前先造一遍 ipk 逐项验（见 tests/test_package.py）—— 包坏了别等用户装的时候才发现
+        run: python3 tests/test_package.py
+
+  build-ipk:
+    name: 造 ipk
+    needs: [prepare, test]
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 build.py ipk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipk
+          path: luci-app-mtun-xd_*.ipk
+
+  build-apk:
+    name: 造 apk
+    needs: [prepare, test]
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Alpine edge 容器里用 apk.static 造包
+        run: |
+          docker run --rm -v "$PWD":/w -w /w alpine:edge sh -c '
+            apk add --no-cache python3 apk-tools-static >/dev/null &&
+            SUITE_APK_LOCAL=1 \
+            SUITE_APK_MKPKG="$(command -v apk.static || echo /sbin/apk.static)" \
+            python3 build.py apk
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: luci-app-mtun-xd-*.apk
+
+  publish:
+    name: 发布
+    needs: [prepare, test, build-ipk, build-apk]
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ipk
+          path: .
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+          path: .
+
+      - name: 出配置工具 kit
+        working-directory: generator
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ⚠️ 必须 KIT_NO_PUBLISH=1：
+          #    - kit 的滚动包已经迁到独立仓库，CI token 写不了那边；
+          #    - 更要紧的是 tar.gz 的字节依赖 zlib 版本，CI 重新生成会得到不同字节，
+          #      而 genkit 上那份是本地生成的 ⇒ 套件的摘要校验会判「不一致」。
+          #    kit 由发版前在本地跑一次 make-router-kit 生成并提交 dist/（见 AGENTS.md）。
+          KIT_NO_PUBLISH: '1'
+        run: bun scripts/make-router-kit.mjs
+
+      # ⚠️ 顺序：**先提交 dist、再建 Release**。
+      #    反过来的话，Release 建好了、提交被拒（non-fast-forward / 临时网络）⇒
+      #    线上还是旧包，而后面每次跑都判「发过」直接跳过（2026-10-26 审出来）。
+      - name: 更新 dist / SHA256SUMS
+        run: python3 build.py dist
+
+      - name: 提交 dist 和 install.sh
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist install.sh
+          if git diff --cached --quiet; then
+            echo "dist 没变化"
+          else
+            git commit -m "dist: v$VERSION"
+            git push
+          fi
+
+      - name: 建 GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 build.py release

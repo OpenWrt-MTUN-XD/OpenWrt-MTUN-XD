@@ -1,0 +1,123 @@
+name: Firmware Release Asset
+
+# 用对应版本的 OpenWrt SDK 编出固件包，挂到指定 Release 的附件里。
+#   24.10.x → .ipk（opkg）
+#   25.12.x → .apk（apk-tools，iStoreOS 25.12 用的就是这个）
+# 触发：手动（可指定 tag）或 Release 发布后自动跑。
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要挂到哪个 Release（留空 = 最新 Release）'
+        required: false
+  # ⚠️ 用 GITHUB_TOKEN 创建的 release **不会**触发 `release: published`（防递归），
+  #    所以真正的自动触发点放在这里：Release 工作流跑完后接上。
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  # 判断这次到底要不要编：workflow_run 在每次 push 后都会跟着 Release 工作流跑一遍，
+  # 只有「刚刚真的发了新版」才值得开工（否则每推一次就白编 14 分钟）。
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=1" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          pub=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
+                | grep -m1 '"published_at"' | sed 's/.*"published_at": *"\([^"]*\)".*/\1/')
+          echo "最新 Release 发布时间: ${pub:-未知}"
+          age=$(( $(date +%s) - $(date -d "$pub" +%s 2>/dev/null || echo 0) ))
+          if [ "${age:-999999}" -le 1200 ]; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=0" >> "$GITHUB_OUTPUT"
+            echo '这次 Release 没有真的发版（版本号没变），跳过固件包构建'
+          fi
+
+  build:
+    needs: gate
+    if: needs.gate.outputs.run == '1'
+    name: SDK ${{ matrix.ver }}（${{ matrix.fmt }}）
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ver: 24.10.8
+            fmt: ipk
+            gcc: 13.3.0
+            feed: openwrt-24.10
+          - ver: 25.12.6
+            fmt: apk
+            gcc: 14.3.0
+            feed: openwrt-25.12
+    steps:
+      - name: 解析目标 tag
+        id: target
+        run: |
+          tag="${{ github.event.inputs.tag }}"
+          [ -n "$tag" ] || tag="${{ github.event.release.tag_name }}"
+          if [ -z "$tag" ]; then
+            # workflow_run 触发：等 Release 收尾后 latest 立即可见，最多重试 6 次
+            for i in 1 2 3 4 5 6; do
+              tag=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
+                | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+              [ -n "$tag" ] && break
+              sleep 10
+            done
+          fi
+          [ -n "$tag" ] || { echo '✘ 解析不到目标 Release'; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "目标 Release: $tag"
+
+      # ⚠️ 不要 checkout tag：release 的 tag 指向 bot 生成的 `dist:` 提交，
+      #    那一条链上不一定带 openwrt/。包版本由 openwrt/Makefile 决定，和 tag 一致。
+      - uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd build-essential libncurses5-dev gawk git python3 wget
+
+      - name: 下载 OpenWrt ${{ matrix.ver }} SDK
+        run: |
+          wget -q -O sdk.tar.zst \
+            "https://downloads.openwrt.org/releases/${{ matrix.ver }}/targets/x86/64/openwrt-sdk-${{ matrix.ver }}-x86-64_gcc-${{ matrix.gcc }}_musl.Linux-x86_64.tar.zst"
+          mkdir -p sdk
+          tar -I zstd -xf sdk.tar.zst -C sdk --strip-components=1
+          rm -f sdk.tar.zst
+
+      - name: 准备源码与 feed
+        working-directory: sdk
+        run: |
+          mkdir -p package/mtun-xd
+          cp "${GITHUB_WORKSPACE}/openwrt/Makefile" package/mtun-xd/
+          grep -q '^src-git luci ' feeds.conf.default || \
+            echo "src-git luci https://github.com/openwrt/luci.git;${{ matrix.feed }}" >> feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install luci-base
+
+      - name: 编译
+        working-directory: sdk
+        run: |
+          make defconfig
+          make package/mtun-xd/compile V=s MTUN_XD_LOCAL="${GITHUB_WORKSPACE}"
+
+      - name: 挂到 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          pkg=$(find sdk/bin/packages -name 'luci-app-mtun-xd*.${{ matrix.fmt }}' | head -1)
+          [ -n "$pkg" ] || { echo '✘ 没有生成 ${{ matrix.fmt }}'; exit 1; }
+          echo "上传: $pkg"
+          gh release upload "$TAG" "$pkg" --clobber

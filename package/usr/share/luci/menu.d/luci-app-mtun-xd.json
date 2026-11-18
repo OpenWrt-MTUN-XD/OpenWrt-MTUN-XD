@@ -1,0 +1,48 @@
+{
+    "admin/services/mtun-xd": {
+        "title": "MTUN-XD",
+        "order": 8,
+        "action": {
+            "type": "firstchild"
+        },
+        "depends": {
+            "acl": [ "luci-app-mtun-xd" ]
+        }
+    },
+
+    "admin/services/mtun-xd/panel": {
+        "title": "控制面板",
+        "order": 10,
+        "action": {
+            "type": "view",
+            "path": "mtun-xd/panel"
+        },
+        "depends": {
+            "acl": [ "luci-app-mtun-xd" ]
+        }
+    },
+
+    "admin/services/mtun-xd/config": {
+        "title": "配置工具",
+        "order": 20,
+        "action": {
+            "type": "view",
+            "path": "mtun-xd/generator"
+        },
+        "depends": {
+            "acl": [ "luci-app-mtun-xd" ]
+        }
+    },
+
+    "admin/services/mtun-xd/upgrade": {
+        "title": "维护中心",
+        "order": 30,
+        "action": {
+            "type": "view",
+            "path": "mtun-xd/upgrade"
+        },
+        "depends": {
+            "acl": [ "luci-app-mtun-xd" ]
+        }
+    }
+}

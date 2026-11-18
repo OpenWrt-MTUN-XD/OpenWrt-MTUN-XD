@@ -1,0 +1,35 @@
+#!/bin/sh
+# 卸载前跑这一段：停服务、清掉**不属于包**的那些东西。
+#
+# 属于包的文件（/usr/sbin/mtun-xd、init 脚本、菜单、ACL、LuCI 页面）由包管理器自己删。
+# 不属于包、但必须一起清的：
+#   · /etc/mihomo/ui —— 面板文件（一部分是包铺的，一部分是升级下来的）+ 里面的配置工具
+#   · /etc/mihomo/mihomo —— 装的时候下下来的内核
+#   · /www/cgi-bin/mihomo-apply —— 配置工具的写盘口软链
+# ⚠️ **不动** /etc/mihomo/config.yaml（人家在跑的配置）和 /etc/mihomo-toolpass（发出去的钥匙）。
+#
+# ⚠️ 升级时一个字都别做：opkg 升级也照样调 prerm（参数是 `upgrade <新版本>`；apk 那边
+#    不调 prerm），而外面那几样跟包版本压根无关 —— 清了只会让随后的 postinst 把核心
+#    20 MB + 面板 2.4 MB + GEO 12 MB 又下一遍、代理断几秒。
+#    所以只有真删包（`prerm remove` 或没给参数）才走下面的全清。
+case "${1:-}" in
+    upgrade*) exit 0 ;;
+esac
+
+# ⚠️ 外面已经在跑了（`mtun-xd uninstall` 叫的 apk/opkg 又绕回这里）→ 不要再清一遍。
+#    apk 不传我们的环境变量，所以靠标记文件里的 pid 判断；pid 没了就当残留清掉。
+if [ -f /tmp/mtun-xd.uninstalling ]; then
+    mpid=$(cat /tmp/mtun-xd.uninstalling 2>/dev/null)
+    if [ -n "$mpid" ] && kill -0 "$mpid" 2>/dev/null; then exit 0; fi
+    rm -f /tmp/mtun-xd.uninstalling
+fi
+
+# ⚠️ 「只换包」模式不会走到这里：同版本走 `ipk_overlay`（不跑维护脚本）、
+#    不同版本走普通 `opkg install`（参数是 upgrade，上一段的 case 已经放行）。
+#    `opkg --force-reinstall` 已经禁用，那个标记分支也就没有了。
+
+# ⚠️ MTUN_XD_FROM_PRERM=1：告诉它「包管理器正在卸，不要再叫一遍」（防递归）。
+#    反方向也认一个 MTUN_XD_DONE=1：那是 `mtun-xd uninstall` 自己叫的 opkg/apk
+#    绕回来的，运行时早清完了，让它闭嘴别把同一段再打一遍。
+[ -x /usr/sbin/mtun-xd ] && MTUN_XD_FROM_PRERM=1 /usr/sbin/mtun-xd uninstall
+exit 0

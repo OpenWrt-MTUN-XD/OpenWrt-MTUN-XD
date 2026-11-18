@@ -1,0 +1,17 @@
+{
+  "name": "mtun-xd-generator",
+  "private": true,
+  "type": "module",
+  "description": "MTUN-XD 配置生成器 —— 浏览器端 mihomo 配置生成器：精准分流（回国模式 / 全局代理）/ 内网控制（一机一IP）",
+  "scripts": {
+    "serve": "bun scripts/serve.mjs",
+    "test": "bun test tests/unit",
+    "golden": "bun tests/golden/bless.mjs",
+    "build": "bun scripts/build.mjs"
+  },
+  "engines": {
+    "bun": ">=1.1"
+  },
+  "comment": "运行时零依赖：index.html 直接打开即可用。bun 只用于跑测试和本地静态服务。",
+  "license": "GPL-3.0"
+}

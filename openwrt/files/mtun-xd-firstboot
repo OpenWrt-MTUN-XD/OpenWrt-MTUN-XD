@@ -1,0 +1,41 @@
+#!/bin/sh /etc/rc.common
+# 固件集成专用：首次开机把核心 / 面板 / 配置工具拉齐。
+#
+# 为什么不在编译期装好：核心（约 22 MB，按架构不同）和面板（约 2.5 MB）不随包分发，
+# 编进镜像会让固件膨胀、而且很快过期。这里在首次开机联网后调一次 `mtun-xd setup`，
+# 和手动安装走同一份实现。
+#
+# 关闭办法：
+#   uci set mtun-xd.main.firstboot=0 && uci commit mtun-xd
+#   /etc/init.d/mtun-xd-firstboot disable
+#
+# 标记文件：/etc/mtun-xd-firstboot.done（成功后写下，之后开机不再跑）
+
+START=99
+
+start() {
+	[ -x /usr/sbin/mtun-xd ] || return 0
+	[ -f /etc/mtun-xd-firstboot.done ] && return 0
+
+	. /lib/functions.sh
+	config_load mtun-xd
+	local enabled
+	config_get enabled main firstboot 1
+	[ "$enabled" = "1" ] || return 0
+
+	# 后台跑：开机流程不等它（网络就绪 + 下载可能要几分钟）
+	(
+		i=0
+		while [ "$i" -lt 60 ]; do
+			i=$((i + 1))
+			curl -fsSL -m 8 -o /dev/null "https://mtun-xd.wxcircle.top/latest.txt" 2>/dev/null && break
+			sleep 10
+		done
+		/usr/sbin/mtun-xd setup
+		touch /etc/mtun-xd-firstboot.done 2>/dev/null
+	) >/tmp/mtun-xd-firstboot.log 2>&1 &
+}
+
+stop() {
+	return 0
+}

@@ -1,0 +1,109 @@
+name: Firmware
+
+# 验证 openwrt/ 适配层能真的编出包（不与 release 流程耦合，也不发版）。
+# 覆盖两种包格式：24.10 = IPK（opkg），25.12 = APK（apk-tools）。
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'openwrt/**'
+      - 'package/**'
+      - '.github/workflows/firmware.yml'
+
+jobs:
+  build:
+    name: SDK ${{ matrix.ver }}（${{ matrix.fmt }}）
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ver: 24.10.8
+            fmt: ipk
+            gcc: 13.3.0
+            feed: openwrt-24.10
+          - ver: 25.12.6
+            fmt: apk
+            gcc: 14.3.0
+            feed: openwrt-25.12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd build-essential libncurses5-dev gawk git python3 wget
+
+      - name: 下载 OpenWrt ${{ matrix.ver }} SDK
+        run: |
+          wget -q -O sdk.tar.zst \
+            "https://downloads.openwrt.org/releases/${{ matrix.ver }}/targets/x86/64/openwrt-sdk-${{ matrix.ver }}-x86-64_gcc-${{ matrix.gcc }}_musl.Linux-x86_64.tar.zst"
+          mkdir -p sdk
+          tar -I zstd -xf sdk.tar.zst -C sdk --strip-components=1
+          rm -f sdk.tar.zst
+
+      - name: 放入 package 与 luci feed
+        working-directory: sdk
+        run: |
+          mkdir -p package/mtun-xd
+          cp "${GITHUB_WORKSPACE}/openwrt/Makefile" package/mtun-xd/
+          # SDK 自带 feeds.conf.default 里已有 luci；缺了才补（重复追加会报 Duplicate feed name）
+          grep -q '^src-git luci ' feeds.conf.default || \
+            echo "src-git luci https://github.com/openwrt/luci.git;${{ matrix.feed }}" >> feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install luci-base
+
+      - name: 编译
+        working-directory: sdk
+        run: |
+          make defconfig
+          make package/mtun-xd/compile V=s MTUN_XD_LOCAL="${GITHUB_WORKSPACE}"
+
+      - name: 校验产物
+        working-directory: sdk
+        run: |
+          pkg=$(find bin/packages -name 'luci-app-mtun-xd*.${{ matrix.fmt }}' | head -1)
+          echo "产物: $pkg"
+          [ -n "$pkg" ] || { echo '✘ 没有生成 ${{ matrix.fmt }}'; exit 1; }
+          echo "大小: $(stat -c%s "$pkg") 字节"
+
+          need="usr/sbin/mtun-xd etc/init.d/mihomo etc/init.d/mtun-xd-firstboot usr/share/luci/menu.d/luci-app-mtun-xd.json www/luci-static/resources/view/mtun-xd/panel.js"
+
+          if [ "${{ matrix.fmt }}" = "ipk" ]; then
+            rm -rf /tmp/check
+            mkdir -p /tmp/check
+            tar -xzf "$pkg" -C /tmp/check
+            tar -xzf /tmp/check/data.tar.gz -C /tmp/check
+            for f in $need; do
+              [ -f "/tmp/check/$f" ] || { echo "✘ 包里缺 $f"; exit 1; }
+              echo "✔ $f"
+            done
+            echo '✔ IPK 校验通过'
+            exit 0
+          fi
+
+          # APKv3：既不是 tar，也装不进空 root（缺依赖）。用 SDK 自带 apk 只读列清单。
+          APK=""
+          for c in "$(find staging_dir -type f -name apk -perm -u+x 2>/dev/null | head -1)" "$(command -v apk || true)"; do
+            if [ -n "$c" ] && [ -x "$c" ]; then APK="$c"; break; fi
+          done
+          [ -n "$APK" ] || { echo '✘ 没找到 apk 工具，无法校验 APKv3'; exit 1; }
+          echo "apk 版本: $("$APK" --version 2>&1 | head -1)"
+
+          # 当前 SDK 的 apk 不提供 manifest，改用 extract 检查包内文件（只读，不装依赖）
+          rm -rf /tmp/apkx
+          mkdir -p /tmp/apkx
+          "$APK" --allow-untrusted extract --destination /tmp/apkx "$pkg" \
+            || { echo '✘ apk extract 失败'; exit 1; }
+          for f in $need; do
+            [ -f "/tmp/apkx/$f" ] || { echo "✘ 包里缺 $f"; exit 1; }
+            echo "✔ $f"
+          done
+          echo '✔ APK 包内容校验通过'
+
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-mtun-xd-${{ matrix.ver }}-${{ matrix.fmt }}
+          path: sdk/bin/packages/**/luci-app-mtun-xd*.${{ matrix.fmt }}
+          if-no-files-found: error

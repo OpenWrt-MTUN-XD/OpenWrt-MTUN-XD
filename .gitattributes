@@ -1,0 +1,21 @@
+# ⚠️⚠️ 一律 LF，别让 Windows 的 autocrlf 把工作区洗成 CRLF。
+#
+# 为什么这条对**这个仓库是硬要求**：包里那两个 shell 脚本（package/usr/sbin/mtun-xd、
+# etc/init.d/mihomo）和 control/postinst 是**搬到路由器上直接跑**的。CRLF 会让第一行变成
+# `#!/bin/sh\r` —— 内核按 `\r` 去找解释器，找不到，报的就是一句光秃秃的
+# `/usr/sbin/mtun-xd: not found`（不是语法错，最难认）。
+#
+# 2026-10-16 真机踩过：复核时顺手跑了一次 `git stash` / `git stash pop`，autocrlf 把工作区
+# 的脚本洗成 CRLF，1.0.21 打出来的包一装上去，postinst 能跑、里面调 /usr/sbin/mtun-xd
+# 却全 "not found"，整台机器的 CLI 全废（面板/配置工具还是好的，因为那些是静态文件）。
+#
+# ⚠️ 光靠这条还不够 —— build.py 打包时也会再兜一道（见那边 read_lf 的注释）。
+* text=auto eol=lf
+
+# 二进制产物：上面那条 text=auto 一个字节都别碰（包 / 压缩包 / PNG）
+*.apk binary
+*.ipk binary
+*.zip binary
+*.tar.gz binary
+*.gz binary
+*.png binary

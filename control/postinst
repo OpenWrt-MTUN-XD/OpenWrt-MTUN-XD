@@ -1,0 +1,70 @@
+#!/bin/sh
+# 装完/升级完跑这一段：把整套拉起来（拉核心、铺默认配置、起服务、装配置工具、铺面板配置）。
+#
+# ⚠️ 全部交给 /usr/sbin/mtun-xd setup，**一份实现**：
+#    这个脚本只负责"叫它一声 + 说清楚装到哪了"，逻辑不在包里写第二遍。
+
+# ── 0) 先补执行位 ─────────────────────────────────────────────────────────
+# ⚠️ 包是在 Windows 上编的，tar 里那个权限不可靠（见过 0664）→ 装完必须自己补上，
+#    不然下面那句 -x 判断直接跳过，整套都不会装。
+chmod +x /usr/sbin/mtun-xd /etc/init.d/mihomo /etc/init.d/mtun-xd-selfcheck 2>/dev/null
+
+# ── 开机自检：固件升级/重启后自动补齐 ──────────────────────────────────────
+# 固件升级常把包的登记刷掉（文件还在、数据库里没了）⇒ 版本读不出、菜单 404。
+# 这个 init 脚本开机后补一次；正常机器上什么都不做、不留日志。
+/etc/init.d/mtun-xd-selfcheck enable >/dev/null 2>&1 || true
+
+# ── 1) apk 会把"没被包跟踪过 / 装完之后被改过"的同名文件保护起来，把包里的那份
+#       存成 `.apk-new`。/etc/init.d/mihomo 该听包的（套装自己的服务定义）。
+#       面板文件不在包里，apk 不会给它们造 .apk-new。
+if [ -f /etc/init.d/mihomo.apk-new ]; then
+    mv -f /etc/init.d/mihomo.apk-new /etc/init.d/mihomo && chmod +x /etc/init.d/mihomo
+    echo "→ init 脚本换成包里的那份"
+fi
+
+[ -x /usr/sbin/mtun-xd ] || { echo "✘ 没找到 /usr/sbin/mtun-xd（包不全？）"; exit 0; }
+
+# ── 只换包模式：install.sh 的 pkg 模式会在装之前留个标记 ────────────────────────
+#    apk 用 --no-scripts 不会走到这儿；opkg 没那个开关，只能在这儿认标记 —— 见到就什么都
+#    不做（核心 / 面板 / 配置工具一个不碰），收掉标记，也不打话（收尾由 install.sh 统一打）。
+# ⚠️ 只认 10 分钟内写下的标记：pkg 模式临装前才写，不这么判的话 /tmp 里一个很早以前
+#    留下的标记会永远吞掉这段，整套一个都不装还一声不吭。
+if [ -f /tmp/mtun-xd.pkg-only ] \
+   && [ -n "$(find /tmp/mtun-xd.pkg-only -mmin -10 2>/dev/null)" ]; then
+    rm -f /tmp/mtun-xd.pkg-only
+    exit 0
+fi
+rm -f /tmp/mtun-xd.pkg-only
+
+# ── 2) 旧包（以前那份 luci-app-metacubexd 铺的是同一批文件）顺手卸掉 ────────
+#    ⚠️ 正常情况应该在装之前就 apk del / opkg remove 掉（不然文件冲突）——
+#       这里是兜底，卸不动也不拦着装。
+if command -v apk >/dev/null 2>&1; then
+    apk info -e luci-app-metacubexd >/dev/null 2>&1 && {
+        echo "→ 发现旧的 luci-app-metacubexd，先卸掉…"
+        apk del luci-app-metacubexd >/dev/null 2>&1
+    }
+elif command -v opkg >/dev/null 2>&1; then
+    opkg list-installed 2>/dev/null | grep -q '^luci-app-metacubexd ' && {
+        echo "→ 发现旧的 luci-app-metacubexd，先卸掉…"
+        opkg remove luci-app-metacubexd >/dev/null 2>&1
+    }
+fi
+
+# ── 3) 先按本地现状把面板那份 config.js 铺一遍 ─────────────────────────
+# ⚠️ 这一步必须在 setup 之前，而且是独立的：setup 里那趟铺（upgrade_ui）排在"问面板新版本"
+#    后面，Tag 一问不到就直接 return，铺 config.js 那截跟着被跳过 ⇒ 包文件都换成新版的、
+#    `version` 也是新的，可 `/ui/config.js` 还是旧的 ⇒ 面板照旧闪一下登录界面。
+#    这一句只依赖本地文件（不联网、不动服务），失败也不拦着后面的 setup。
+/usr/sbin/mtun-xd seed-panel || true
+
+# ── 4) 开工 ───────────────────────────────────────────────────────────────
+# ⚠️ 装到哪了 / 下一步进哪儿，setup 自己会打印（show_status + 最后那行 ✔），
+#    这里不再重复一遍。
+# ⚠️ 装包这一趟不许 kit 的「顺手升级控制台」触发：postinst 这会儿包里记的版本可能还是
+#    旧的（apk/opkg 事务没提交），会误判成「套件落后于 kit」。
+MIHOMO_KIT_NO_SELFUPGRADE=1 /usr/sbin/mtun-xd setup
+# 菜单缓存里还记着旧版页面文件名 —— 不清的话当前会话点菜单仍是旧界面
+rm -f /tmp/luci-indexcache.*.json 2>/dev/null
+rm -rf /tmp/luci-modulecache 2>/dev/null
+exit 0

@@ -1,0 +1,17 @@
+# ⚠️⚠️ 一律 LF。这个仓库里有**要搬到路由器上跑**的 shell 脚本
+# （deploy/mihomo-apply 写盘 CGI、deploy/generator.sh，还有 kit 里的 btn.js 之类），
+# 它们会被 make-router-kit.mjs 原样打进 mihomo-deploy.zip。
+#
+# CRLF 会让第一行变成 `#!/bin/sh` 后面多一个回车 —— 内核按那个去找解释器，找不到，
+# 只报一句光秃秃的 `not found`（不是语法错，最难认）。
+#
+# 2026-10-16 在套件仓库那边真机踩过一次（一次 `git stash` / `git stash pop` +
+# core.autocrlf 把工作区洗成 CRLF，打出来的 1.0.21 包装上去 CLI 全废）——
+# 这边是同一个坑，提前把 LF 钉死。
+* text=auto eol=lf
+
+# 二进制产物（图片 / 压缩包）别被 text=auto 碰
+*.png binary
+*.zip binary
+*.tar.gz binary
+*.gz binary

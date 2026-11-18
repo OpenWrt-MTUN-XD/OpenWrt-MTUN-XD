@@ -1,0 +1,15 @@
+// Cloudflare Workers Builds 的部署配置 —— 把 dist/ 当静态目录发出去。
+//
+// 新项目（OpenWrt-MTUN-XD）只做**静态镜像**：安装包、install.sh、latest.txt、
+// SHA256SUMS、配置工具 kit 都在 dist/ 里，由仓库提供、CF 原样托管。
+// 不做 GitHub 反代，也不跑任何 Worker 逻辑（老仓库那套 /gh/ 代理不搬过来）。
+//
+// ⚠️ name 必须跟 Cloudflare 上建的项目名**一字不差**，否则会部署到另一个 Worker。
+// ⚠️ dist/ 是 build.py / make-router-kit.mjs 本地造好后提交进仓库的，CF 只负责发。
+{ 
+  "name": "openwrt-mtun-xd",
+  "compatibility_date": "2026-11-19",
+  "assets": {
+    "directory": "./dist"
+  }
+}

@@ -1,0 +1,71 @@
+name: Bug 报告
+description: 安装、升级、内核启动或页面异常
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先跑一次 `mtun-xd doctor` —— 它能覆盖大部分环境问题，输出贴在这里最有用。
+        **请勿附带真实节点、密码、私钥或个人网络信息。**
+
+  - type: input
+    id: firmware
+    attributes:
+      label: 固件与版本
+      description: 例如 iStoreOS 25.12 / iStoreOS 24.10.8 / ImmortalWrt 24.10
+      placeholder: iStoreOS 25.12
+    validations:
+      required: true
+
+  - type: input
+    id: suite-version
+    attributes:
+      label: 套件版本
+      description: '`mtun-xd version` 的输出'
+      placeholder: 2026.12.16
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: doctor 输出
+      description: '直接粘贴 `mtun-xd doctor` 的完整输出'
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 执行……
+        2. 进入 LuCI → 服务 → MTUN-XD → ……
+        3. 出现……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志（已脱敏）
+      description: '例如 tail -n 40 /tmp/mtun-xd.log'
+      render: text
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已阅读 `SECURITY.md`，且这不是安全问题（安全问题请走私密渠道）
+          required: true
+        - label: 我确认粘贴的内容里没有真实节点、密码或私钥
+          required: true

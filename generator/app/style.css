@@ -1,0 +1,744 @@
+/*!
+ * mihomo-config-web — 样式
+ * 零依赖、无构建：只用 CSS 变量 + 原生布局。深色模式由 <html data-theme> 切换。
+ */
+
+:root {
+  color-scheme: light;
+  --bg: #f4f6fa;
+  --card: #ffffff;
+  --card-2: #fbfcfe;
+  --border: #e2e6ec;
+  --border-strong: #cfd6e0;
+  --header: #1f2d3d;
+  --accent: #2f80ed;
+  --accent-dark: #1e6fd9;
+  --accent-soft: #e8f1fd;
+  --text: #2c3e50;
+  --muted: #667085;              /* 次要文字：对 #fff 4.97:1、对页面底 4.60:1，过 WCAG AA */
+  --danger: #d64541;
+  --ok: #2ea36b;
+  /* 语义色（用户 2026-11-17 定的统一色板）：绿=成功 红=错误 橙=警告 蓝=信息 灰=未配置 */
+  --warn: #b45309;
+  --info: #1d4ed8;
+  /* 预览窗：浅色主题下也走浅底（用户 2026-10-26：亮色模式里那块还是黑的） */
+  --preview-bg: #f7f9fc;
+  --preview-fg: #24292f;
+  --preview-comment: #0e7490;    /* 注释：青 */
+  --preview-key: #7c3aed;        /* 键：紫 */
+  --preview-str: #16a34a;        /* 字符串：绿 */
+  --preview-num: #c2410c;        /* 数值：橙 */
+  --preview-bool: #a16207;       /* 布尔：黄 */
+  --preview-dash: #2563eb;       /* 列表标记：蓝 */
+  --preview-punct: #7c6f91;      /* 标点：灰紫 */
+  --preview-null: #64748b;       /* 空值：灰 */
+  --preview-lineno: #55637a;     /* 行号：对 #f7f9fc 约 4.6:1（opacity .9） */
+  --preview-hover: rgba(47, 128, 237, .07);   /* 悬停行 */
+  --shadow: 0 1px 2px rgba(31, 45, 61, .06), 0 8px 24px rgba(31, 45, 61, .05);
+  /* 底部状态条：浅色下别再是那条深蓝 —— 跟卡片一个调子（2026-10-26 用户提的） */
+  --statusbar: #eef2f7;
+  --statusbar-fg: #475569;
+  --statusbar-muted: #64748b;
+  --radius: 10px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14181f;
+  --card: #1b2029;
+  --card-2: #20262f;
+  --border: #2b323d;
+  --border-strong: #39414e;
+  --header: #12161c;
+  --accent: #4d94f0;
+  --accent-dark: #3b82e0;
+  --accent-soft: #1d2b3f;
+  --text: #dde3ec;
+  --muted: #8b96a7;
+  --danger: #f0706c;
+  --ok: #4cc38a;
+  --warn: #f0a35e;
+  --info: #7fb0ff;
+  --preview-bg: #0f1217;
+  --preview-fg: #cfd6e0;
+  --preview-comment: #7fd1e8;
+  --preview-key: #c4a7ff;
+  --preview-str: #a5d6a7;
+  --preview-num: #ffb86b;
+  --preview-bool: #ffd479;
+  --preview-dash: #7fb0ff;
+  --preview-punct: #9aa0b5;
+  --preview-null: #8fa0b8;
+  --preview-lineno: #8fa0b8;
+  --preview-hover: rgba(255, 255, 255, .05);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+  --statusbar: #12161c;
+  --statusbar-fg: #c8d2de;
+  --statusbar-muted: #94a3b8;
+}
+
+* { box-sizing: border-box; }
+
+/* [hidden] 必须强制生效：下面的 .field / .grid / .check 都设了 display，
+   作者样式优先级高于 UA 样式表里的 [hidden]{display:none}，不写这条
+   就会出现"JS 把元素 hidden 了但它还显示着"。 */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 竖排 flex + 满屏高：下面「导入节点」那页要吃掉剩余高度（跟预览那块一个感觉），
+   否则节点少的时候底下空一大片。box-sizing 已是 border-box，min-height 含 padding。 */
+.app {
+  max-width: 1120px; margin: 0 auto; padding: 8px 16px 0;
+  display: flex; flex-direction: column; min-height: 100vh; box-sizing: border-box;
+}
+
+/* ── 顶栏（2026-10-29 整个删掉）─────────────────────────
+   标题「mihomo-config.yaml」、TG 群链接、明暗切换这三样以前占 70px 高。
+   套件里这三样都由宿主（LuCI）负责，页面上再显示一遍只是白占地方：
+   明暗走 MXTheme 的 ?theme= / 系统，版本号在状态栏右下角。
+   ⚠️ 「连点换工具密码」的手势跟着挪到状态栏的版本号上了，见 app/ui.js。 */
+
+/* ── 步骤导航 ───────────────────────────────────────── */
+.steps { display: flex; gap: 8px; margin: 0 0 14px; flex-wrap: wrap; }
+/* 步骤之间用箭头分隔（不再用 1/2/3 序号） */
+.step-arrow { color: var(--muted); font-size: 15px; font-weight: 600; margin: 0 4px; user-select: none; }
+
+.step-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card); color: var(--muted);
+  border-radius: 999px; padding: 7px 16px; font-size: 13px; font-family: inherit;
+  transition: all .15s;
+}
+.step-btn:hover { border-color: var(--accent); }
+.step-btn[aria-current="true"] { color: var(--text); border-color: var(--accent); font-weight: 600; }
+.step-no {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 700;
+  background: var(--bg); color: var(--muted);
+}
+.step-btn[aria-current="true"] .step-no { background: var(--accent); color: #fff; }
+.step-badge {
+  display: none; padding: 0; border-radius: 0; line-height: 1;
+  color: var(--accent); font-size: 13px; font-weight: 700;
+}
+.step-badge.show { display: inline-block; }
+
+.step { display: none; }
+.step.active { display: block; }
+
+/* ── 导入节点这页：让「节点列表」整块吃掉剩下的高度 ─────────────── */
+/* 节点少的时候这一页底下会空一大片（用户 2026-10-17：「可以跟随布局啊 和配置预览一样」）。
+   页面竖排 flex → 这页 flex:1 → 最后那张卡 flex:1 → 里面的列表 flex:1；
+   列表原来的 max-height（最多三排）在这页放开，高度交给布局。 */
+.step[data-step="0"].active { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.step[data-step="0"].active > #list-card {
+  flex: 1; display: flex; flex-direction: column; min-height: 0; margin-bottom: 0;
+}
+.step[data-step="0"].active > #list-card > .node-list {
+  flex: 1; min-height: 90px; max-height: none;
+}
+
+/* 每一步底部的「下一步」—— 三步向导得有个往前走的地方，
+   只靠顶部那三颗药丸，导入完屏幕上没有任何前进引导。 */
+.step-foot { display: flex; justify-content: flex-end; margin-top: 14px; }
+
+/* ── 进阶参数（TUN / DNS / 嗅探）折叠 ─────────────────────
+   三张卡一共 705px，占设置页 44%，但大多数人不动。收起后设置页从 1.8 屏降到 1 屏。
+   里面改过几项会在标题右边标出来，别让"藏起来的默认值"变成暗坑。 */
+.adv {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); margin-bottom: 14px; overflow: hidden;
+}
+.adv-head {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 14px 18px; list-style: none; user-select: none;
+}
+.adv-head::-webkit-details-marker { display: none; }
+.adv-head::after {
+  content: '▾'; margin-left: 4px; color: var(--muted); font-size: 12px;
+  transition: transform .15s;
+}
+.adv[open] .adv-head::after { transform: rotate(180deg); }
+.adv[open] .adv-head { border-bottom: 1px solid var(--border); }
+.adv-title { font-size: 15.5px; font-weight: 600; }
+.adv-hint { font-size: 12.5px; color: var(--muted); }
+.adv-badge {
+  margin-left: auto; font-size: 11.5px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); border-radius: 999px; padding: 1px 9px;
+}
+/* 里面的三张卡不再各套一层卡壳，只留一条虚线分隔 */
+.adv > .card {
+  background: transparent; border: 0; border-radius: 0; box-shadow: none;
+  margin: 0; padding: 14px 18px;
+}
+.adv > .card + .card { border-top: 1px dashed var(--border); }
+.adv > .card:last-child { padding-bottom: 16px; }
+
+/* ── 卡片 ───────────────────────────────────────────── */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px; margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.card-head { margin-bottom: 10px; }
+/* 「规则方案」的下拉**紧跟在标题右侧**（用户 2026-11-08：以前被 space-between 顶到最右边，
+   跟标题隔着一大片空白，找半天）。 */
+.rules-head { display: flex; align-items: center; justify-content: flex-start; gap: 12px; margin-bottom: 14px; }
+.mode-select { width: 190px; max-width: 48%; flex: 0 0 auto; }
+/* 节点列表的卡头：标题左、清空右 */
+.list-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.btn-clear { flex: 0 0 auto; }
+.card h2 { margin: 0; font-size: 15.5px; display: inline-flex; align-items: center; gap: 8px; }
+.card-desc { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+.count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 18px; padding: 0 6px; line-height: 1;
+  font-size: 12px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); border-radius: 999px;
+}
+.hint { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+.hint code, .card-desc code, .field-label code {
+  font-family: var(--mono); font-size: 11.5px; background: var(--accent-soft);
+  color: var(--accent); border-radius: 4px; padding: 1px 5px;
+}
+
+/* ── 表单 ───────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; }
+/* 当前方案用不上的选项：**留着位置**（藏了那一格就空了，跟上面那排对不齐），
+   整块调淡 + 勾选框禁用，一眼看出"有这一项、只是现在用不上"。 */
+.field.is-off { opacity: .5; }
+.field.is-off .check,
+.field.is-off .check input { cursor: not-allowed; }
+.field-label {
+  display: block; font-size: 12.5px; font-weight: 600; color: var(--text);
+  margin: 10px 0 4px;
+}
+.grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 4px 20px;
+}
+.grid .field-label:first-child { margin-top: 4px; }
+
+/* rules 卡片里「直连 IP / 域名」那个小节标题。它是卡内唯一的 h3，
+   `.group-title:first-of-type` 会把顶部分隔线去掉 —— 但这里上面还有
+   「规则方案」一行，所以得补回来。 */
+#rules-card .group-title {
+  margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+
+.field-input {
+  width: 100%; background: var(--card-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-family: inherit; font-size: 13.5px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field-input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.field-input.mono { font-family: var(--mono); font-size: 12.5px; }
+
+/* 列表输入框的高度完全交给 rows（一行 14.67px）。以前这里兜了个 min-height:60px，
+   那正好是三行的高度 —— 而这几组列表出厂值都只有两条，底下白空一行，
+   六组框子摆一起就显得虚。现在 rows="2" 就是 46.67px，跟内容严丝合缝。
+   还能往下拖（resize: vertical），要加条目拖一下就行。 */
+textarea.field-input { resize: vertical; }
+/* 劫持 DNS 固定两行：值就是 any:53 / tcp://any:53，不需要拖动 */
+#dns-hijack { resize: none; }
+
+/* 下拉框按内容给宽度。里面的选项都是三五个短词（精准分流 / info / mixed …），
+   而 .field-input 默认 width:100%，于是「规则方案」这种只有一格的下拉会撑满
+   整张卡（实测 1051px 装 84px 的字）。max-content 让浏览器自己去量，
+   min-width 兜住最短的选项，max-width 兜住节点名可能很长的情况。
+   align-self 是为了在 .field 这个 flex 列里不要被拉满。 */
+select.field-input {
+  width: max-content; min-width: 132px; max-width: 100%;
+  align-self: flex-start; cursor: pointer;
+}
+/* 默认出口列的是节点名，长度不可控，给个上限免得一个长名字把整行顶开 */
+#default-node { max-width: 320px; }
+
+/* 数字输入：端口 5 位、MTU 5 位，200px 太宽了 */
+input[type="number"].field-input { max-width: 120px; }
+
+/* 监听地址是 地址:端口 那种短串，撑满一列（515px）没必要 */
+#dns-listen { max-width: 220px; align-self: flex-start; }
+
+/* 「自定义规则」那行：一条规则就那么几个字，输入框撑到 847px 会显得空。
+   整行收窄，「目标」吃掉剩下的宽度，下拉和按钮跟着贴在一起。 */
+#rules-card .input-row { max-width: 620px; }
+
+/* 劫持 DNS 是个两行的粘贴框，跟 DNS 卡里那些列表框同一量级，
+   没必要横跨整张卡（1070px）。 */
+#dns-hijack { max-width: 320px; align-self: flex-start; }
+
+/* TUN 那排三个带边框的框（TUN 栈 / MTU / 劫持 DNS）统一高度，
+   顶边和底边各在一条线上。47px 装得下两行 mono 文本。 */
+#tun-params .field-input { height: 47px; }
+
+/* sniffer 的明细区：左边一列竖着叠三个端口框，右边给「跳过域名」。
+   三个端口框各只有两条内容，横排占三格纯属浪费宽度。
+   min-width: 0 是 grid 的兜底 —— 默认 min-width:auto 会被内容顶宽。 */
+#sniffer-detail-grid { grid-template-columns: 1fr 3fr; }
+#sniffer-detail-grid > * { min-width: 0; }
+/* 「跳过域名」往下拉到底，和左边那一列收在同一条线上（这样那个宽框也不空了）。
+   它所在的 .field 会被 grid 拉到整行高，textarea 再吃掉剩下的高度。 */
+#sniffer-skip-domains { flex-grow: 1; }
+
+.input-row { display: flex; gap: 8px; align-items: center; }
+.input-row .field-input { flex: 1; }
+/* 同一行里的输入框 / 按钮 / 单行 textarea 统一高度。
+   三者的字号和默认行高都不一样（带 .mono 的是 12.5px，input 是 13.5px），
+   只调行高怎么都会差一两像素，直接给同一个高度最省事。
+   下面那条再把 textarea 的默认最小高度去掉，并保留往下拖的能力。 */
+.input-row .field-input,
+.input-row > .btn { height: 35px; }
+.input-row textarea.field-input { min-height: 0; resize: vertical; }
+
+.check {
+  display: flex; align-items: center; gap: 7px; font-size: 13px;
+  /* 只有方块本身可点（整行可点容易误选，用户 2026-10-26 提的） */
+  cursor: default; padding: 3px 0;
+}
+.check input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+
+/* 默认配置 / DNS：同一格里既有输入框、下拉（高），也有勾选框行（矮），
+   控件不等高，底下的备注就差一截、不在一条线上。
+   让勾选框那行吃到余量、长到与最高的控件等高（没余量就不变），
+   顺带勾选框也在这一格里居中，跟输入框的文字对齐。 */
+#general-card .check,
+#dns-card .check { flex-grow: 1; }
+
+/* 「进阶参数」卡片里的小分组标题 */
+.group-title {
+  margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--border);
+  font-size: 12.5px; font-weight: 700; color: var(--muted);
+}
+.group-title:first-of-type { margin-top: 2px; padding-top: 0; border-top: none; }
+
+/* ── 按钮 ───────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--border-strong); background: var(--card); color: var(--text);
+  border-radius: 8px; padding: 7px 13px; font-size: 12px; font-family: inherit;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary {
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-dark); border-color: var(--accent-dark); color: #fff; }
+.btn-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; justify-content: center; margin: 0 0 12px; }
+.hint-center { text-align: center; margin: 0 0 12px; }
+/* 空的「配置大小」行不占高度：否则它自带的 12px 下边距会把按钮下面撑大 */
+.hint:empty { display: none; }
+.btn-row .spacer { flex: 1; }
+
+/* ── 节点列表 ───────────────────────────────────────── */
+/* 名字短、卡片宽 —— 排成一串、中间用「·」隔开（最省地方），**最多三排**，再多框内滚。
+   用户 2026-10-17：「反正空间够 两排显示 宽度都可以显示4组了」→「最多3排」→
+   「还可以靠近点 中间符号隔开就行」。 */
+.node-list {
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  background: var(--card-2); padding: 5px 10px;
+  font-size: 13px; line-height: 21px;
+  max-height: 74px; overflow-y: auto;   /* 正好 3 整排（21×3 + 上下内边距 + 边框），别把第三排切一半 */
+  /* ⚠️ 别加 word-break: keep-all —— 实测它让整串中文**不换行**、超出部分被裁掉
+     （2026-10-17 15 个 🌍…🌍 长名字时撞到）。名字本身靠 .node-item 的 nowrap 不断行，
+     项与项之间的「 · 」自然换行就够了。 */
+}
+.node-item { white-space: nowrap; }
+.node-sep { color: var(--muted); }
+.node-empty { padding: 57px 8px 24px; text-align: center; color: var(--muted); font-size: 15px; }
+
+/* ── 智能选择成员 ───────────────────────────────────── */
+/* 跟「节点列表」一模一样的显示（一串、· 隔开），区别只有两点：
+   ① 这里每一项可点（切换进/不进测速组），② 这块放在「默认出口」右边、**最多两排**。 */
+.pool-list {
+  /* 6px 上边距：让框的上边跟左边「默认出口」标签、「智能选择」勾选框成一条线 */
+  margin-top: 6px;
+  /* 正好三整排，总高 73px —— 跟左边「两个勾选 + 备注」那组同高
+     （行高 21×3 + 上下 padding 8 + 边框 ≈ 72.5，取 73） */
+  height: 73px; max-height: 73px; padding: 4px 8px;
+}
+/* 策略那格的备注压到底，跟左边「未选中的流量走这个节点」对齐成一条线 */
+#strategy-field { display: flex; flex-direction: column; padding-top: 24px; }
+/* 节点框跟左边两个勾选框的起始行对齐（框的第一行文字 = 第一个勾选框） */
+#auto-pool-field { padding-top: 18px; }
+#strategy-field .hint { margin-top: 0; }
+/* 挂到「常用规则」列下面时，跟上面三个勾选框留一点空 */
+.rules-common #strategy-field { padding-top: 10px; }
+/* 策略格作为「常用规则」后面的一列时，网格多给一列 */
+.rules-split.has-strategy { grid-template-columns: minmax(0, 1fr) 190px 190px 190px; }
+.rules-split.has-strategy.no-local { grid-template-columns: minmax(0, 1fr) 190px 190px; }
+.rules-split.has-strategy.no-common { grid-template-columns: minmax(0, 1fr) 190px; }
+/* 排到「常用规则」后面时：小节标题（负载均衡）+ 一行带备注的勾选框，跟旁边那列同构 */
+.rules-split #strategy-field { padding-top: 0; }
+.rules-split #strategy-field .group-title { margin: 0; padding-top: 0; border-top: none; }
+.rules-split #strategy-field .check { margin-top: 8px; font-size: 13px; }
+
+
+/* 一机一IP 没有「默认出口」：策略格从第 1 列开始跨两列，别只占第 2 列 */
+#node-role-grid.no-default > .field:nth-child(2) { grid-column: 1 / span 2; }
+
+.pool-item { white-space: nowrap; cursor: pointer; }
+/* ⚠️ nowrap 必须给 —— 少了它一个节点名会被拦腰断开（「…台湾中华 / 电信」），
+   2026-10-17 在 15 个 🌍…🌍 长名字时亲眼看到。 */
+.pool-item:hover { color: var(--accent); }
+.pool-item.off { opacity: .45; text-decoration: line-through; text-decoration-color: var(--danger); }
+.pool-item.off:hover { color: var(--danger); }
+
+/* ── 直连 chips ─────────────────────────────────────── */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono);
+  font-size: 12px; background: var(--card-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 6px 3px 10px;
+}
+.chip button {
+  border: none; background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 0 2px; border-radius: 50%;
+}
+.chip button:hover { color: var(--danger); }
+/* 自定义规则里，动作指向的节点已经被删了 —— 这条不会参与生成，得让人看得见 */
+.chip-warn { border-color: var(--danger); color: var(--danger); }
+.chip-warn button { color: var(--danger); }
+
+/* 规则方案的提示：跟标题同一行，按整卡宽度绝对居中；字号压到 13px 以免压住左边的下拉 */
+.rules-head { position: relative; }
+.rule-mode-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 2px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+/* 窄屏放不下「绝对居中」时退回行内靠右，避免压住左边的下拉 */
+/* 只有窄到放不下「整卡绝对居中」时才换行：整卡宽度 ≥ 约 1000px 时提示都跟标题同一行 */
+@media (max-width: 1000px) {
+  /* 放不下一行绝对居中时换到下一行、整行居中（别改成靠右，用户要的是居中） */
+  .rules-head { flex-wrap: wrap; }
+  .rule-mode-hint {
+    position: static;
+    transform: none;
+    flex: 1 1 100%;
+    margin: 4px 0 0;
+    text-align: center;
+    white-space: normal;
+  }
+}
+/* ── 自定义规则 + 常用规则 + 本地出口：三栏，标题在同一行 ───────── */
+.rules-split {
+  display: grid;
+  grid-template-columns: minmax(0, 620px) 190px 190px;
+  gap: 32px;
+  justify-content: start;
+  align-items: start;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+/* 分隔线移到 .rules-split 上，各栏标题不再各画一条 */
+#rules-card .rules-split .group-title {
+  margin: 0; padding: 0; border: 0;
+}
+.rules-common .check { margin-top: 8px; }
+/* 整块往中间靠一点（只挪视觉位置，不动网格宽度） */
+.rules-local { transform: translateX(-4px); }
+.rules-local .group-title { text-align: left; }
+.rules-local .check { margin-top: 8px; justify-content: flex-start; gap: 4px; }
+.rules-local .field-input { width: 100%; margin-top: 8px; }
+/* 本地出口只在精准分流正常模式出现；收起后回到「主列 + 常用规则」 */
+.rules-split.no-local { grid-template-columns: minmax(0, 620px) 190px; }
+/* 「常用规则」整块不显示时（没有可用出口）同样收掉它的那一列 */
+.rules-split.no-common { grid-template-columns: minmax(0, 620px) 190px; }
+.rules-split.no-common.no-local { grid-template-columns: minmax(0, 620px); }
+@media (max-width: 720px) {
+  /* 三步挤在一行里，别换行 —— 换行会把整页顶高、出现多余的竖向滚动 */
+  .steps { flex-wrap: nowrap; gap: 4px; }
+  .step-btn { padding: 6px 10px; font-size: 12.5px; gap: 4px; }
+  .step-arrow { margin: 0 2px; font-size: 13px; }
+
+  /* .no-local（内网控制等）那条是 0,2,0 的特异性，光写 .rules-split 压不住 —— 两列会挤成重叠 */
+  .rules-split,
+  .rules-split.no-local,
+  .rules-split.has-strategy,
+  .rules-split.has-strategy.no-local,
+  .rules-split.no-common,
+  .rules-split.no-common.no-local { grid-template-columns: 1fr; gap: 16px; }
+  .rules-local { transform: none; }
+  /* 提示在窄屏换到下一行、占满宽度居中；flex 行要允许换行，否则会把整页顶宽 */
+  .rules-head { flex-wrap: wrap; }
+  .rule-mode-hint {
+    flex: 1 1 100%;
+    margin: 6px 0 0;
+    max-width: 100%;
+    text-align: center;
+  }
+}
+
+/* ── IP 预览 ────────────────────────────────────────── */
+.ip-preview {
+  margin-top: 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card-2); padding: 10px 12px;
+}
+.ip-preview-title { font-size: 12px; color: var(--muted); font-weight: 600; }
+.ip-preview pre {
+  margin: 6px 0 0; font-family: var(--mono); font-size: 12px;
+  white-space: pre-wrap; word-break: break-word; color: var(--text);
+}
+.ip-preview.error pre { color: var(--danger); }
+
+/* ── 预览 ───────────────────────────────────────────── */
+.preview-wrap {
+  border-radius: 8px; background: var(--preview-bg); border: 1px solid var(--border); margin-top: 10px;
+  max-height: 62vh; overflow: auto;
+}
+.preview {
+  margin: 0; padding: 10px 0; font-family: var(--mono); font-size: 12.5px;
+  line-height: 1.55; color: var(--preview-fg); white-space: normal; tab-size: 2;
+}
+/* 每行：低对比行号 + 正文。行号不可选中，复制不会带进 YAML */
+.ln { display: flex; align-items: flex-start; gap: 10px; padding: 0 16px 0 8px; }
+.ln:hover { background: var(--preview-hover); }
+.ln-no {
+  flex: 0 0 auto; width: 3.2em; text-align: right;
+  color: var(--preview-lineno); opacity: .9; user-select: none; -webkit-user-select: none;
+}
+.ln-body { flex: 1 1 auto; min-width: 0; white-space: pre; }
+/* 没导入节点时的占位：居中、字号大一点，别像一行小灰字贴在左上角 */
+.preview-empty {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 200px; padding: 0 20px;
+  font-family: var(--font); font-size: 14.5px; text-align: center;
+  color: var(--preview-comment);
+}
+.preview .c { color: var(--preview-comment); }
+.preview .k { color: var(--preview-key); }
+.preview .s { color: var(--preview-str); }
+.preview .n { color: var(--preview-num); }
+.preview .b { color: var(--preview-bool); }
+.preview .d { color: var(--preview-dash); }
+.preview .p { color: var(--preview-punct); }
+.preview .z { color: var(--preview-null); font-style: italic; }
+.preview .dash { color: var(--preview-comment); }
+
+.error-box {
+  margin-top: 10px; border: 1px solid var(--danger); border-radius: 8px;
+  background: rgba(214, 69, 65, .08); color: var(--danger);
+  padding: 10px 12px; font-size: 13px; white-space: pre-wrap;
+}
+
+/* ── 状态栏 ─────────────────────────────────────────── */
+.statusbar {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  margin-top: 8px; padding: 9px 14px; border-radius: var(--radius);
+  background: var(--statusbar); color: var(--statusbar-fg); font-size: 12.5px;
+  /* 常驻底部：三步都看得见，位置固定 */
+  position: sticky; bottom: 0; margin-top: auto; z-index: 6;
+}
+/* 原 #6b7c93 对 header 底只有 3.28:1，换到 5.46:1（深色那套对比度不变） */
+.status-msg { font-weight: 600; }
+.status-msg.ok { color: var(--ok); }
+.status-msg.err { color: var(--danger); }
+.status-msg.warn { color: var(--warn); }
+.status-msg.info { color: var(--info); }
+.status-right { display: flex; gap: 14px; color: var(--statusbar-muted); }
+.status-size { font-variant-numeric: tabular-nums; }
+/* 直接打开（不在 LuCI 里）时，版本号再往右靠一点、和「配置大小」拉开点：
+   嵌在 LuCI 时版本号本来就不显示，这条不会影响宿主里的观感。 */
+body:not(.headerless) .statusbar { padding-right: 6px; }
+body:not(.headerless) #status-version { margin-left: 10px; }
+
+/* ── toast ──────────────────────────────────────────── */
+.toast {
+  position: fixed; left: 50%; bottom: 37px; transform: translateX(-50%);
+  background: var(--header); color: #fff; padding: 10px 18px; border-radius: 999px;
+  font-size: 13px; box-shadow: 0 8px 30px rgba(0, 0, 0, .3); z-index: 50;
+  white-space: pre-line;   /* 错误提示里带换行，不写这条会被折成一行 */
+  max-width: min(90vw, 560px);
+  /* 只是提示，不该挡住底下的按钮 */
+  pointer-events: none;
+}
+.toast.err { background: var(--danger); }
+.toast.ok { background: var(--ok); }
+.toast.warn { background: var(--warn); }
+.toast.info { background: var(--info); }
+
+/* DNS 卡整张卡走同一条 3 列轨道：六组列表正好一排三个、两排摆完，
+   上面「DNS 模式 / 监听地址」也落在同一组列上，整张卡竖着看是对齐的。
+   这里不能用 .grid 默认的 auto-fit —— 它会把没占满的轨道收掉（三个 item 撑成
+   三列、两个 item 撑成两列），上面那行反而跟下面错开。窄屏退回默认堆叠。 */
+/* 默认配置卡十个字段，排 5 列正好两排（卡宽上限 1120px 时每列约 194px）。
+   同样不能用 auto-fit —— 它会按 240px 的最小列宽铺，卡宽不够时就掉成 4 列 3 排。
+   窄屏退回默认堆叠，10 个字段挤 5 列会连「只监听 127.0.0.1」都放不下。 */
+@media (min-width: 960px) {
+  #general-card .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  /* TUN 的七项（栈 / MTU / 四个开关 / 劫持 DNS）合成一排。每列约 133px，
+     控件本身都放得下（下拉 132px、数字框 120px、勾选框约 107px、
+     `tcp://any:53` 约 110px）；备注会折行，按用户的话"等下看排版再改"。 */
+  #tun-params { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  /* 精准分流那排复选框（路由模式 / 区域模式 / 代理模式 / WebRTC / 广告拦截）
+     合成一排五项。auto-fit 会按 240px 最小列宽铺，卡宽不够就掉成 4 列两排。 */
+  #role-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  /* 下面那排跟上面五列对齐：默认出口=第1列，策略=第2列（区域模式），
+     节点框=第4列起（WebRTC 防泄露 → 最右）。 */
+  #node-role-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  #node-role-grid > .field:nth-child(1) { grid-column: 1; }
+  /* 只把「默认出口」四个字往上提；下拉框位置不动（下面多留 4px 补回来） */
+  #node-role-grid > .field:nth-child(1) .field-label { margin-top: -4px; margin-bottom: 8px; }
+  /* 左边那格也做成「备注贴底」，这样行被策略格撑高时两句备注还是一条线 */
+  #node-role-grid > .field:nth-child(1) { display: flex; flex-direction: column; }
+  /* 下拉 37 + 间距 17 + 备注 19 = 73px，跟另外两块一样高 */
+  #node-role-grid > .field:nth-child(1) .hint { margin-top: 17px; }
+  #node-role-grid > .field:nth-child(2) { grid-column: 2; }
+  /* 节点框从第 3 列（代理模式）一直伸到最右；右边由 JS 贴到 Loyalsoldier 文字末尾 */
+  #node-role-grid > .field:nth-child(3) { grid-column: 3 / span 3; }
+}
+
+@media (min-width: 768px) {
+  #dns-card .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .card { padding: 14px; }
+.status-right { display: none; }
+  /* 「下一步」占满一行，好点 */
+  .step-foot { justify-content: stretch; }
+  .step-foot .btn { width: 100%; }
+  .adv > .card { padding: 14px; }
+  .adv-head { padding: 14px; }
+  /* 嗅探那张卡的「端口 | 跳过域名」两列在手机上会把端口那列挤到 ~90px，
+     端口列表要折成好几行。窄屏改成上下堆叠。 */
+  #sniffer-detail-grid { grid-template-columns: 1fr; }
+}
+
+/* 从 LuCI（iframe + ?noframe=1）进来时不显示版本号：宿主顶栏已经写着，
+   重复一个没意义；直接打开页面（没有 headerless）时照常显示。 */
+body.headerless #status-version { display: none; }
+
+/* ── 嵌在 LuCI 里（?noframe=1）────────────────────────────────────
+   页头（标题 / Telegram / 明暗切换）2026-10-29 已经整个删掉了，所以这里没有要藏的东西。
+   `body.headerless` 这个 class 还留着：ui.js 用它判断"在宿主里"，
+   那种情况下**不跟随系统明暗**（宿主会通过 ?theme= 指定）。类的加减在 app/embed.js。 */
+
+/* ── 登录门（app/gate.js）─────────────────────────────────────────
+   整页遮罩 + 中间一个小卡片。没过校验就看不见后面的界面。
+   ⚠️ 这是**前端遮罩 + 服务端校验**：页面（和这个文件）本来就是公开的，绕过遮罩
+      也只是个空壳 —— 没有 secret 就没有「载入配置文件」。别拿它当保险。
+   ⚠️ 默认就是显示状态（不要给 .gate 加 hidden），不然会先闪一下真界面；
+      「不是 mihomo 发的页面」那条路由由 JS 立刻把它 hidden 掉。
+   ⚠️ [hidden] 那条 !important 规则在上面，所以不用另写 .gate[hidden]。 */
+.gate {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg); padding: 20px;
+}
+.gate-box {
+  width: 100%; max-width: 320px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 24px 20px 20px; text-align: center;
+}
+.gate-title { color: var(--ok); font-weight: 700; font-size: 16px; }
+.gate-desc { margin: 6px 0 14px; color: var(--muted); font-size: 12.5px; }
+.gate-input {
+  width: 100%; border: 1px solid var(--border-strong); background: var(--card-2);
+  color: var(--text); border-radius: 8px; padding: 9px 12px;
+  font-size: 13.5px; font-family: inherit;
+}
+.gate-input:focus { outline: none; border-color: var(--accent); }
+.gate-input:disabled { opacity: .6; }
+.gate-btn { width: 100%; margin-top: 12px; }
+.gate-err { margin: 10px 0 0; color: var(--danger); font-size: 12.5px; }
+/* 公开站那道「群门」的提示（只有那种场合显形，见 app/gate.js）
+   地址本身就是可点的链接 —— 点一下进群，密码一眼就能看到 */
+
+/* ── 自定义规则：出口多选（单选 = 直接走节点，多选 = 负载均衡组）────────── */
+.ms { position: relative; flex: none; align-self: center; }
+.ms-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: auto; min-width: 132px; max-width: 280px; height: 35px;
+  padding: 8px 10px; cursor: pointer; text-align: left;
+}
+.ms-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-caret { color: var(--muted); font-size: 11px; line-height: 1; flex: none; }
+.ms-menu {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 0;
+  /* ⚠️ 宽度**跟着按钮走**（用户 2026-10-28 划框标的）：菜单和上面那个
+     「直连 / N 个节点 · 负载均衡」的选择框左右对齐，宽度严格一致。
+     不再用固定的 min-width:240px —— 那会让菜单比按钮宽或窄。
+     名字太长就在行内省略（.ms-label 自带 ellipsis）。 */
+  width: 100%; min-width: 0; max-width: none; max-height: 260px; overflow: auto;
+  padding: 6px; background: var(--card-2); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: var(--shadow);
+}
+.ms-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: 6px; cursor: pointer;
+  font-size: 13px; color: var(--text); white-space: nowrap;
+}
+.ms-item:hover { background: var(--accent-soft); }
+.ms-box {
+  width: 14px; height: 14px; flex: none; border-radius: 4px;
+  border: 1px solid var(--border-strong); background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: #fff; line-height: 1;
+}
+.ms-item.on .ms-box { background: var(--accent); border-color: var(--accent); }
+
+/* 预览页：预览框吃满剩余高度，底部直接贴住版本号栏（用户 2026-11-16 要求） */
+.step[data-step="2"].active { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.step[data-step="2"].active > .card { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.step[data-step="2"] .preview-wrap { flex: 1 1 auto; min-height: 0; margin-bottom: 0; }
+.step[data-step="2"] .preview { height: 100%; }
+
+/* 预览框往上靠：跟「下载配置文件」那排按钮贴近一点 */
+.step[data-step="2"] .card-head { margin-bottom: 2px; }
+.step[data-step="2"] .card-head h2 { margin-bottom: 0; }
+.step[data-step="2"] .preview-actions { margin-bottom: 10px; }
+.step[data-step="2"] .preview-wrap { margin-top: 2px; }
+/* 预览卡片里那行状态文案统一搬到底部状态栏，不再占一行 */
+#preview-status { display: none; }
+
+/* 预览页三处间距统一收到 2px（标题上 / 标题下 / 按钮下） */
+.step[data-step="2"] .card-head { padding-top: 2px; margin-top: 2px; margin-bottom: 2px; }
+.step[data-step="2"] .card-head h2 { margin: 0; }
+
+/* 预览页：卡片内边距收小，把高度让给 YAML 输出区 */
+.step[data-step="2"] .card { padding: 12px; }
+.step[data-step="2"] .btn-row { margin: 0 0 12px; }
+.step[data-step="2"] .card-head { padding-top: 0; margin: 0 0 2px; }
+.step[data-step="2"] .preview-wrap { margin-top: 0; }
+
+/* 预览框贴住卡片底：pre 自带 margin 会留一条白，去掉 */
+.step[data-step="2"] .preview { margin: 0; border-radius: 8px 8px 0 0; }
+.step[data-step="2"] .preview-wrap { padding: 0; }
+
+/* 预览框原来被 max-height:62vh 卡住，下面才空出一条 —— 预览页放开它 */
+.step[data-step="2"] .preview-wrap { max-height: none; }
+
+/* 长配置：细滚动条 + 长行横向滚动（YAML 的行不能折，折了就不是原文了） */
+.preview-wrap { scrollbar-width: thin; }
+.preview-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+.preview-wrap::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+.preview-wrap::-webkit-scrollbar-track { background: transparent; }

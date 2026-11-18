@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Mihomo 配置生成器 —— 全部在浏览器本地完成。">
+<title>mihomo-config.yaml</title>
+<link rel="icon" href="app/favicon.png" type="image/png">
+<link rel="stylesheet" href="app/style.css">
+
+<script src="app/secret.js"></script>
+
+<script src="app/vendor/sha256.js"></script>
+
+<script src="app/theme-hint.js"></script>
+
+<script src="app/gate.js"></script>
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <form class="gate-box" id="gate-form" hidden>
+    <div class="gate-title">mihomo-config.yaml</div>
+    <p class="gate-desc" id="gate-desc">验证中…</p>
+
+    <input class="gate-input" id="gate-tool" type="password" autocomplete="off"
+           spellcheck="false" placeholder="工具密码" aria-label="工具密码" disabled>
+
+    <input id="gate-panel" type="hidden" autocomplete="current-password" aria-label="面板密码">
+    <button class="btn btn-primary gate-btn" id="gate-ok" type="submit" disabled>进入</button>
+    <p class="gate-err" id="gate-err" hidden></p>
+  </form>
+</div>
+
+<div class="app">
+
+  <nav class="steps" aria-label="步骤">
+    <button class="step-btn" data-step="0">节点导入<b class="step-badge" id="step-badge-0">0</b></button>
+    <span class="step-arrow" aria-hidden="true">→</span>
+    <button class="step-btn" data-step="1">参数设置</button>
+    <span class="step-arrow" aria-hidden="true">→</span>
+    <button class="step-btn" data-step="2">配置预览</button>
+  </nav>
+
+  <section class="step" data-step="0">
+
+    <div class="card">
+      <div class="card-head">
+        <h2>节点来源</h2>
+        <p class="card-desc">节点解析完全在本地进行，不会上传至任何服务器。</p>
+      </div>
+
+      <label class="field-label" for="links-input">粘贴链接</label>
+      <p class="hint">每行填写一条节点链接，支持 Base64 订阅内容。</p>
+
+      <div class="input-row">
+        <textarea class="field-input mono" id="links-input" rows="1"
+          placeholder="vless://uuid@example.com:443?type=ws&security=tls&sni=example.com#节点名称"></textarea>
+        <button class="btn" id="links-add" type="button">添加</button>
+      </div>
+
+      <label class="field-label">上传节点文件</label>
+      <p class="hint">支持 TXT、YAML、YML、JSON 格式文件，以及节点分享链接和 Base64 订阅内容。</p>
+      <input type="file" id="file-input" accept=".txt,.yaml,.yml,.json,.conf" hidden>
+      <button class="btn" id="file-btn" type="button">选择文件</button>
+      <p class="hint" id="file-note"></p>
+    </div>
+
+    <div class="card" id="list-card">
+      <div class="card-head list-head">
+        <div>
+          <h2>节点列表 <span class="count" id="node-count">0</span></h2>
+          <p class="card-desc">重名节点将自动添加后缀。数据仅保留在当前页面，刷新或重新打开后需重新导入。</p>
+        </div>
+        <button class="btn btn-clear" id="clear-nodes" type="button" hidden>清空</button>
+      </div>
+      <div class="node-list" id="node-list"></div>
+    </div>
+
+    <div class="step-foot">
+    </div>
+
+  </section>
+
+  <section class="step" data-step="1">
+
+    <div class="card" id="general-card">
+      <div class="grid">
+        <div class="field">
+          <label class="field-label" for="secret">面板密码</label>
+          <div class="input-row">
+            <input class="field-input" id="secret" type="text" autocomplete="off" spellcheck="false">
+            <button class="btn" id="secret-gen" type="button" title="生成一串随机密码">随机</button>
+          </div>
+          <p class="hint">默认 <code>123456</code>。可以点「随机」换一个。</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="port">UI 端口</label>
+          <input class="field-input" id="port" type="number" min="1" max="65535" step="1">
+          <p class="hint">控制面板监听端口，默认 9090。</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="controller-listen">监听地址</label>
+          <input class="field-input" id="controller-listen" type="text"
+                 autocomplete="off" spellcheck="false">
+          <p class="hint">本机 <code>127.0.0.1</code>，全开 <code>0.0.0.0</code></p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="log-level">日志级别</label>
+          <select class="field-input" id="log-level">
+            <option value="silent">silent</option>
+            <option value="error">error</option>
+            <option value="warning">warning</option>
+            <option value="info">info</option>
+            <option value="debug">debug</option>
+          </select>
+          <p class="hint">仅在排查问题时调整，默认 <code>info</code></p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="find-process-mode">进程匹配</label>
+          <select class="field-input" id="find-process-mode">
+            <option value="off">off</option>
+            <option value="strict">strict</option>
+            <option value="always">always</option>
+          </select>
+          <p class="hint">按进程名称进行流量匹配，默认 <code>off</code></p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="keep-alive-idle">保活空闲</label>
+          <input class="field-input" id="keep-alive-idle" type="number" min="1" max="65535" step="1">
+          <p class="hint">空闲连接超时时间，默认 <code>60</code> 秒</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="keep-alive-interval">保活间隔</label>
+          <input class="field-input" id="keep-alive-interval" type="number" min="1" max="65535" step="1">
+          <p class="hint">TCP 保活探测间隔，默认 <code>30</code> 秒</p>
+        </div>
+        <div class="field">
+          <label class="field-label">统一延迟</label>
+          <div class="check"><input type="checkbox" id="unified-delay"> 启用</div>
+          <p class="hint">测速握手超时时间，智能选择</p>
+        </div>
+        <div class="field">
+          <label class="field-label">TCP 并发</label>
+          <div class="check"><input type="checkbox" id="tcp-concurrent"> 启用</div>
+          <p class="hint">域名解析后的并发连接数，智能选择</p>
+        </div>
+
+        <div class="field" id="ipv6-field">
+          <label class="field-label">IPv6</label>
+          <div class="check"><input type="checkbox" id="ipv6"> 启用 IPv6</div>
+          <p class="hint">解析与出站都走 IPv6</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="rules-card">
+
+      <div class="card-head rules-head">
+        <h2>规则方案</h2>
+        <select class="field-input mode-select" id="mode-select" aria-label="规则方案">
+          <option value="split">精准分流</option>
+          <option value="oneip">内网控制</option>
+        </select>
+        <p class="hint rule-mode-hint" id="rule-mode-hint">提示：默认使用 Fake-IP下级路由代理及链式代理场景请使用 Redir-Host模式</p>
+      </div>
+
+      <div class="mode-panel" data-modes="split">
+        <div class="grid" id="role-grid">
+          <div class="field" id="auto-select-field">
+            <label class="field-label">路由模式</label>
+            <div class="check"><input type="checkbox" id="auto-select"> 智能选择模式</div>
+            <p class="hint" id="auto-select-hint">自动创建智能选择负载均衡组，并将其设为默认出口。</p>
+          </div>
+          <div class="field">
+            <label class="field-label">区域模式</label>
+            <div class="check"><input type="checkbox" id="return-mode"> 回国模式</div>
+            <p class="hint">启用回国模式，反转 DNS 解析与路由规则，适用于海外访问国内网络。</p>
+          </div>
+          <div class="field">
+            <label class="field-label">代理模式</label>
+            <div class="check"><input type="checkbox" id="global-proxy"> 全局代理</div>
+            <p class="hint">所有网络流量均通过代理转发。</p>
+          </div>
+
+          <div class="field">
+            <label class="field-label">WebRTC 防泄露</label>
+            <div class="check"><input type="checkbox" id="webrtc"> 启用</div>
+            <p class="hint">WebRTC STUN 请求通过默认出口发送。</p>
+          </div>
+          <div class="field">
+            <label class="field-label">广告拦截</label>
+            <div class="check"><input type="checkbox" id="blklist"> 屏蔽广告</div>
+            <p class="hint" id="adblock-hint">规则来源：AdBlock Filters</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-panel" data-modes="oneip">
+        <div class="grid">
+          <div class="field">
+            <label class="field-label" for="network">内网网段</label>
+            <input class="field-input" id="network" type="text" spellcheck="false" placeholder="192.168.100">
+            <p class="hint">示例:<code>10.0.0.0/8</code>、<code>192.168.100.0/24</code>、<code>192.168.100</code></p>
+          </div>
+          <div class="field">
+            <label class="field-label" for="start-ip">起始 IP</label>
+            <input class="field-input" id="start-ip" type="text" spellcheck="false" placeholder="2">
+            <p class="hint">设置内网 IP 分组的起始地址。</p>
+          </div>
+          <div class="field">
+            <label class="field-label" for="ips-per-node">每节点 IP 数</label>
+            <input class="field-input" id="ips-per-node" type="number" min="1" step="1" placeholder="1">
+            <p class="hint">顺延范围内的内网 IP 将使用相同的节点。</p>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="field">
+            <label class="field-label">区域模式</label>
+            <div class="check"><input type="checkbox" id="oneip-return-mode"> 回国模式</div>
+            <div class="check"><input type="checkbox" id="oneip-mainland"> 国内使用国内节点</div>
+          </div>
+          <div class="field" id="app-direct-wrap">
+            <label class="field-label">应用直连</label>
+            <div class="check"><input type="checkbox" id="tg"> Telegram 直连</div>
+            <div class="check"><input type="checkbox" id="anydesk"> AnyDesk 直连</div>
+          </div>
+        </div>
+        <div class="ip-preview" id="ip-preview">
+          <span class="ip-preview-title">IP 分配预览</span>
+          <pre id="ip-preview-text">等待导入节点</pre>
+        </div>
+      </div>
+
+      <div class="grid" id="node-role-grid">
+        <div class="field" id="default-node-field">
+          <label class="field-label" for="default-node">默认出口</label>
+          <select class="field-input" id="default-node"></select>
+          <p class="hint" id="default-node-hint">未匹配规则的流量将通过此节点转发。</p>
+        </div>
+        <div class="field" id="strategy-field" hidden>
+          <p class="group-title" id="strategy-title" hidden>负载均衡</p>
+          <div class="check"><input type="checkbox" id="auto-round-robin"> <span id="rr-label">智能选择</span></div>
+          <div class="check"><input type="checkbox" id="lb-round-robin"> <span id="lb-label">负载均衡</span></div>
+          <p class="hint" id="strategy-hint">同组流量统一使用相同的 IP 出口。</p>
+        </div>
+        <div class="field" id="auto-pool-field" hidden>
+          <div class="node-list pool-list" id="auto-pool-list"></div>
+        </div>
+      </div>
+
+      <div class="rules-split" id="rules-split">
+        <div class="rules-main">
+          <h3 class="group-title">自定义规则</h3>
+          <p class="card-desc">目标支持域名或 IP。动作可指定代理节点或直连，优先级高于内置规则。</p>
+          <div class="input-row">
+            <input class="field-input" id="rule-target" type="text" placeholder="example.com 或 10.0.0.0/8" spellcheck="false">
+            <div class="ms" id="rule-action">
+              <button class="field-input ms-btn" id="rule-action-btn" type="button"
+                      aria-haspopup="listbox" aria-expanded="false">
+                <span class="ms-label" id="rule-action-label">直连</span>
+                <span class="ms-caret" aria-hidden="true">▾</span>
+              </button>
+              <div class="ms-menu" id="rule-action-menu" role="listbox" hidden></div>
+            </div>
+            <button class="btn" id="rule-add">添加</button>
+          </div>
+          <div class="chips" id="rule-list"></div>
+          <p class="hint">域名生成 <code>DOMAIN</code> 规则，IP 生成 <code>IP-CIDR</code> / <code>IP-CIDR6</code> 规则。</p>
+          <p class="hint">选择单个节点时直接使用该节点；选择多个节点时自动创建负载均衡组。</p>
+        </div>
+        <div class="rules-common" id="rules-common">
+          <h3 class="group-title">常用规则</h3>
+          <div class="check"><input type="checkbox" id="common-tk"> TK</div>
+          <div class="check"><input type="checkbox" id="common-tc"> TC</div>
+          <div class="check"><input type="checkbox" id="common-ai"> AI</div>
+        </div>
+        <div class="rules-local" id="rules-local">
+          <h3 class="group-title">本地出口</h3>
+          <div class="check"><input type="checkbox" id="local-exit-enable"> 国内出口</div>
+          <div id="local-exit-detail" hidden>
+            <select class="field-input" id="local-exit-node" disabled></select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <details class="adv" id="adv-panel">
+      <summary class="adv-head">
+        <span class="adv-title">进阶参数</span>
+        <span class="adv-hint">TUN / DNS / 嗅探</span>
+        <span class="adv-badge" id="adv-badge" hidden></span>
+      </summary>
+
+    <div class="card">
+
+      <div class="grid" id="tun-params">
+        <div class="field">
+          <label class="field-label" for="stack">TUN 栈</label>
+          <select class="field-input" id="stack">
+            <option value="system">system</option>
+            <option value="gvisor">gvisor</option>
+            <option value="mixed">mixed</option>
+            <option value="mips">mips</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="mtu">MTU</label>
+          <input class="field-input" id="mtu" type="number" min="1" max="65535" step="1">
+        </div>
+        <div class="field">
+          <label class="field-label" for="dns-hijack">劫持 DNS</label>
+          <textarea class="field-input mono" id="dns-hijack" rows="2" spellcheck="false"></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label">自动路由</label>
+          <div class="check"><input type="checkbox" id="auto-route"> 启用</div>
+          <p class="hint">自动配置系统路由表，实现流量接管。</p>
+        </div>
+        <div class="field">
+          <label class="field-label">自动重定向</label>
+          <div class="check"><input type="checkbox" id="auto-redirect"> 启用</div>
+          <p class="hint">将 TCP 流量重定向至 TUN 接口。</p>
+        </div>
+        <div class="field">
+          <label class="field-label">自动探测网卡</label>
+          <div class="check"><input type="checkbox" id="auto-detect-interface"> 启用</div>
+          <p class="hint">自动检测并选择出口网卡。</p>
+        </div>
+        <div class="field">
+          <label class="field-label">严格路由</label>
+          <div class="check"><input type="checkbox" id="strict-route"> 启用</div>
+          <p class="hint">启用严格路由，防止流量绕过 TUN。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="dns-card">
+      <p class="hint" id="dns-region-note" hidden>当前处于回国 / 国内模式，DNS 将使用内置预设，以下自定义设置暂不生效。</p>
+      <div class="grid">
+        <div class="field">
+          <label class="field-label">DNS 模式</label>
+          <div class="check"><input type="checkbox" id="redir-host"> 使用 redir-host</div>
+          <p class="hint">默认 <code>fake-ip</code>。勾选使用 <code>redir-host</code>。</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="dns-listen">监听地址</label>
+          <input class="field-input mono" id="dns-listen" type="text" spellcheck="false" autocomplete="off" placeholder="127.0.0.1:1053">
+          <p class="hint">DNS 服务监听地址，例如 <code>127.0.0.1:1053</code></p>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field">
+          <label class="field-label" for="dns-default-ns">引导 DNS <code>default-nameserver</code></label>
+          <textarea class="field-input mono" id="dns-default-ns" rows="2" spellcheck="false"></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label" for="dns-nameserver">默认 DNS <code>nameserver</code></label>
+          <textarea class="field-input mono" id="dns-nameserver" rows="2" spellcheck="false"></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label" for="dns-proxy-server-ns">节点 DNS <code>proxy-server-nameserver</code></label>
+          <textarea class="field-input mono" id="dns-proxy-server-ns" rows="2" spellcheck="false"></textarea>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="field">
+          <label class="field-label" for="dns-direct-ns">直连 DNS <code>direct-nameserver</code></label>
+          <textarea class="field-input mono" id="dns-direct-ns" rows="2" spellcheck="false"></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label" for="dns-policy-cn">中国 DNS <code>geosite:cn</code></label>
+          <textarea class="field-input mono" id="dns-policy-cn" rows="2" spellcheck="false"></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label" for="dns-policy-geo">国外 DNS <code>geosite:geolocation-!cn</code></label>
+          <textarea class="field-input mono" id="dns-policy-geo" rows="2" spellcheck="false"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="sniffer-card">
+      <div class="grid">
+        <div class="field">
+          <label class="field-label">嗅探</label>
+          <div class="check"><input type="checkbox" id="sniffer-enable"> 启用 sniffer</div>
+        </div>
+      </div>
+      <div class="grid" id="sniffer-detail-grid">
+
+        <div>
+          <div class="field">
+            <label class="field-label" for="sniffer-http-ports">HTTP 端口</label>
+            <textarea class="field-input mono" id="sniffer-http-ports" rows="2" spellcheck="false"></textarea>
+          </div>
+          <div class="field">
+            <label class="field-label" for="sniffer-tls-ports">TLS 端口</label>
+            <textarea class="field-input mono" id="sniffer-tls-ports" rows="2" spellcheck="false"></textarea>
+          </div>
+          <div class="field">
+            <label class="field-label" for="sniffer-quic-ports">QUIC 端口</label>
+            <textarea class="field-input mono" id="sniffer-quic-ports" rows="2" spellcheck="false"></textarea>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="sniffer-skip-domains">跳过嗅探域名（不看 TLS 的 SNI / HTTP 的 Host）</label>
+          <textarea class="field-input mono" id="sniffer-skip-domains" rows="5" spellcheck="false"></textarea>
+        </div>
+      </div>
+    </div>
+    </details>
+
+    <div class="step-foot">
+    </div>
+
+  </section>
+
+  <section class="step" data-step="2">
+    <div class="card">
+      <p class="card-desc" id="preview-status" hidden>尚未导入节点</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="download-btn">下载配置文件</button>
+        <button class="btn" id="copy-btn">复制配置文本</button>
+
+        <button class="btn" id="apply-btn" hidden>载入配置文件</button>
+      </div>
+      <div class="error-box" id="error-box" role="alert" hidden></div>
+      <div class="preview-wrap">
+        <pre class="preview" id="preview"><span class="preview-empty">导入节点后，将自动生成并显示 YAML 配置。</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <footer class="statusbar">
+    <span id="status-text">就绪</span>
+    <span class="status-right">
+      <span id="preview-size" class="status-size"></span>
+      <span id="status-version"></span>
+    </span>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="app/vendor/js-yaml.min.js"></script>
+<script src="app/core/util.js"></script>
+<script src="app/core/yaml.js"></script>
+<script src="app/core/parsers.js"></script>
+<script src="app/core/render.js"></script>
+<script src="app/core/engines.js"></script>
+<script src="app/core/yaml-load.js"></script>
+<script src="app/state.js"></script>
+<script src="app/ui.js"></script>
+<script src="app/main.js"></script>
+
+<script src="app/embed.js"></script>
+
+<script src="app/apply.js"></script>
+</body>
+</html>

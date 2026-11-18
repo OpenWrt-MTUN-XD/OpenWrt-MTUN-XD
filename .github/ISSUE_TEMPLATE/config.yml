@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全问题（私密报告）
+    url: https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/security/advisories/new
+    about: 发现漏洞请走这里，不要开公开 Issue
+  - name: 安装与使用文档
+    url: https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD#readme
+    about: 安装命令、推荐环境、组件升级说明
+  - name: 讨论群组
+    url: https://t.me/+Kdxyw8yLTz85ODg5
+    about: 使用问题、经验交流

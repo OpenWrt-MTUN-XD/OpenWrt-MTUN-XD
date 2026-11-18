@@ -1,0 +1,19 @@
+{
+	"luci-app-mtun-xd": {
+		"description": "Mihomo 管理套件：只允许执行套件脚本（panelinfo / toolpass 等只读查询）与读取升级日志；不再直接开放 config.yaml 与工具密码文件",
+		"read": {
+			"file": {
+				"/usr/sbin/mtun-xd": [
+					"exec"
+				],
+				"/tmp/mtun-xd.log": [
+					"read"
+				],
+				"/tmp/mtun-xd.done": [
+					"read"
+				]
+			}
+		},
+		"write": {}
+	}
+}

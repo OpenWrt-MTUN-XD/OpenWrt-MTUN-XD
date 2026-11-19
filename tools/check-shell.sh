@@ -35,7 +35,6 @@ $ROOT/tools/check-kit-sync.sh
 $ROOT/tools/verify-kit-digest.sh
 $ROOT/tools/check-shell.sh
 $ROOT/tools/uninstall-check.sh
-$ROOT/deploy/migrate-legacy.sh
 "
 
 have_sc=0

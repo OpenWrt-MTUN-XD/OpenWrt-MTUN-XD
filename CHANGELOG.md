@@ -1,5 +1,22 @@
 # 变更记录
 
+## 2026.11.05（未发布）
+
+### 移除
+
+- 维护中心的 80 端口挂载开关（回退为 CLI：`mtun-xd expose on|off|status`）
+  —— 默认安装已自动挂好，这个开关只对极少数人有用，却要重启 uhttpd、页面会短暂掉线
+
+### 修复
+
+- 固件 workflow 的 gate：取不到 Release 元数据时直接失败，不再安静跳过（会少挂固件包）
+- gate 去掉「发布时间 ≤1200 秒」这半句：runner 排队超过窗口时真发版反而被跳过
+- `Firmware` workflow 的触发面补回 `package/usr/sbin`、`package/etc`、`package/www`
+  （这条腿编的就是 `package/` 的内容，只留 `openwrt/**` 等于不再验固件包本体）
+- kit 打包：输出目录护栏（拒绝清空仓库根 / 家目录 / 盘符根）、先写 dist 再发远端、
+  `SHA256SUMS` 字节序排序、目录条目补 DOS 属性位、拒绝符号链接、资产列表分页、
+  ZIP/TAR 结构自检
+
 ## 2026.11.04
 
 ### 修复

@@ -6,7 +6,11 @@ on:
   workflow_dispatch:
   push:
     paths:
+      # 这条腿编的就是 package/ 的内容：脚本 / init / 前端改了必须验一遍
       - 'openwrt/**'
+      - 'package/usr/sbin/**'
+      - 'package/etc/**'
+      - 'package/www/**'
       - '.github/workflows/firmware.yml'
 
 jobs:
@@ -88,7 +92,7 @@ jobs:
           done
           [ -n "$APK" ] || { echo '✘ 没找到 apk 工具，无法校验 APKv3'; exit 1; }
           echo "apk 版本: $("$APK" --version 2>&1 | head -1)"
-          "$APK" extract --help 2>&1 | head -3 || true
+          "$APK" --help 2>&1 | head -20 || true
 
           # 当前 SDK 的 apk 不提供 manifest，改用 extract 检查包内文件（只读，不装依赖）
           rm -rf /tmp/apkx

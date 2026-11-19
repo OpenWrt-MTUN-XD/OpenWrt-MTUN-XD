@@ -37,15 +37,20 @@ jobs:
             echo "Release 工作流结论: ${{ github.event.workflow_run.conclusion }} —— 跳过"
             echo "run=0" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          pub=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
+          # ⚠️ 带 token + 超时：runner 是共享出口，匿名 60 次/小时很容易打满。
+          #    取不到事实时必须失败（红），不能推定「不用编」—— 那会安静地少挂固件包。
+          tok="${{ github.token }}"
+          pub=$(curl -fsSL -m 20 -H "Authorization: Bearer $tok" \
+                -H 'Accept: application/vnd.github+json' \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
                 | grep -m1 '"published_at"' | sed 's/.*"published_at": *"\([^"]*\)".*/\1/')
-          echo "最新 Release 发布时间: ${pub:-未知}"
-          # 判据：latest 必须是「这次 workflow_run 之后」才发布的（时间窗只当兜底）。
-          # 只比 1200 秒的话，发版后 20 分钟内的普通 push 也会被当成发版，白编 2×十几分钟。
+          [ -n "$pub" ] || { echo '✘ 取不到 Release 元数据（网络 / 限流）—— 不敢跳过，直接失败'; exit 1; }
+          echo "最新 Release 发布时间: $pub"
+          # 判据只有一条：latest 必须是「这次 workflow_run 之后」才发布的。
+          # 再加时间窗只会误伤：runner 排队超过窗口时，真发版反而被跳过。
           run_at=$(date -d "${{ github.event.workflow_run.created_at }}" +%s 2>/dev/null || echo 0)
           pub_at=$(date -d "$pub" +%s 2>/dev/null || echo 0)
-          age=$(( $(date +%s) - pub_at ))
-          if [ "$pub_at" -gt 0 ] && [ "$run_at" -gt 0 ] && [ "$pub_at" -ge "$run_at" ] && [ "${age:-999999}" -le 1200 ]; then
+          if [ "$pub_at" -gt 0 ] && [ "$run_at" -gt 0 ] && [ "$pub_at" -ge "$run_at" ]; then
             echo "run=1" >> "$GITHUB_OUTPUT"
           else
             echo "run=0" >> "$GITHUB_OUTPUT"
@@ -78,7 +83,9 @@ jobs:
           if [ -z "$tag" ]; then
             # workflow_run 触发：等 Release 收尾后 latest 立即可见，最多重试 6 次
             for i in 1 2 3 4 5 6; do
-              tag=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
+              tag=$(curl -fsSL -m 20 -H "Authorization: Bearer ${{ github.token }}" \
+                -H 'Accept: application/vnd.github+json' \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
                 | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
               [ -n "$tag" ] && break
               sleep 10

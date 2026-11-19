@@ -31,6 +31,18 @@ describe('节点链接解析（对齐基线）', () => {
     expect(MH.parseAnyInput(s.b64_double)).toEqual(s.parsed_b64_double);
   });
 
+  test('S-UI 的「服务器密钥:用户密钥」双段 2022 密钥要接受', () => {
+    const k1 = Buffer.from(Array.from({length:16}, (_,i)=>i)).toString('base64');
+    const k2 = Buffer.from(Array.from({length:16}, (_,i)=>i+16)).toString('base64');
+    const link = 'ss://2022-blake3-aes-128-gcm:' + encodeURIComponent(k1 + ':' + k2) + '@h.example.com:29126#pair';
+    const n = MH.parseAnyInput(link);
+    expect(n.length).toBe(1);
+    expect(n[0].password).toBe(k1 + ':' + k2);
+    // 两段长度都不对时才丢
+    const bad = MH.parseAnyInput('ss://2022-blake3-aes-128-gcm:' + encodeURIComponent('short:short') + '@h.example.com:1#bad');
+    expect(bad.length).toBe(0);
+  });
+
   test('Clash YAML 里的 2022 坏密钥同样被丢弃', () => {
     const bad = Buffer.from('shortkey').toString('base64');
     const yaml = 'proxies:\n  - name: b\n    type: ss\n    server: h.example.com\n'

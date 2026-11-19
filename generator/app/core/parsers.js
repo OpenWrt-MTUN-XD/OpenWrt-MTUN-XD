@@ -238,13 +238,22 @@
     var s = String(password || '').trim();
     // 环境里没有 atob（老浏览器 / 非浏览器宿主）就放行：误丢一个能用的节点比让内核报错更糟
     if (typeof root.atob !== 'function') return true;
-    try {
-      var norm = s.replace(/-/g, '+').replace(/_/g, '/');
-      while (norm.length % 4) norm += '=';
-      return root.atob(norm).length === want;
-    } catch (e) {
-      return false;
+    // S-UI 这类面板给的是「服务器密钥:用户密钥」（多用户 2022），两段都要各自合法；
+    // 单段是普通单用户。>2 段内核也不认，直接判坏。
+    var parts = s.split(':');
+    if (parts.length > 2) return false;
+    for (var i = 0; i < parts.length; i++) {
+      var piece = parts[i].trim();
+      if (!piece) return false;
+      try {
+        var norm = piece.replace(/-/g, '+').replace(/_/g, '/');
+        while (norm.length % 4) norm += '=';
+        if (root.atob(norm).length !== want) return false;
+      } catch (e) {
+        return false;
+      }
     }
+    return true;
   }
 
   function parseSs(u) {
@@ -288,7 +297,13 @@
       method = urlDec(method);
       password = urlDec(password);
     }
-    if (!ssKeyOk(method, password)) { _badKeys += 1; return null; }
+    if (!ssKeyOk(method, password)) {
+      _badKeys += 1;
+      if (_badKeyInfo.length < 3) {
+        _badKeyInfo.push(String(method) + ' / 密钥长度 ' + String(password || '').length);
+      }
+      return null;
+    }
 
     var pluginRaw = qget(params, 'plugin', '');
     var plugin = '';
@@ -977,11 +992,13 @@
   var _yamlError = null;
   var _yamlDropped = 0;
   var _badKeys = 0;   // SS-2022 密钥长度不对被丢掉的条数
+  var _badKeyInfo = [];   // 诊断用：只记「方法 + 长度」，绝不记密钥本身
 
   function yamlError() { return _yamlError; }
   /** 因为 `type` 不认识 / 缺失被丢掉的节点数（界面提示用）。 */
   function yamlDropped() { return _yamlDropped; }
   function badKeys() { return _badKeys; }
+  function badKeyInfo() { return _badKeyInfo.slice(); }
 
   /**
    * Clash YAML 里的 proxy 端口也得过一遍范围校验。
@@ -1026,7 +1043,11 @@
           if (!credOk(p)) { _yamlDropped += 1; return false; }
           // Clash YAML 里的 2022 密钥同样要在写盘前拦下（内核只会回一句 illegal base64）
           if (p.type === 'ss' && !ssKeyOk(p.method || p.cipher, p.password)) {
-            _badKeys += 1; return false;
+            _badKeys += 1;
+            if (_badKeyInfo.length < 3) {
+              _badKeyInfo.push(String(p.method || p.cipher) + ' / 密钥长度 ' + String(p.password || '').length);
+            }
+            return false;
           }
           return true;
         });
@@ -1055,6 +1076,7 @@
     _yamlError = null;
     _yamlDropped = 0;
     _badKeys = 0;
+    _badKeyInfo = [];
     lastHashRepairs = 0;
     var got = parseYamlOrNodes(text);
     if (got && got.length) return got;
@@ -1076,6 +1098,7 @@
   MH.yamlError = yamlError;
   MH.yamlDropped = yamlDropped;
   MH.badKeys = badKeys;
+  MH.badKeyInfo = badKeyInfo;
   MH.hashRepairs = hashRepairs;
   MH.cleanName = cleanName;
   MH.hostOk = hostOk;

@@ -1515,6 +1515,14 @@
         toast(droppedNodes + ' 个节点被跳过（类型不受支持 / 主机或端口不合法 / 缺少必填凭据）。', 'err');
         return false;
       }
+      // 全是 SS-2022 但密钥不对：内核会直接拒载整份配置，所以这类节点只能丢；
+      // 但必须说清楚原因，否则用户只看到「未检测到有效节点」
+      var badKeys = MH.badKeys ? MH.badKeys() : 0;
+      if (badKeys) {
+        var info = (MH.badKeyInfo && MH.badKeyInfo().length) ? '（' + MH.badKeyInfo().join('；') + '）' : '';
+        toast(badKeys + ' 个 SS-2022 节点的密钥格式或长度不对（需 16/32 字节的 base64），已全部跳过。' + info, 'err');
+        return false;
+      }
       toast('未检测到有效节点，请检查分享链接或订阅内容。', 'err');
       return false;
     }

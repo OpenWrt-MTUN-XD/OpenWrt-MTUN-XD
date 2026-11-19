@@ -31,6 +31,13 @@ describe('节点链接解析（对齐基线）', () => {
     expect(MH.parseAnyInput(s.b64_double)).toEqual(s.parsed_b64_double);
   });
 
+  test('SS 明文 userinfo 的百分号要解（2022-blake3 的密钥含 + / =）', () => {
+    const n = MH.parseAnyInput('ss://2022-blake3-aes-128-gcm:a%2Bb%2Fc%3D@h.example.com:29126#k');
+    expect(n.length).toBe(1);
+    expect(n[0].method).toBe('2022-blake3-aes-128-gcm');
+    expect(n[0].password).toBe('a+b/c=');
+  });
+
   test('SS 密码不做二次解码（SIP002 里密码是原文）', () => {
     // base64("aes-128-gcm:pa%2Fss") —— 密码原文就是 pa%2Fss，不该变成 pa/ss
     const b64 = (x) => Buffer.from(x, 'utf8').toString('base64').replace(/=+$/, '');

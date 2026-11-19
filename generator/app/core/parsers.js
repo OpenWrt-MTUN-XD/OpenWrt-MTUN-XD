@@ -233,6 +233,10 @@
     var s = splitHashAndQuery(u, 5);
     var raw = s.raw, remark = s.remark, params = s.params;
     var method, password, sp;
+    // SIP002 有两种 userinfo：base64(method:password)，或者百分号编码的明文 `method:password`。
+    // 前者密码是原文（不能再解一次），后者必须解百分号 —— 2022-blake3 的密钥里常有 `+` `/` `=`，
+    // 不做这一步会得到 `...%2B...`，mihomo 报 illegal base64 data（2026-11 实测）。
+    var userinfoEncoded = false;
     if (raw.indexOf('@') !== -1) {
       var at = rSplitOnce(raw, '@');
       var mp = at[0];
@@ -244,6 +248,7 @@
       } else if (mp.indexOf(':') !== -1) {
         var m2 = splitOnce(mp, ':');
         method = m2[0]; password = m2[1];
+        userinfoEncoded = true;
       } else {
         return null;
       }
@@ -259,9 +264,10 @@
     }
     var hp = splitHostPort(sp, 443);
     var server = hp[0], port = hp[1];
-    // ⚠️ 这里不能再 urlDec：SIP002 的 userinfo 是 base64(method:password)，密码是原文；
-    //    再解一次会把 `pa%2Fss` 变成 `pa/ss`，节点能导入但连不上（2026-11 实测）。
-    //    query 参数（plugin 等）由 qget 解码，与这里无关。
+    if (userinfoEncoded) {
+      method = urlDec(method);
+      password = urlDec(password);
+    }
 
     var pluginRaw = qget(params, 'plugin', '');
     var plugin = '';

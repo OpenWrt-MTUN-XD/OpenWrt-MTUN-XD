@@ -189,17 +189,11 @@
     if (!v) return '';
     if (v.indexOf(':') !== -1) return 'ip';
     if (/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v)) return 'ip';
-    // `192.168.1.10-192.168.1.20` 这种网段写法也是 IP（mihomo 没有 IP 段类型，输出时展开成 CIDR）
-    if (ipRangeToCidrs(v)) return 'ip';
+    // `192.168.1.10-192.168.1.20` 这种网段写法也是 IP（mihomo 没有 IP 段类型，输出时展开成 CIDR）。
+    // 每个八位组都要 ≤255 —— `999.1.1.1-999.1.1.9` 是垃圾输入，不能认成 IP。
+    var rm = /^(\d{1,3}(?:\.\d{1,3}){3})\s*-\s*(\d{1,3}(?:\.\d{1,3}){3})$/.exec(v);
+    if (rm && ipv4ToInt(rm[1]) != null && ipv4ToInt(rm[2]) != null) return 'ip';
     return 'domain';
-  }
-
-  function ipv4ToInt(s) {
-    var m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
-    if (!m) return -1;
-    for (var i = 1; i <= 4; i++) if (parseInt(m[i], 10) > 255) return -1;
-    return ((parseInt(m[1], 10) << 24) | (parseInt(m[2], 10) << 16) |
-      (parseInt(m[3], 10) << 8) | parseInt(m[4], 10)) >>> 0;
   }
 
   function intToIpv4(n) {
@@ -215,18 +209,21 @@
     var m = /^\s*(\d{1,3}(?:\.\d{1,3}){3})\s*-\s*(\d{1,3}(?:\.\d{1,3}){3})\s*$/.exec(String(v == null ? '' : v));
     if (!m) return null;
     var a = ipv4ToInt(m[1]), b = ipv4ToInt(m[2]);
-    if (a < 0 || b < 0 || a > b) return null;
+    // ipv4ToInt 非法时返回 null（不是 -1）—— 必须判 null，否则 256/999 会被当成 0
+    if (a == null || b == null || a > b) return null;
     var out = [];
-    // 标准 range→CIDR：从起始地址按对齐大小逐块吃掉
+    // 标准 range→CIDR：从起始地址按最大对齐块逐块吃掉。
+    // ⚠️ 对齐检验必须针对**候选块**（size*2）：先翻倍再检查，失败时 size 已经是 2 倍，
+    //    会输出 `100/29` 这种没对齐的 CIDR（漏覆盖 + 越界）。
     var cur = a;
     while (cur <= b) {
       var size = 1;
-      while (size < 0x80000000 && (cur & (size - 1)) === 0 && cur + size * 2 - 1 <= b) size *= 2;
+      while (size < 0x80000000 && (cur & (size * 2 - 1)) === 0 && cur + size * 2 - 1 <= b) size *= 2;
       // size 是块大小；前缀长度 = 32 - log2(size)
       var bits = 0, t = size;
       while (t > 1) { t >>= 1; bits++; }
       out.push(intToIpv4(cur) + '/' + (32 - bits));
-      if (out.length > 512) return null;
+      if (out.length > 4096) return null;
       cur += size;
     }
     return out;

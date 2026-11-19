@@ -8,13 +8,45 @@ describe('IP 段（a-b）展开成 CIDR', () => {
   test('classify 认得 IP 段', () => {
     expect(MH.classify('192.168.100.100-192.168.100.200')).toBe('ip');
     expect(MH.classify('not-a-range')).toBe('domain');
-    expect(MH.classify('1.2.3.4-1.2.3.3')).toBe('domain');   // 起止反了
+    // 起止反了：仍是 IP 形态（所以不会退化成一条 DOMAIN 死规则），但展开返回 null → 引擎丢弃
+    expect(MH.classify('1.2.3.4-1.2.3.3')).toBe('ip');
+    expect(MH.ipRangeToCidrs('1.2.3.4-1.2.3.3')).toBeNull();
   });
 
   test('最小 CIDR 展开', () => {
     expect(MH.ipRangeToCidrs('10.0.0.0-10.0.0.255')).toEqual(['10.0.0.0/24']);
     expect(MH.ipRangeToCidrs('1.2.3.4-1.2.3.4')).toEqual(['1.2.3.4/32']);
-    expect(MH.ipRangeToCidrs('192.168.100.100-192.168.100.200').length).toBe(14);
+    expect(MH.ipRangeToCidrs('10.0.0.5-10.0.0.6')).toEqual(['10.0.0.5/32', '10.0.0.6/32']);
+    expect(MH.ipRangeToCidrs('192.168.100.100-192.168.100.200')).toEqual([
+      '192.168.100.100/30', '192.168.100.104/29', '192.168.100.112/28',
+      '192.168.100.128/26', '192.168.100.192/29', '192.168.100.200/32',
+    ]);
+    // 垃圾输入不能在 classify 里变成 IP，也不能产出 0.0.0.0/32 这种越界规则
+    expect(MH.ipRangeToCidrs('999.1.1.1-999.1.1.9')).toBeNull();
+    expect(MH.classify('999.1.1.1-999.1.1.9')).toBe('domain');
+  });
+
+  test('展开结果必须对齐、且刚好覆盖原区间（不漏不越界）', () => {
+    const toInt = (s) => s.split('.').reduce((a, x) => a * 256 + Number(x), 0);
+    const cases = [
+      ['192.168.100.100-192.168.100.200', '192.168.100.100', '192.168.100.200'],
+      ['10.0.0.5-10.0.0.6', '10.0.0.5', '10.0.0.6'],
+      ['192.168.1.1-192.168.1.255', '192.168.1.1', '192.168.1.255'],
+    ];
+    for (const [range, first, last] of cases) {
+      const cidrs = MH.ipRangeToCidrs(range);
+      let expectStart = toInt(first);
+      for (const c of cidrs) {
+        const [addr, maskStr] = c.split('/');
+        const mask = Number(maskStr);
+        const size = Math.pow(2, 32 - mask);
+        const start = toInt(addr);
+        expect(start % size).toBe(0);            // 对齐：任何解析器都不会把它挪到别的段
+        expect(start).toBe(expectStart);         // 连续覆盖，不漏
+        expectStart = start + size;
+      }
+      expect(expectStart - 1).toBe(toInt(last)); // 结尾正好是区间末尾，不越界
+    }
   });
 
   test('引擎把 IP 段写成多条 IP-CIDR，而不是一条 DOMAIN', () => {

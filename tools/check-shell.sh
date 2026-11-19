@@ -82,6 +82,13 @@ done <<EOF
 $FILES
 EOF
 
+# 清单里一个都没查到 = 路径解析坏了，不能算「通过」
+expected=$(printf '%s\n' "$FILES" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+if [ "$checked" -ne "$expected" ]; then
+    echo "✘ 清单解析失败：应查 $expected 个，实际只查到 $checked 个"
+    bad=$((bad + 1))
+fi
+
 if [ "$have_sc" = 0 ]; then
     echo "未安装 shellcheck：只做了 sh -n 语法检查"
 else

@@ -222,10 +222,15 @@ release_meta() {   # release_meta <owner/repo> <tag>；输出缓存文件路径
     if [ ! -s "$cache" ]; then
         url="$GH_API/repos/$repo/releases/tags/$ver"
         rm -f "$cache"
-        curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
+        if ! curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
                 --user-agent "MTUN-XD" \
                 -H 'Accept: application/vnd.github+json' \
-                -o "$cache" "$url" >/dev/null 2>&1 || rm -f "$cache"
+                -o "$cache" "$url" >/dev/null 2>&1 \
+           || ! grep -q '"assets"' "$cache" 2>/dev/null; then
+            # 200 但不是 release JSON（网关页面 / 错误体）也别当缓存
+            rm -f "$cache"
+        fi
+        grep -q '"message"' "$cache" 2>/dev/null && rm -f "$cache"
     fi
     [ -s "$cache" ] || return 1
     printf '%s' "$cache"

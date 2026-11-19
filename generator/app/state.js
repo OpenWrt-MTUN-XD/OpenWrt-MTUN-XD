@@ -45,8 +45,9 @@
       stack: 'mixed',
       ipv6: true,
       webrtc: true,
-      // 广告拦截：勾上就加 Loyalsoldier 的 rule-provider + 一条 RULE-SET（默认**勾选**）
-      adBlock: true,
+      // 广告拦截：勾上就加 217heidai 的 rule-provider + 一条 RULE-SET（默认**不勾**）
+      // 默认关：一份 24 万条的规则集对路由器内存/启动时间都有成本，需要的人自己勾。
+      adBlock: false,
       // 智能选择模式（生成 fallback 测速组并当默认出口），默认不勾：导进来两个以上节点时，
       // 第一个节点本来就是他要的出口，再自动套一层「哪台快走哪台」是替他做决定。
       autoSelect: false,
@@ -77,7 +78,7 @@
       // 默认值必须与 engines.js 里 SplitEngine 构造函数的默认值一一对应，否则「界面显示的
       // 默认」和「引擎实际用的默认」分家，build.test.mjs 的「buildConfig 与 golden 等价」会抓到。
       // 列表类直接引用引擎导出的出厂表；数字存字符串（走 bindInput 的 el.value，与 ipsPerNode 一致）。
-      // 注意：adBlock 出厂是勾选，而引擎构造函数里那个默认仍是 false —— 别只改引擎那边。
+      // 注意：adBlock 出厂不勾，与引擎构造函数里的默认（false）一致。
       logLevel: 'info',
       unifiedDelay: true,
       tcpConcurrent: true,

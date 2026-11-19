@@ -14,7 +14,7 @@ const fx = loadFixtures();
  */
 function reset(overrides = {}) {
   const s = MH.ui.state;
-  // 出厂默认 adBlock 是开的；老用例都只关心自己那件事，这里统一关掉做隔离 —— 默认值本身另有用例盯着。
+  // 出厂默认 adBlock 是关的；老用例都只关心自己那件事，这里统一关掉做隔离 —— 默认值本身另有用例盯着。
   Object.assign(s, MH.defaultState(), { adBlock: false });
   s.nodes = MH.parseAnyInput(fx.nodes_text);
   s.secret = '123456';
@@ -26,13 +26,24 @@ function reset(overrides = {}) {
 const yamlOf = (s) => MH.yamlLoad(MH.ui.buildConfig());
 
 describe('buildConfig：出厂默认', () => {
-  test('广告拦截默认勾选：rule-providers + 第一条规则都在', () => {
+  test('广告拦截默认不勾：配置里没有 rule-providers / adblock 规则', () => {
     const s = MH.ui.state;
     Object.assign(s, MH.defaultState());
     s.nodes = MH.parseAnyInput(fx.nodes_text);
     s.secret = '123456';
     s.port = 9090;
-    expect(s.adBlock).toBe(true);
+    expect(s.adBlock).toBe(false);
+    const text = MH.ui.buildConfig();
+    expect(text).not.toContain('rule-providers:');
+    expect(text).not.toContain('- RULE-SET,adblock,REJECT');
+  });
+
+  test('勾上广告拦截：rule-providers + 第一条规则都在', () => {
+    const s = MH.ui.state;
+    Object.assign(s, MH.defaultState(), { adBlock: true });
+    s.nodes = MH.parseAnyInput(fx.nodes_text);
+    s.secret = '123456';
+    s.port = 9090;
     const text = MH.ui.buildConfig();
     expect(text).toContain('rule-providers:');
     expect(text).toContain('adblock:');

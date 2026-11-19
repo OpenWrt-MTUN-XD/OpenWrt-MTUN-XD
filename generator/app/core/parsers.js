@@ -234,7 +234,7 @@
     var raw = s.raw, remark = s.remark, params = s.params;
     var method, password, sp;
     if (raw.indexOf('@') !== -1) {
-      var at = splitOnce(raw, '@');
+      var at = rSplitOnce(raw, '@');
       var mp = at[0];
       sp = at[1];
       var decoded = b64Decode(mp);
@@ -259,7 +259,9 @@
     }
     var hp = splitHostPort(sp, 443);
     var server = hp[0], port = hp[1];
-    password = urlDec(password);
+    // ⚠️ 这里不能再 urlDec：SIP002 的 userinfo 是 base64(method:password)，密码是原文；
+    //    再解一次会把 `pa%2Fss` 变成 `pa/ss`，节点能导入但连不上（2026-11 实测）。
+    //    query 参数（plugin 等）由 qget 解码，与这里无关。
 
     var pluginRaw = qget(params, 'plugin', '');
     var plugin = '';
@@ -317,10 +319,18 @@
       kv = parseQslDict(splitOnce(extra, '#')[0]);
       for (var k2 in kv) if (Object.prototype.hasOwnProperty.call(kv, k2)) params[k2] = kv[k2];
     }
-    var parts = main.split(':');
-    if (parts.length < 6) return null;
-    var srv = parts[0], port = parts[1], proto = parts[2],
-      method = parts[3], obfs = parts[4], pw = parts[5];
+    var srv, port, proto, method, obfs, pw;
+    if (main.charAt(0) === '[') {
+      // IPv6 字面量：`[addr]:port:protocol:method:obfs:password`
+      var m6 = /^\[([^\]]+)\]:(\d+):([^:]*):([^:]*):([^:]*):(.*)$/.exec(main);
+      if (!m6) return null;
+      srv = m6[1]; port = m6[2]; proto = m6[3]; method = m6[4]; obfs = m6[5]; pw = m6[6];
+    } else {
+      var parts = main.split(':');
+      if (parts.length < 6) return null;
+      srv = parts[0]; port = parts[1]; proto = parts[2];
+      method = parts[3]; obfs = parts[4]; pw = parts[5];
+    }
     var password = b64Decode(pw) || pw;
     return {
       type: 'ssr', server: srv, port: sInt(port, 443),
@@ -338,7 +348,7 @@
     var s = splitHashAndQuery(u, 9);
     var raw = s.raw, remark = s.remark, params = s.params;
     if (raw.indexOf('@') === -1) return null;
-    var at = splitOnce(raw, '@');
+    var at = rSplitOnce(raw, '@');
     var password = urlDec(at[0]);
     var hp = splitHostPort(at[1], 443);
     return {
@@ -349,7 +359,7 @@
       alpn: get(params, 'alpn', ''),
       fp: get(params, 'fp', 'chrome'),
       flow: get(params, 'flow', ''),
-      allow_insecure: sBool(get(params, 'allowInsecure', '0')),
+      allow_insecure: sBool(get(params, 'allowInsecure', get(params, 'insecure', '0'))),
       network: get(params, 'type', 'tcp'),
       host: qget(params, 'host', ''),
       path: qget(params, 'path', '/'),
@@ -408,7 +418,7 @@
     var s = splitHashAndQuery(u, 8);
     var raw = s.raw, remark = s.remark, params = s.params;
     if (raw.indexOf('@') === -1) return null;
-    var at = splitOnce(raw, '@');
+    var at = rSplitOnce(raw, '@');
     var uuid = at[0];
     var hp = splitHostPort(at[1], 443);
     return {
@@ -457,13 +467,13 @@
       params = parseQslDict(q[1]);
     }
     if (raw.indexOf('@') === -1) return null;
-    var at = splitOnce(raw, '@');
+    var at = rSplitOnce(raw, '@');
     var hp = splitHostPort(at[1], 443);
     return {
       type: 'hysteria2', password: urlDec(at[0]),
       server: hp[0], port: hp[1], remarks: remark || hp[0],
       sni: qget(params, 'sni', hp[0]),
-      insecure: sBool(get(params, 'insecure', '0')),
+      insecure: sBool(get(params, 'insecure', get(params, 'allowInsecure', '0'))),
       obfs: get(params, 'obfs', ''),
       obfs_password: qget(params, 'obfs-password', ''),
       up: get(params, 'up', ''), down: get(params, 'down', ''),
@@ -485,7 +495,7 @@
     var raw = s.raw, remark = s.remark, params = s.params;
     var auth, sp;
     if (raw.indexOf('@') !== -1) {
-      var at = splitOnce(raw, '@');
+      var at = rSplitOnce(raw, '@');
       auth = at[0];
       sp = at[1];
     } else {
@@ -497,7 +507,7 @@
       type: 'hysteria', server: hp[0], port: hp[1], remarks: remark || hp[0],
       auth_str: auth ? urlDec(auth) : qget(params, 'auth', ''),
       sni: qget(params, 'peer', hp[0]),
-      insecure: sBool(get(params, 'insecure', '0')),
+      insecure: sBool(get(params, 'insecure', get(params, 'allowInsecure', '0'))),
       up: get(params, 'up', ''), down: get(params, 'down', ''),
       obfs: get(params, 'obfs', ''),
       alpn: get(params, 'alpn', ''),
@@ -513,7 +523,7 @@
     var s = splitHashAndQuery(u, 7);
     var raw = s.raw, remark = s.remark, params = s.params;
     if (raw.indexOf('@') === -1) return null;
-    var at = splitOnce(raw, '@');
+    var at = rSplitOnce(raw, '@');
     var left = at[0];
     var uuid = '', password = '', token = '', version;
     if (left.indexOf(':') !== -1) {
@@ -555,7 +565,7 @@
     var s = splitHashAndQuery(u, 12);
     var raw = s.raw, remark = s.remark, params = s.params;
     if (raw.indexOf('@') === -1) return null;
-    var at = splitOnce(raw, '@');
+    var at = rSplitOnce(raw, '@');
     var hp = splitHostPort(at[1], 2408);
     var AM_KEYS = ['jc', 'jmin', 'jmax', 's1', 's2', 's3', 's4',
       'h1', 'h2', 'h3', 'h4', 'i1', 'i2', 'i3', 'i4', 'i5',
@@ -587,7 +597,7 @@
     var s = splitHashAndQuery(u, 8);
     var raw = s.raw, remark = s.remark, params = s.params;
     if (raw.indexOf('@') === -1) return null;
-    var at = splitOnce(raw, '@');
+    var at = rSplitOnce(raw, '@');
     var hp = splitHostPort(at[1], 443);
     return {
       type: 'snell', psk: urlDec(at[0]),
@@ -609,7 +619,7 @@
     var raw = s.raw, remark = s.remark, params = s.params;
     var user = '', password = '', sp;
     if (raw.indexOf('@') !== -1) {
-      var at = splitOnce(raw, '@');
+      var at = rSplitOnce(raw, '@');
       var auth = at[0];
       sp = at[1];
       if (auth.indexOf(':') !== -1) {
@@ -642,7 +652,7 @@
     var raw = s.raw, remark = s.remark, params = s.params;
     var user = '', password = '', sp;
     if (raw.indexOf('@') !== -1) {
-      var at = splitOnce(raw, '@');
+      var at = rSplitOnce(raw, '@');
       var auth = at[0];
       sp = at[1];
       if (auth.indexOf(':') !== -1) {
@@ -676,7 +686,7 @@
       remark = urlDec(h[1]);
     }
     if (raw.indexOf('@') === -1) return null;
-    var at = splitOnce(raw, '@');
+    var at = rSplitOnce(raw, '@');
     var auth = at[0];
     var sp = at[1];
     var username, password;
@@ -716,7 +726,7 @@
     var s = splitHashAndQuery(u, 12);
     var raw = s.raw, remark = s.remark, params = s.params;
     if (raw.indexOf('@') === -1) return null;
-    var at = splitOnce(raw, '@');
+    var at = rSplitOnce(raw, '@');
     var hp = splitHostPort(at[1], 443);
     return {
       type: 'shadowtls', password: urlDec(at[0]),
@@ -846,7 +856,8 @@
       case 'snell':
         return has(p.psk);
       case 'ssh':
-        return has(p.username);
+        // 没有密码、也没有私钥的 ssh 节点要等内核加载才报错 —— 这里直接丢
+        return has(p.username) && (has(p.password) || has(p['private-key']));
       default:
         return true;
     }
@@ -878,7 +889,8 @@
       if (!(info.port >= 1 && info.port <= 65535)) continue;
       // 缺必填凭据的节点（空 uuid / 空密码 / 没公钥…）会让内核整份配置加载失败
       if (!credOk(info)) continue;
-      var key = stableJson(withoutKey(info, 'name'));
+      // 去重键只看「连出去是不是同一台」：name / remarks 是展示字段，不该参与
+      var key = stableJson(withoutKeys(info, ['name', 'remarks']));
       if (seen[key]) continue;
       seen[key] = true;
       info.name = cleanName(info.remarks, pad3(counter));
@@ -886,6 +898,16 @@
       counter += 1;
     }
     return dedupeNames(proxies);
+  }
+
+  function withoutKeys(obj, keys) {
+    var out = {};
+    for (var k in obj) {
+      if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+      if (keys.indexOf(k) !== -1) continue;
+      out[k] = obj[k];
+    }
+    return out;
   }
 
   function withoutKey(obj, key) {
@@ -968,8 +990,12 @@
           if (!p || typeof p !== 'object' || Array.isArray(p)) return false;
           // 类型不认识 / 缺失 ⇒ 丢掉（否则整份配置被内核拒载）
           if (!typeOk(p)) { _yamlDropped += 1; return false; }
-          return (hostOk(p.server) || NO_SERVER_TYPES.indexOf(p.type) !== -1) &&
-            yamlPortOk(p) && credOk(p);
+          if (!(hostOk(p.server) || NO_SERVER_TYPES.indexOf(p.type) !== -1)) {
+            _yamlDropped += 1; return false;
+          }
+          if (!yamlPortOk(p)) { _yamlDropped += 1; return false; }
+          if (!credOk(p)) { _yamlDropped += 1; return false; }
+          return true;
         });
         if (proxies.length) {
           for (var i = 0; i < proxies.length; i++) {

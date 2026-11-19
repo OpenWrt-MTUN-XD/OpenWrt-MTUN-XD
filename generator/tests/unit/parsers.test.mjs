@@ -31,6 +31,38 @@ describe('节点链接解析（对齐基线）', () => {
     expect(MH.parseAnyInput(s.b64_double)).toEqual(s.parsed_b64_double);
   });
 
+  test('SS 密码不做二次解码（SIP002 里密码是原文）', () => {
+    // base64("aes-128-gcm:pa%2Fss") —— 密码原文就是 pa%2Fss，不该变成 pa/ss
+    const b64 = (x) => Buffer.from(x, 'utf8').toString('base64').replace(/=+$/, '');
+    const n = MH.parseAnyInput('ss://' + b64('aes-128-gcm:pa%2Fss') + '@1.2.3.4:8388#ss');
+    expect(n.length).toBe(1);
+    expect(n[0].password).toBe('pa%2Fss');
+  });
+
+  test('密码里带 @ 不会被整条丢弃（按最后一个 @ 切）', () => {
+    const n = MH.parseAnyInput('trojan://pa@ss@1.2.3.4:443#nodeB');
+    expect(n.length).toBe(1);
+    expect(n[0].password).toBe('pa@ss');
+    expect(n[0].server).toBe('1.2.3.4');
+  });
+
+  test('SSR 的 IPv6 主机不会散架', () => {
+    const b64 = (x) => Buffer.from(x, 'utf8').toString('base64').replace(/=+$/, '');
+    const main = '[2001:db8::1]:443:origin:aes-256-cfb:plain:' + b64('pw');
+    const n = MH.parseAnyInput('ssr://' + b64(main) + '#v6');
+    expect(n.length).toBe(1);
+    expect(n[0].server).toBe('2001:db8::1');
+    expect(n[0].port).toBe(443);
+  });
+
+  test('同一节点不同备注只留一条', () => {
+    const r = MH.parseAnyInput([
+      'trojan://pw@1.2.3.4:443#A',
+      'trojan://pw@1.2.3.4:443#B',
+    ].join(String.fromCharCode(10)));
+    expect(r.length).toBe(1);
+  });
+
   test('parseAnyInput 无节点输入', () => {
     expect(MH.parseAnyInput('hello world, no nodes here')).toEqual(fx.subscription.parsed_empty);
     expect(MH.parseAnyInput('proxies:\n  - name: x\n   type: broken indent\n'))
@@ -263,8 +295,9 @@ describe('vmess 备注 / 保留名', () => {
   });
 
   test('节点名是内置动作（REJECT / DIRECT / GLOBAL）会被改名', () => {
-    const mk = (name) => 'ss://' + b64('aes-256-gcm:p') + '@1.2.3.4:8388#' + name;
-    const r = MH.parseAnyInput([mk('REJECT'), mk('DIRECT'), mk('GLOBAL')].join(String.fromCharCode(10)));
+    // 端口各不相同：这三个用例只关心「名字会不会被改名」，别被去重（同端口=同节点）吃掉
+    const mk = (name, port) => 'ss://' + b64('aes-256-gcm:p') + '@1.2.3.4:' + port + '#' + name;
+    const r = MH.parseAnyInput([mk('REJECT', 8388), mk('DIRECT', 8389), mk('GLOBAL', 8390)].join(String.fromCharCode(10)));
     expect(r.length).toBe(3);
     expect(r.every((x) => !/^(REJECT|DIRECT|GLOBAL)$/.test(x.name))).toBe(true);
   });

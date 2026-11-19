@@ -6,10 +6,6 @@
   OpenWrt / iStoreOS 的 Mihomo 管理套件
 </p>
 
-<p align="center">
-  <img src="docs/banner.png" alt="墨枢云境 · MTUN-XD" width="100%">
-</p>
-
 ---
 
 ## 项目介绍

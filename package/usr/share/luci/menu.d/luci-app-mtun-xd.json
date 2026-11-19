@@ -1,6 +1,6 @@
 {
     "admin/services/mtun-xd": {
-        "title": "MTUN-XD",
+        "title": "墨枢云境",
         "order": 8,
         "action": {
             "type": "firstchild"

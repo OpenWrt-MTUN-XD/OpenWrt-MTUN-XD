@@ -1352,9 +1352,6 @@
     var summary = '节点 ' + state.nodes.length + ' 个 · ' +
       MH.MODES[state.mode].label +
       ' · 配置项 ' + written + ' 条';
-    // 这句话搬到页面底部状态栏里跟「已生成」拼一行，预览卡片里不再单占一行（用户要求）
-    var statusEl = $('preview-status');
-    if (statusEl) { statusEl.hidden = true; statusEl.textContent = summary; }
     statusBase = '配置已生成 · ' + summary;
     $('preview-size').textContent = lines + ' 行 / ' + formatBytes(utf8Bytes(text));
     // 状态栏只说「生成好了」—— 模式在「规则方案」下拉和预览页顶部都写着，别重复三遍

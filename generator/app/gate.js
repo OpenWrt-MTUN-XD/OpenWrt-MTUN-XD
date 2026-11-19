@@ -131,6 +131,13 @@
   }
 
   /** 拿面板那把去问 mihomo：200 = 对；401 / 403 = 错；其它状态当异常报出去。 */
+  /** fetch 失败时的中文说明：超时单独成句，其它用原始消息。 */
+  function fetchErrText(e) {
+    var msg = String((e && e.message) || e || '');
+    if ((e && e.name === 'AbortError') || /abort/i.test(msg)) return '面板接口没响应（4 秒超时）';
+    return msg;
+  }
+
   function verify(secret) {
     return fetchT(root.location.origin + '/version', {
       cache: 'no-store',
@@ -214,7 +221,7 @@
 
   // ── 卡片上的那几个控件 ─────────────────────────────────────────────
   function setBusy(on) {
-    var ids = ['gate-tool', 'gate-panel', 'gate-ok'], i;
+    var ids = ['gate-tool', 'gate-ok'], i;
     for (i = 0; i < ids.length; i++) {
       var el = $(ids[i]);
       if (el) el.disabled = on;
@@ -238,9 +245,8 @@
       box.textContent = err || '';
       box.hidden = !err;
     }
-    var t = $('gate-tool'), p = $('gate-panel');
+    var t = $('gate-tool');
     if (t && prefill && prefill.tool) t.value = prefill.tool;
-    if (p && prefill && prefill.panel) p.value = prefill.panel;   // 面板那把是 hidden 的框
     // ⚠️ 只显示「工具密码」这一格，光标永远落它身上
     if (t) {
       t.focus();
@@ -279,8 +285,6 @@
         // 面板那把过期/不对 —— 绝不能把人挡在门外：那格是自动带进来的，用户看不见也改不了。
         // 清掉它，按「只有工具密码」放行（能用工具，只是没有「载入配置文件」）。
         forget();
-        var p = $('gate-panel');
-        if (p) p.value = '';
         rememberTool(toolPw);
         open();
         // 不弹提示、静默放行 —— 表现是「进去了，但没有『载入配置文件』」，去面板登一次就带对了。
@@ -290,7 +294,7 @@
       remember(panelPw);
       open();
     }, function (e) {
-      ask('够不着面板接口：' + ((e && e.message) || e));
+      ask('够不着面板接口：' + fetchErrText(e));
     });
   }
 
@@ -307,7 +311,7 @@
       forget();          // 错的/过期的先清掉，免得它挡着面板里那把新的
       ask('密码不对', { tool: readTool() });
     }, function (e) {
-      ask('够不着面板接口：' + ((e && e.message) || e));
+      ask('够不着面板接口：' + fetchErrText(e));
     });
   }
 
@@ -352,8 +356,8 @@
     if (!form) return;
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
-      var t = $('gate-tool'), p = $('gate-panel');
-      tryInput(t ? t.value : '', p ? p.value : '');
+      var t = $('gate-tool');
+      tryInput(t ? t.value : '', '');
     });
   }
 

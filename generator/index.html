@@ -26,7 +26,6 @@
     <input class="gate-input" id="gate-tool" type="password" autocomplete="off"
            spellcheck="false" placeholder="工具密码" aria-label="工具密码" disabled>
 
-    <input id="gate-panel" type="hidden" autocomplete="current-password" aria-label="面板密码">
     <button class="btn btn-primary gate-btn" id="gate-ok" type="submit" disabled>进入</button>
     <p class="gate-err" id="gate-err" hidden></p>
   </form>
@@ -136,18 +135,18 @@
           <p class="hint">TCP 保活探测间隔，默认 <code>30</code> 秒</p>
         </div>
         <div class="field">
-          <label class="field-label">统一延迟</label>
+          <label class="field-label" for="unified-delay">统一延迟</label>
           <div class="check"><input type="checkbox" id="unified-delay"> 启用</div>
           <p class="hint">测速握手超时时间，智能选择</p>
         </div>
         <div class="field">
-          <label class="field-label">TCP 并发</label>
+          <label class="field-label" for="tcp-concurrent">TCP 并发</label>
           <div class="check"><input type="checkbox" id="tcp-concurrent"> 启用</div>
           <p class="hint">域名解析后的并发连接数，智能选择</p>
         </div>
 
         <div class="field" id="ipv6-field">
-          <label class="field-label">IPv6</label>
+          <label class="field-label" for="ipv6">IPv6</label>
           <div class="check"><input type="checkbox" id="ipv6"> 启用 IPv6</div>
           <p class="hint">解析与出站都走 IPv6</p>
         </div>
@@ -168,28 +167,28 @@
       <div class="mode-panel" data-modes="split">
         <div class="grid" id="role-grid">
           <div class="field" id="auto-select-field">
-            <label class="field-label">路由模式</label>
+            <label class="field-label" for="auto-select">路由模式</label>
             <div class="check"><input type="checkbox" id="auto-select"> 智能选择模式</div>
             <p class="hint" id="auto-select-hint">自动创建智能选择负载均衡组，并将其设为默认出口。</p>
           </div>
           <div class="field">
-            <label class="field-label">区域模式</label>
+            <label class="field-label" for="return-mode">区域模式</label>
             <div class="check"><input type="checkbox" id="return-mode"> 回国模式</div>
             <p class="hint">启用回国模式，反转 DNS 解析与路由规则，适用于海外访问国内网络。</p>
           </div>
           <div class="field">
-            <label class="field-label">代理模式</label>
+            <label class="field-label" for="global-proxy">代理模式</label>
             <div class="check"><input type="checkbox" id="global-proxy"> 全局代理</div>
             <p class="hint">所有网络流量均通过代理转发。</p>
           </div>
 
           <div class="field">
-            <label class="field-label">WebRTC 防泄露</label>
+            <label class="field-label" for="webrtc">WebRTC 防泄露</label>
             <div class="check"><input type="checkbox" id="webrtc"> 启用</div>
             <p class="hint">WebRTC STUN 请求通过默认出口发送。</p>
           </div>
           <div class="field">
-            <label class="field-label">广告拦截</label>
+            <label class="field-label" for="blklist">广告拦截</label>
             <div class="check"><input type="checkbox" id="blklist"> 屏蔽广告</div>
             <p class="hint" id="adblock-hint">规则来源：AdBlock Filters</p>
           </div>
@@ -263,7 +262,7 @@
               </button>
               <div class="ms-menu" id="rule-action-menu" role="listbox" hidden></div>
             </div>
-            <button class="btn" id="rule-add">添加</button>
+            <button type="button" class="btn" id="rule-add">添加</button>
           </div>
           <div class="chips" id="rule-list"></div>
           <p class="hint">域名生成 <code>DOMAIN</code> 规则，IP 生成 <code>IP-CIDR</code> / <code>IP-CIDR6</code> 规则。</p>
@@ -418,12 +417,11 @@
 
   <section class="step" data-step="2">
     <div class="card">
-      <p class="card-desc" id="preview-status" hidden>尚未导入节点</p>
       <div class="btn-row">
-        <button class="btn btn-primary" id="download-btn">下载配置文件</button>
-        <button class="btn" id="copy-btn">复制配置文本</button>
+        <button type="button" class="btn btn-primary" id="download-btn">下载配置文件</button>
+        <button type="button" class="btn" id="copy-btn">复制配置文本</button>
 
-        <button class="btn" id="apply-btn" hidden>载入配置文件</button>
+        <button type="button" class="btn" id="apply-btn" hidden>载入配置文件</button>
       </div>
       <div class="error-box" id="error-box" role="alert" hidden></div>
       <div class="preview-wrap">

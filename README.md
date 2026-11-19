@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/assets/logo.png" width="180" alt="MTUN-XD"></p>
+<p align="center"><img src="docs/assets/banner.jpg" alt="MTUN-XD"></p>
 
 <h1 align="center">墨枢云境</h1>
 

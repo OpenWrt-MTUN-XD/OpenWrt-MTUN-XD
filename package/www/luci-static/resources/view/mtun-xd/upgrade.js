@@ -188,12 +188,24 @@ return view.extend({
 		}, [exposeStatusText, btnExposeRetry]);
 		// 文案不当状态机：on/off 单独记，按钮只负责显示
 		var exposeOn = false;
+		var exposeBtnStyle = function () {
+			// 颜色跟「启动服务 / 停止服务」同一套：要做的动作是什么，就用哪种按钮色
+			btnExpose.className = 'cbi-button ' + (exposeOn ? 'cbi-button-reset' : 'cbi-button-apply');
+			btnExpose.style.height = '32px';
+			btnExpose.style.padding = '0 18px';
+			btnExpose.style.borderRadius = '8px';
+			btnExpose.style.fontSize = '13.5px';
+			btnExpose.style.fontWeight = '500';
+			btnExpose.style.letterSpacing = '.3px';
+		};
 		var exposeSet = function (st) {
 			exposeOn = (st === 'on');
-			btnExpose.textContent = exposeOn ? '关闭 80 转发' : '开启 80 转发';
+			// 四字，跟「启动服务 / 停止服务」对齐
+			btnExpose.textContent = exposeOn ? '关闭转发' : '开启转发';
+			exposeBtnStyle();
 			btnExpose.disabled = false;
 			btnExposeRetry.style.display = 'none';
-			exposeStatusText.textContent = exposeOn ? '80 端口：已挂载' : '80 端口：未挂载';
+			exposeStatusText.textContent = exposeOn ? '转发已开启' : '转发已关闭';
 		};
 		var exposeRefresh = function () {
 			fs.exec(C.SCRIPT, ['expose', 'status']).then(function (r) {
@@ -201,24 +213,26 @@ return view.extend({
 				if (st === 'on' || st === 'off') { exposeSet(st); return; }
 				// 读不出明确状态时别猜：锁住按钮，避免下一次操作方向反掉
 				btnExpose.disabled = true;
-				exposeStatusText.textContent = '80 端口：状态未知';
+				btnExpose.textContent = '状态未知';
+				exposeStatusText.textContent = '80 端口读不出来';
 				btnExposeRetry.style.display = '';
 			}).catch(function () {
 				btnExpose.disabled = true;
-				exposeStatusText.textContent = '80 端口：读不到状态';
+				btnExpose.textContent = '状态未知';
+				exposeStatusText.textContent = '80 端口读不出来';
 				btnExposeRetry.style.display = '';
 			});
 		};
 		var btnExpose = E('button', {
 			type: 'button',
-			class: 'cbi-button',
-			style: 'height:32px; padding:0 18px; border-radius:8px; font-size:13.5px;',
+			class: 'cbi-button cbi-button-apply',
+			style: 'height:32px; padding:0 18px; border-radius:8px; font-size:13.5px; font-weight:500; letter-spacing:.3px;',
 			disabled: true,
 			click: function () {
 				var want = exposeOn ? 'off' : 'on';
 				btnExpose.disabled = true;
 				btnExposeRetry.style.display = 'none';
-				exposeStatusText.textContent = want === 'on' ? '正在挂载 80 端口 …' : '正在卸载 80 端口 …';
+				exposeStatusText.textContent = want === 'on' ? '正在开启转发 …' : '正在关闭转发 …';
 				// 中性措辞：on/off 会重启 uhttpd，RPC 回包可能被切断 —— 成败交给随后的状态刷新说话
 				coreLog('已下发 80 端口' + (want === 'on' ? '挂载' : '卸载') + '，正在核对状态 …');
 				fs.exec(C.SCRIPT, ['expose', want]).then(function () {

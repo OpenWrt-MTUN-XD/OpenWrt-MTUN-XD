@@ -474,6 +474,26 @@
   }
   MH.isValidCidr = isValidCidr;
 
+  /**
+   * 域名目标合法性：逗号 / 空格 / 斜杠 / 冒号这些会让规则行多出一列或被截断（整份配置被内核拒载）。
+   * 单标签主机名（`router`）允许；每段 1–63、总长 ≤253、首尾不能是 `-`。
+   */
+  function isValidDomain(d) {
+    var s2 = String(d == null ? '' : d).trim();
+    if (!s2 || s2.length > 253) return false;
+    if (/[\s,\/:;#"'\\?&=%@<>|*]/.test(s2)) return false;
+    if (s2.charAt(0) === '.' || s2.charAt(s2.length - 1) === '.') return false;
+    if (s2.charAt(0) === '-') return false;
+    var labels = s2.split('.');
+    for (var i = 0; i < labels.length; i++) {
+      var L = labels[i];
+      if (!L || L.length > 63) return false;
+      if (L.charAt(0) === '-' || L.charAt(L.length - 1) === '-') return false;
+    }
+    return true;
+  }
+  MH.isValidDomain = isValidDomain;
+
   /** 目标是不是 IPv6（用于「内网控制只吃 IPv4」这条界限）。 */
   function isV6Target(t) {
     var v = String(t == null ? '' : t).trim().replace(/^\[|\]$/g, '');

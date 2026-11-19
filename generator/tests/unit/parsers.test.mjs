@@ -55,6 +55,34 @@ describe('内网控制：只吃 IPv4', () => {
   });
 });
 
+describe('域名目标校验（K-2/K-3）', () => {
+  test('含逗号 / 空格 / 斜杠的目标不合法', () => {
+    expect(MH.isValidDomain('example.com')).toBe(true);
+    expect(MH.isValidDomain('a.b-c.com')).toBe(true);
+    expect(MH.isValidDomain('router')).toBe(true);
+    expect(MH.isValidDomain('中文.com')).toBe(true);
+    expect(MH.isValidDomain('x,y.com')).toBe(false);
+    expect(MH.isValidDomain('foo bar')).toBe(false);
+    expect(MH.isValidDomain('192.168/16')).toBe(false);
+    expect(MH.isValidDomain('a..b')).toBe(false);
+    expect(MH.isValidDomain('-bad.com')).toBe(false);
+  });
+
+  test('引擎不会写出会炸整份配置的 DOMAIN 行', () => {
+    const mk = () => {
+      const e = new MH.SplitEngine();
+      e.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+      e.secret = '1'; e.port = 9090; e.default_node = 'A';
+      return e;
+    };
+    for (const bad of ['x,y.com', 'foo bar', '192.168/16']) {
+      const e = mk();
+      e.custom_rules = [{ target: bad, action: 'A' }];
+      expect(e.generate()).not.toContain(bad);
+    }
+  });
+});
+
 describe('端口判定不能误伤 IPv6（J-1/J-3）', () => {
   test('多段裸 IPv6 不算带端口', () => {
     for (const v of ['fd00::2:1', 'fe80::1:2', '2001:db8::2:1', 'fd00::1', 'fd00:0:0:0:0:0:0:1']) {

@@ -173,6 +173,8 @@
     if (!d) return null;
     if (d.charAt(0) === '.') d = d.slice(1);
     if (!d) return null;
+    // 含逗号/空格/斜杠的「域名」会让规则行多一列 → 内核整份拒载（`proxy [y.com] not found`）
+    if (!MH.isValidDomain(d)) return null;
     return '  - DOMAIN,' + d + ',' + (action || 'DIRECT');
   }
 

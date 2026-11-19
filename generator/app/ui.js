@@ -2149,6 +2149,13 @@
           return;
         }
       }
+      var badDomain = targets.filter(function (t) {
+        return MH.classify(t) === 'domain' && !MH.isValidDomain(t) && !geositeCategory(t);
+      });
+      if (badDomain.length) {
+        toast('目标不合法（' + badDomain[0] + '）：域名里不能有逗号 / 空格 / 斜杠 / 冒号', 'err');
+        return;
+      }
       var added = addRules($('rule-target').value);
       $('rule-target').value = '';
       if (!added) toast('这 ' + targets.length + ' 条已经在列表里了');

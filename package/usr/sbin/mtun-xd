@@ -1218,10 +1218,14 @@ show_status() {
         echo "面板：没装"
     fi
     cv=$(installed_pkg_ver)
-    if [ -f "$UI/config/index.html" ] || [ "$brief" = 1 ]; then
-        echo "控制台：${cv:-未装（读不出版本号）}"
+    # 三段：有版本号 -> 有文件但读不出版本号 -> 真没装。
+    # brief 不再需要单独分支（它原本只是给内核那行去掉「（运行中）」）。
+    if [ -n "$cv" ]; then
+        echo "控制台：$cv"
+    elif [ -f "$UI/config/index.html" ]; then
+        echo "控制台：装了，但读不出版本号"
     else
-        echo "控制台：${cv:-未装}（配置工具没装）"
+        echo "控制台：未装（配置工具没装）"
     fi
     # ⚠️ 顺序：内核必须留在**第一行** —— install.sh 的 core_running() 是
     #    `status | head -1 | grep 运行中`；其余三行按「内核 / 面板 / 控制台 / 配置工具」排，

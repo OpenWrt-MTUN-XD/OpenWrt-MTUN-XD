@@ -332,13 +332,6 @@
     var groups = [], seen = Object.create(null), seq = 0;
     // 只有精准分流才有「智能组占用节点」这回事；一机一IP 里所有节点随便选
     var smartOn = state.mode === 'split' && state.autoSelect && names.length >= 2;
-    // 关掉智能选择的那一帧强制还原手选出口 —— 池里只剩 1 个成员时 defaultNode 会被
-    // 写成那个成员（是有效名字），只靠「当前值失效才还原」会漏掉这种情况。
-    if (smartWasOn && !smartOn && state.defaultNodeMemory &&
-        names.indexOf(state.defaultNodeMemory) !== -1) {
-      state.defaultNode = state.defaultNodeMemory;
-    }
-    smartWasOn = smartOn;
     // 智能选择下，能参与自定义规则的只有反选的节点
     var mixed = smartOn ? names.filter(function (n) {
       return state.autoSelectExclude.indexOf(n) !== -1;
@@ -685,6 +678,13 @@
       return;
     }
     var smartOn = state.mode === 'split' && state.autoSelect && names.length >= 2;
+    // 关掉智能选择的那一帧强制还原手选出口。必须在这里（界面渲染路径）做，不能放进
+    // makeRuleGroups：那是生成路径，改了状态会让「下拉显示 B、配置用 A」错位。
+    if (smartWasOn && !smartOn && state.defaultNodeMemory &&
+        names.indexOf(state.defaultNodeMemory) !== -1) {
+      state.defaultNode = state.defaultNodeMemory;
+    }
+    smartWasOn = smartOn;
     var smartPool = smartOn ? MH.SplitEngine.smartPool(state.nodes, state.autoSelectExclude) : [];
     // 进智能选择之前先记住用户手选的出口：关掉开关时还原，别让出口自己跳回第一个节点
     if (smartOn && state.defaultNode !== MH.SplitEngine.AUTO_GROUP &&
@@ -944,7 +944,7 @@
       if (name === 'DIRECT' || visible.indexOf(name) !== -1) return;
       // 说清它为什么不在常规候选里：是默认出口，还是被智能选择排除了
       var why = state.defaultNode === name ? '（当前默认出口）'
-        : (state.autoSelect ? '（已从智能选择排除）' : '（不在当前候选中）');
+        : (state.autoSelect ? '（已并入智能选择组）' : '（不在当前候选中）');
       var row = ruleActionRow(name + why, name, true, names);
       row.className += ' muted';
       menu.appendChild(row);

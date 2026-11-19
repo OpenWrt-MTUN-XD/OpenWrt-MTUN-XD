@@ -436,7 +436,7 @@
    * 免得各写一份 replace 而漏掉「括号 + 掩码」这种形态（I-1 就是这么炸的）。
    */
   function normalizeHost(t) {
-    var s2 = String(t == null ? '' : t).trim();
+    var s2 = String(t == null ? '' : t).trim().replace(/\.+$/, '');
     if (s2.charAt(0) === '[') {
       var close = s2.indexOf(']');
       if (close > 0) return s2.slice(1, close) + s2.slice(close + 1);

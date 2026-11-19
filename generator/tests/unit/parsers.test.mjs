@@ -70,6 +70,10 @@ describe('域名目标校验（K-2/K-3）', () => {
     expect(MH.isValidDomain('example.com.')).toBe(true);
     expect(MH.isValidDomain('.example.com')).toBe(true);
     expect(MH.isValidDomain('*.example.com')).toBe(false);
+    // 尾点归一必须也覆盖 IP 分支（M-1）
+    expect(MH.classify('8.8.8.8.')).toBe('ip');
+    expect(MH.classify('192.168.0.0/16.')).toBe('ip');
+    expect(MH.isValidCidr('2408:8000::1.')).toBe(true);
   });
 
   test('引擎不会写出会炸整份配置的 DOMAIN 行', () => {

@@ -212,6 +212,16 @@ def main():
         wsrc = open(os.path.join(ROOT, '.github', 'workflows', wf), encoding='utf-8').read()
         check('sh tools/check-shell.sh' in wsrc,
               '%s 走统一的 shell 检查（覆盖 deploy/ 等全部脚本）' % wf)
+    # 老套件 → 新套件的无感迁移脚本：必须随 dist 发布，且真的会挪走老脚本来绕过旧 prerm
+    mig = os.path.join(ROOT, 'dist', 'migrate.sh')
+    check(os.path.exists(mig), 'dist 里有 migrate.sh（存量客户迁移用）')
+    if os.path.exists(mig):
+        msrc = open(mig, encoding='utf-8').read()
+        check('luci-app-mihomo-suite' in msrc and '/usr/sbin/mihomo-suite' in msrc,
+              '迁移脚本会挪走老脚本（旧 prerm 靠它停内核/删核心）')
+        check('pidof mihomo' in msrc and 'config.yaml' in msrc,
+              '迁移前后核对内核进程与配置哈希（证明「没断网」）')
+
     # 写盘 CGI 路径在 apply.js / btn.js 里是**刻意复制**的两份（两套 bundle 各自独立）：
     # 断言两边的字面量集合一致，改一处漏另一处会立刻红，比注释里的「两边一起改」可靠。
     cgi = {}

@@ -174,17 +174,23 @@ return view.extend({
 		var exposeStatus = E('span', {
 			style: 'font-size:12.5px; color:' + P.muted + ';'
 		}, '读状态…');
+		// 文案不当状态机：on/off 单独记，按钮只负责显示
+		var exposeOn = false;
 		var exposeSet = function (st) {
-			var on = st === 'on';
-			btnExpose.textContent = on ? '关闭 80 转发' : '开启 80 转发';
+			exposeOn = (st === 'on');
+			btnExpose.textContent = exposeOn ? '关闭 80 转发' : '开启 80 转发';
 			btnExpose.disabled = false;
-			exposeStatus.textContent = on ? '80 端口：已挂载' : '80 端口：未挂载';
+			exposeStatus.textContent = exposeOn ? '80 端口：已挂载' : '80 端口：未挂载';
 		};
 		var exposeRefresh = function () {
 			fs.exec(C.SCRIPT, ['expose', 'status']).then(function (r) {
-				exposeSet((((r || {}).stdout) || '').trim());
+				var st = (((r || {}).stdout) || '').trim();
+				if (st === 'on' || st === 'off') { exposeSet(st); return; }
+				// 读不出明确状态时别猜：锁住按钮，避免下一次操作方向反掉
+				btnExpose.disabled = true;
+				exposeStatus.textContent = '80 端口：状态未知';
 			}).catch(function () {
-				btnExpose.disabled = false;
+				btnExpose.disabled = true;
 				exposeStatus.textContent = '80 端口：读不到状态';
 			});
 		};
@@ -194,14 +200,15 @@ return view.extend({
 			style: 'height:32px; padding:0 18px; border-radius:8px; font-size:13.5px;',
 			disabled: true,
 			click: function () {
-				var want = btnExpose.textContent.indexOf('关闭') >= 0 ? 'off' : 'on';
+				var want = exposeOn ? 'off' : 'on';
 				btnExpose.disabled = true;
 				exposeStatus.textContent = want === 'on' ? '正在挂载 80 端口 …' : '正在卸载 80 端口 …';
+				// 中性措辞：on/off 会重启 uhttpd，RPC 回包可能被切断 —— 成败交给随后的状态刷新说话
+				coreLog('已下发 80 端口' + (want === 'on' ? '挂载' : '卸载') + '，正在核对状态 …');
 				fs.exec(C.SCRIPT, ['expose', want]).then(function () {
-					coreLog((want === 'on' ? 'OK 80 端口已挂载' : 'OK 80 端口已卸载'));
 					exposeRefresh();
 				}).catch(function () {
-					coreLog('FAIL 80 端口操作失败（看套件日志）');
+					coreLog('⚠️ 80 端口命令回包异常（可能只是 uhttpd 重启），正在核对状态 …');
 					exposeRefresh();
 				});
 			}

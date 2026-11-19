@@ -232,7 +232,7 @@ return baseclass.extend({
 		apply();
 		// 同一页重渲染会再进一次 —— 先摘掉上一轮的监听，否则每次进页都多一个（还抓着旧的 iframe）
 		if (window.__mhScaleApply) window.removeEventListener('resize', window.__mhScaleApply);
-		this._mhScaleApply = apply;
+		window.__mhScaleApply = apply;
 		window.addEventListener('resize', apply);
 	},
 

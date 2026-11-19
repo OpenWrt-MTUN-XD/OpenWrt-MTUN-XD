@@ -188,7 +188,9 @@
     cfg.url = url;
     // 这份配置到底有没有广告清单（决定载入后要不要盯 ruleCount）：生成器勾了「广告拦截」
     // 才会写 `rule-providers: / adblock:`。
-    cfg.hasAdblock = /\nrule-providers:\n {2}adblock:/.test(yaml);
+    // 只要这份配置里「有 rule-providers 段」且段内定义了 adblock，就算带了广告清单。
+    // 不再依赖精确的缩进/换行形态 —— 生成器调整字段顺序或缩进时不会静默失效。
+    cfg.hasAdblock = /^rule-providers:\s*$/m.test(yaml) && /^\s{2}adblock:/m.test(yaml);
     writeFile(cfg, yaml);
   }
 

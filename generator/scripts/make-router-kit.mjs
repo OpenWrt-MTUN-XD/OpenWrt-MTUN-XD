@@ -31,20 +31,28 @@ const OUT = resolve(process.argv[2] || join(homedir(), 'Desktop', 'mihomo-deploy
 function guardOut(dir) {
   const forced = process.argv.includes('--force');
   const name = dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
-  const dangerous =
+  // 关键路径：加 --force 也不放行（手滑一次就是清盘 / 清仓库）
+  const fatal =
     dir === ROOT ||
     dir === resolve(ROOT, '..') ||
     dir === resolve(homedir()) ||
     dir === resolve('/') ||
     /^[A-Za-z]:[\\/]?$/.test(dir) ||
-    dir.length <= 3 ||
-    name !== 'mihomo-deploy';
-  if (dangerous && !forced) {
+    dir.length <= 3;
+  if (fatal) {
+    console.error(`✘ 拒绝清空 ${dir}：这是系统 / 仓库路径，--force 也不放行`);
+    process.exit(1);
+  }
+  // 只有「名字不合规」这一条能用 --force 放行
+  if (name !== 'mihomo-deploy' && !forced) {
     console.error(`✘ 拒绝清空 ${dir}`);
-    console.error('  输出目录必须叫 mihomo-deploy；确实是它的话加 --force。');
+    console.error('  输出目录必须叫 mihomo-deploy；确实是它、只是换了名字，加 --force。');
     process.exit(1);
   }
 }
+
+// 参数一错就别先跑 build（build.mjs 每次都会 rm -rf dist 重建）
+guardOut(OUT);
 /**
  * KIT_NO_PUBLISH=1：只生成本地包，**不上传 genkit、也不动 dist**。
  * 预览（把 kit 推给路由器看效果）必须用它 —— 否则 dist 会被这次生成覆盖，
@@ -233,7 +241,6 @@ function makeTarGz(entries) {
 
 // ② 摊开
 const GEN = join(OUT, 'config');
-guardOut(OUT);
 resetDir(OUT);
 mkdirSync(GEN, { recursive: true });
 cpSync(DIST, GEN, { recursive: true });
@@ -321,6 +328,11 @@ const tarBuf = makeTarGz(webEntries);
     off += Math.ceil(size / 512) * 512;
   }
   if (heads.length !== webEntries.length) throw new Error(`tar 条目数不对：${heads.length} != ${webEntries.length}`);
+
+  // ustar 头里名字只有 100 字节；超了会被静默截断，解包后文件名就是错的
+  for (const e of webEntries) {
+    if (Buffer.byteLength(e.name, 'utf8') > 100) throw new Error(`名字超过 ustar 100 字节：${e.name}`);
+  }
 }
 
 // ⑦ 部署包只发两处：下面第 ⑧ 步的 GitHub 滚动 release（tag `genkit`），和套件仓库的 `dist/`。

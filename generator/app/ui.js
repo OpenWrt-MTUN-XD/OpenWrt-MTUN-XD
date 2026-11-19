@@ -442,6 +442,20 @@
   }
 
   /**
+   * 跑一段赋值，出错时把「是哪个输入框」记在 error.target 上。
+   * refresh 的 catch 用它在界面上展开**包含这个框的那张卡片** —— 比按文案关键字猜准得多
+   * （keep-alive 在主面板、MTU 在进阶卡片、DNS 在独立卡片）。
+   */
+  function withField(id, fn) {
+    try {
+      fn();
+    } catch (e) {
+      if (e && typeof e === 'object' && !e.target) e.target = id;
+      throw e;
+    }
+  }
+
+  /**
    * 把「进阶参数」搬到引擎实例上。分流与一机一IP 共用同一份 `_skeleton`，两个分支都调这一个
    * 函数 —— 分成两份写迟早有一边漏字段，表现是「分流能调、一机一IP 调了没反应」且不报错。
    * 列表为空时不要在这里补默认值：引擎侧 `listOr` 会回落成出厂值，补在这儿反而多一份要同步的。
@@ -453,8 +467,12 @@
     eng.tcp_concurrent = !!state.tcpConcurrent;
     eng.auto_group_round_robin = !!state.autoRoundRobin;
     eng.lb_round_robin = !!state.lbRoundRobin;
-    eng.keep_alive_idle = intInRange(String(state.keepAliveIdle || '').trim() || '60', 'keep-alive-idle', true);
-    eng.keep_alive_interval = intInRange(String(state.keepAliveInterval || '').trim() || '30', 'keep-alive-interval', true);
+    withField('keep-alive-idle', function () {
+      eng.keep_alive_idle = intInRange(String(state.keepAliveIdle || '').trim() || '60', 'keep-alive-idle', true);
+    });
+    withField('keep-alive-interval', function () {
+      eng.keep_alive_interval = intInRange(String(state.keepAliveInterval || '').trim() || '30', 'keep-alive-interval', true);
+    });
     eng.find_process_mode = pickEnum(state.findProcessMode, FIND_PROCESS_MODES, 'off');
 
     // TUN
@@ -462,23 +480,25 @@
     eng.auto_redirect = !!state.autoRedirect;
     eng.auto_detect_interface = !!state.autoDetectInterface;
     eng.strict_route = !!state.strictRoute;
-    eng.mtu = intInRange(String(state.mtu || '').trim() || '1400', 'MTU');
+    withField('mtu', function () {
+      eng.mtu = intInRange(String(state.mtu || '').trim() || '1400', 'MTU');
+    });
     eng.dns_hijack = cleanList(state.dnsHijack);
 
     // DNS
-    eng.dns_listen = dnsListenOf(state.dnsListen);
-    eng.dns_default_ns = dnsItems(state.dnsDefaultNs, '引导 DNS');
-    eng.dns_nameserver = dnsItems(state.dnsNameserver, '默认 DNS');
-    eng.dns_proxy_server_ns = dnsItems(state.dnsProxyServerNs, '节点 DNS');
-    eng.dns_direct_ns = dnsItems(state.dnsDirectNs, '直连 DNS');
-    eng.dns_policy_cn = dnsItems(state.dnsPolicyCn, '中国 DNS');
-    eng.dns_policy_geo = dnsItems(state.dnsPolicyGeo, '国外 DNS');
+    withField('dns-listen', function () { eng.dns_listen = dnsListenOf(state.dnsListen); });
+    withField('dns-default-ns', function () { eng.dns_default_ns = dnsItems(state.dnsDefaultNs, '引导 DNS'); });
+    withField('dns-nameserver', function () { eng.dns_nameserver = dnsItems(state.dnsNameserver, '默认 DNS'); });
+    withField('dns-proxy-server-ns', function () { eng.dns_proxy_server_ns = dnsItems(state.dnsProxyServerNs, '节点 DNS'); });
+    withField('dns-direct-ns', function () { eng.dns_direct_ns = dnsItems(state.dnsDirectNs, '直连 DNS'); });
+    withField('dns-policy-cn', function () { eng.dns_policy_cn = dnsItems(state.dnsPolicyCn, '中国 DNS'); });
+    withField('dns-policy-geo', function () { eng.dns_policy_geo = dnsItems(state.dnsPolicyGeo, '国外 DNS'); });
 
     // sniffer
     eng.sniffer_enable = !!state.snifferEnable;
-    eng.sniffer_http_ports = portItems(state.snifferHttpPorts, 'HTTP 端口');
-    eng.sniffer_tls_ports = portItems(state.snifferTlsPorts, 'TLS 端口');
-    eng.sniffer_quic_ports = portItems(state.snifferQuicPorts, 'QUIC 端口');
+    withField('sniffer-http-ports', function () { eng.sniffer_http_ports = portItems(state.snifferHttpPorts, 'HTTP 端口'); });
+    withField('sniffer-tls-ports', function () { eng.sniffer_tls_ports = portItems(state.snifferTlsPorts, 'TLS 端口'); });
+    withField('sniffer-quic-ports', function () { eng.sniffer_quic_ports = portItems(state.snifferQuicPorts, 'QUIC 端口'); });
     eng.sniffer_skip_domains = cleanList(state.snifferSkipDomains);
   }
 
@@ -1147,7 +1167,12 @@
       one.custom_rules = rules.nodeRules;
       one.custom_groups = groups;
       one.ad_block = state.adBlock;
-      applyAdvanced(one);
+      try {
+        applyAdvanced(one);
+      } catch (e) {
+        if (e && typeof e === 'object') e.adv = true;
+        throw e;
+      }
       return one.generate();
     }
 
@@ -1304,7 +1329,15 @@
       // 报错的是被收起来的「进阶参数」里的字段（DNS / 端口）→ 自动展开，别让人对着一段
       // 红字找不到是哪个框。
       var adv = $('adv-panel');
-      if (adv && !adv.open && e.adv) adv.open = true;
+      var target = e.target ? $(e.target) : null;
+      if (target) {
+        // 知道是哪个框：它包在 <details> 里就展开那张卡；本来就在主面板上（比如 keep-alive）
+        // 就什么都不用做 —— 别去展开一张无关的进阶卡。
+        var card = target.closest ? target.closest('details') : null;
+        if (card && !card.open) card.open = true;
+      } else if (adv && !adv.open && e.adv) {
+        adv.open = true;
+      }
       if (!silent) toast(e.message, 'err');
       return false;
     }

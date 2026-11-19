@@ -13,8 +13,8 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { deflateRawSync, gzipSync } from 'node:zlib';
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { deflateRawSync, gunzipSync, gzipSync } from 'node:zlib';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,28 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
 const DEPLOY = join(ROOT, 'deploy');
 const OUT = resolve(process.argv[2] || join(homedir(), 'Desktop', 'mihomo-deploy'));
+
+/**
+ * ⚠️ 这个脚本会 `rm -rf` 输出目录 —— 传错参数就可能是仓库根 / 桌面 / 盘符根。
+ * 只允许「名字叫 mihomo-deploy 且不在关键路径上」的目录；真要用别的名字加 --force。
+ */
+function guardOut(dir) {
+  const forced = process.argv.includes('--force');
+  const name = dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
+  const dangerous =
+    dir === ROOT ||
+    dir === resolve(ROOT, '..') ||
+    dir === resolve(homedir()) ||
+    dir === resolve('/') ||
+    /^[A-Za-z]:[\\/]?$/.test(dir) ||
+    dir.length <= 3 ||
+    name !== 'mihomo-deploy';
+  if (dangerous && !forced) {
+    console.error(`✘ 拒绝清空 ${dir}`);
+    console.error('  输出目录必须叫 mihomo-deploy；确实是它的话加 --force。');
+    process.exit(1);
+  }
+}
 /**
  * KIT_NO_PUBLISH=1：只生成本地包，**不上传 genkit、也不动 dist**。
  * 预览（把 kit 推给路由器看效果）必须用它 —— 否则 dist 会被这次生成覆盖，
@@ -75,6 +97,10 @@ function walk(dir, base) {
   for (const name of readdirSync(dir).sort()) {
     const full = join(dir, name);
     const rel = base ? `${base}/${name}` : name;
+    if (lstatSync(full).isSymbolicLink()) {
+      // 符号链接一律拒绝：跟着链接走会把仓库外的内容打进包，而且没有任何提示
+      throw new Error(`包里不允许符号链接：${rel}（把它换成真实文件/目录）`);
+    }
     if (statSync(full).isDirectory()) {
       out.push({ name: `${rel}/`, data: Buffer.alloc(0), mode: 0o40755, dir: true });
       out.push(...walk(full, rel));
@@ -131,7 +157,7 @@ function makeZip(entries) {
     ch.writeUInt16LE(0, 32);
     ch.writeUInt16LE(0, 34);
     ch.writeUInt16LE(0, 36);
-    ch.writeUInt32LE((mode << 16) >>> 0, 38);   // 权限位左移 16 位会超 int32，得掰回无符号
+    ch.writeUInt32LE((((mode << 16) | (e.dir ? 0x10 : 0)) >>> 0), 38);   // 高 16 位 Unix 权限；低 16 位 DOS 属性（目录要 0x10）
     ch.writeUInt32LE(offset, 42);
     central.push(ch, nameBuf);
 
@@ -207,6 +233,7 @@ function makeTarGz(entries) {
 
 // ② 摊开
 const GEN = join(OUT, 'config');
+guardOut(OUT);
 resetDir(OUT);
 mkdirSync(GEN, { recursive: true });
 cpSync(DIST, GEN, { recursive: true });
@@ -276,6 +303,26 @@ const webEntries = walk(OUT, '');
 const zipBuf = makeZip(webEntries);
 const tarBuf = makeTarGz(webEntries);
 
+// ⑤″ 自检二：手写的 ZIP/TAR 结构必须能解回来，条目数也得对得上。
+//    （只查「文件在不在」拦不住打包器自己改坏 —— 目录条目漏了、名字截断了都看不出来）
+{
+  const eocdAt = zipBuf.length - 22;
+  if (zipBuf.readUInt32LE(eocdAt) !== 0x06054b50) throw new Error('zip 末尾没有 EOCD，打包器坏了');
+  const zipCount = zipBuf.readUInt16LE(eocdAt + 10);
+  if (zipCount !== webEntries.length) throw new Error(`zip 条目数不对：${zipCount} != ${webEntries.length}`);
+
+  const raw = gunzipSync(tarBuf);
+  const heads = [];
+  for (let off = 0; off + 512 <= raw.length; off += 512) {
+    if (raw[off] === 0) break;                       // 全零块 = 结束
+    const name = raw.subarray(off, off + 100).toString('utf8').replace(/\0+$/, '');
+    if (name) heads.push(name);
+    const size = parseInt(raw.subarray(off + 124, off + 136).toString('utf8').replace(/\0+$/, '').trim() || '0', 8);
+    off += Math.ceil(size / 512) * 512;
+  }
+  if (heads.length !== webEntries.length) throw new Error(`tar 条目数不对：${heads.length} != ${webEntries.length}`);
+}
+
 // ⑦ 部署包只发两处：下面第 ⑧ 步的 GitHub 滚动 release（tag `genkit`），和套件仓库的 `dist/`。
 
 
@@ -324,9 +371,11 @@ async function publishKit(files) {
   if (!rel.ok) throw new Error('release 拿不到 / 建不了：HTTP ' + rel.status);
   const id = (await rel.json()).id;
 
-  for (const a of await (await api('/releases/' + id + '/assets')).json()) {
+  for (const a of await (await api('/releases/' + id + '/assets?per_page=100')).json()) {
     if (files.some((f) => f.name === a.name)) {
-      await api('/releases/assets/' + a.id, { method: 'DELETE' });
+      const del = await api('/releases/assets/' + a.id, { method: 'DELETE' });
+      // 404 = 别人刚删掉，不算错；其余状态留着让下面上传时报 422，能看到真实原因
+      if (!del.ok && del.status !== 404) console.log(`  ⚠️ 删旧资产 ${a.name} 失败：HTTP ${del.status}`);
     }
   }
   for (const f of files) {
@@ -344,19 +393,6 @@ async function publishKit(files) {
   return 'https://github.com/' + repo + '/releases/download/' + tag + '/';
 }
 
-let KIT_URL = '';
-if (NO_PUBLISH) {
-  console.log('  KIT_NO_PUBLISH=1：跳过 genkit 发布（只生成本地包）');
-} else try {
-  KIT_URL = await publishKit([
-    { name: ZIP_NAME, data: zipBuf },
-    { name: TAR_NAME, data: tarBuf },
-    { name: 'generator.sh', data: Buffer.from(lf(readFileSync(join(DEPLOY, 'generator.sh'), 'utf8'))) },
-  ]);
-} catch (e) {
-  console.log(`  ⚠️ 没发上 GitHub（${e.message}）`);
-  console.log(`     套件点「工具升级」会拿到上一版 —— 回头重跑一次这个脚本就补上了`);
-}
 
 // 顺手把 kit 也丢进套件仓库的 dist/（Cloudflare 托管那份）：仓库转私有之后，路由器上的
 // 「工具升级」从这儿拉。⚠️ 找不到那个目录就算了，两个仓库没放在一起时不该拦着打包。
@@ -377,6 +413,20 @@ if (NO_PUBLISH) {
   console.log(`  也放进套件仓库的 dist/（CF 托管那份）：${SUITE_DIST}`);
 }
 
+let KIT_URL = '';
+if (NO_PUBLISH) {
+  console.log('  KIT_NO_PUBLISH=1：跳过 genkit 发布（只生成本地包）');
+} else try {
+  KIT_URL = await publishKit([
+    { name: ZIP_NAME, data: zipBuf },
+    { name: TAR_NAME, data: tarBuf },
+    { name: 'generator.sh', data: Buffer.from(lf(readFileSync(join(DEPLOY, 'generator.sh'), 'utf8'))) },
+  ]);
+} catch (e) {
+  console.log(`  ⚠️ 没发上 GitHub（${e.message}）`);
+  console.log(`     dist/ 已是新版、genkit 还是上一版 —— 重跑一次本脚本补齐（发布顺序故意的：先本地后远端）`);
+}
+
 function updateSums(dir, names) {
   const p = join(dir, 'SHA256SUMS');
   const nameOf = (ln) => ln.trim().split(/\s+/).slice(1).join(' ').replace(/^\*/, '');
@@ -386,7 +436,8 @@ function updateSums(dir, names) {
     lines = lines.filter((ln) => nameOf(ln) !== n);
     lines.push(h + '  ' + n);
   }
-  lines.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+  // 字节序排序：localeCompare 在不同机器/locale 下顺序可能不同，会让 SHA256SUMS 产生无意义 diff
+  lines.sort((a, b) => { const x = nameOf(a), y = nameOf(b); return x < y ? -1 : x > y ? 1 : 0; });
   writeFileSync(p, lines.join('\n') + '\n');
 }
 

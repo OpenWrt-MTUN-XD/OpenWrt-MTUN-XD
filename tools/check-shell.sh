@@ -86,7 +86,7 @@ EOF
 expected=$(printf '%s\n' "$FILES" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
 if [ "$checked" -ne "$expected" ]; then
     echo "✘ 清单解析失败：应查 $expected 个，实际只查到 $checked 个"
-    bad=$((bad + 1))
+    exit 1
 fi
 
 if [ "$have_sc" = 0 ]; then

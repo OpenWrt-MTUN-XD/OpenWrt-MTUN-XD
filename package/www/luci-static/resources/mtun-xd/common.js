@@ -96,8 +96,9 @@ return baseclass.extend({
 		if (this._mhFillTimer) clearTimeout(this._mhFillTimer);
 		this._mhFillTimer = setTimeout(apply, 300);
 		// 同一个页面重渲染时会再进一次 fill —— 老的监听先摘掉，别越攒越多
-		if (this._mhFillApply) window.removeEventListener('resize', this._mhFillApply);
-		this._mhFillApply = apply;
+		// 用 window 级单例：LuCI 进页是新实例，挂在 this 上的监听摘不掉，切三次页就攒三个
+		if (window.__mhFillApply) window.removeEventListener('resize', window.__mhFillApply);
+		window.__mhFillApply = apply;
 		window.addEventListener('resize', apply);
 	},
 
@@ -230,7 +231,7 @@ return baseclass.extend({
 		};
 		apply();
 		// 同一页重渲染会再进一次 —— 先摘掉上一轮的监听，否则每次进页都多一个（还抓着旧的 iframe）
-		if (this._mhScaleApply) window.removeEventListener('resize', this._mhScaleApply);
+		if (window.__mhScaleApply) window.removeEventListener('resize', window.__mhScaleApply);
 		this._mhScaleApply = apply;
 		window.addEventListener('resize', apply);
 	},

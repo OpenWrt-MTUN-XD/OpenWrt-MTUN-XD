@@ -168,9 +168,49 @@ return view.extend({
 		};
 		var btnStart = coreBtn('启动服务', 'cbi-button-apply', 'core-start');
 		var btnStop = coreBtn('停止服务', 'cbi-button-reset', 'core-stop');
+
+		// ── 80 端口转发（对应 uci mtun-xd.main.expose）──
+		// 状态一律现问脚本（expose status），不在页面里另存一份，免得和 uci / 标记文件不一致。
+		var exposeStatus = E('span', {
+			style: 'font-size:12.5px; color:' + P.muted + ';'
+		}, '读状态…');
+		var exposeSet = function (st) {
+			var on = st === 'on';
+			btnExpose.textContent = on ? '关闭 80 转发' : '开启 80 转发';
+			btnExpose.disabled = false;
+			exposeStatus.textContent = on ? '80 端口：已挂载' : '80 端口：未挂载';
+		};
+		var exposeRefresh = function () {
+			fs.exec(C.SCRIPT, ['expose', 'status']).then(function (r) {
+				exposeSet((((r || {}).stdout) || '').trim());
+			}).catch(function () {
+				btnExpose.disabled = false;
+				exposeStatus.textContent = '80 端口：读不到状态';
+			});
+		};
+		var btnExpose = E('button', {
+			type: 'button',
+			class: 'cbi-button',
+			style: 'height:32px; padding:0 18px; border-radius:8px; font-size:13.5px;',
+			disabled: true,
+			click: function () {
+				var want = btnExpose.textContent.indexOf('关闭') >= 0 ? 'off' : 'on';
+				btnExpose.disabled = true;
+				exposeStatus.textContent = want === 'on' ? '正在挂载 80 端口 …' : '正在卸载 80 端口 …';
+				fs.exec(C.SCRIPT, ['expose', want]).then(function () {
+					coreLog((want === 'on' ? 'OK 80 端口已挂载' : 'OK 80 端口已卸载'));
+					exposeRefresh();
+				}).catch(function () {
+					coreLog('FAIL 80 端口操作失败（看套件日志）');
+					exposeRefresh();
+				});
+			}
+		}, '读取…');
+		exposeRefresh();
+
 		var corebar = E('div', {
-			style: 'flex:0 0 auto; display:flex; justify-content:center; align-items:center; gap:22px; padding:12px 0 4px;'
-		}, [btnStart, btnStop]);
+			style: 'flex:0 0 auto; display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:22px; padding:12px 0 4px;'
+		}, [btnStart, btnStop, btnExpose, exposeStatus]);
 		coreRefresh();
 
 		var root = E('div', {}, [corebar, inner]);
@@ -184,8 +224,9 @@ return view.extend({
 			inner.style.margin = '0 ' + m + 'px ' + m + 'px ' + m + 'px';
 		};
 		applyScale();
-		if (this._mhUpApply) window.removeEventListener('resize', this._mhUpApply);
-		this._mhUpApply = applyScale;
+		// LuCI 每次进页都是新实例，this._mhUpApply 摘不掉上一个实例的监听 —— 用 window 级单例
+		if (window.__mhUpApply) window.removeEventListener('resize', window.__mhUpApply);
+		window.__mhUpApply = applyScale;
 		window.addEventListener('resize', applyScale);
 
 		// Argon 容器：#tabmenu / footer —— 一条 CSS 搞定，不用逐个 set style

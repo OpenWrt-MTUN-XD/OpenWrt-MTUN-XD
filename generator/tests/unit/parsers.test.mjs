@@ -31,6 +31,17 @@ describe('节点链接解析（对齐基线）', () => {
     expect(MH.parseAnyInput(s.b64_double)).toEqual(s.parsed_b64_double);
   });
 
+  test('2022 密钥两端空白要去掉（链接与 YAML 两条路径）', () => {
+    const k = Buffer.from(Array.from({length:16}, (_,i)=>i)).toString('base64');
+    const link = MH.parseAnyInput('ss://2022-blake3-aes-128-gcm:' + encodeURIComponent(' ' + k + ' ') + '@h.example.com:1#a');
+    expect(link[0].password).toBe(k);
+    const yaml = 'proxies:\n  - name: y\n    type: ss\n    server: h.example.com\n    port: 1\n'
+      + '    cipher: 2022-blake3-aes-128-gcm\n    password: " ' + k + ' : ' + k + ' "\n';
+    const n = MH.parseAnyInput(yaml);
+    expect(n.length).toBe(1);
+    expect(n[0].password).toBe(k + ':' + k);
+  });
+
   test('S-UI 的「服务器密钥:用户密钥」双段 2022 密钥要接受', () => {
     const k1 = Buffer.from(Array.from({length:16}, (_,i)=>i)).toString('base64');
     const k2 = Buffer.from(Array.from({length:16}, (_,i)=>i+16)).toString('base64');

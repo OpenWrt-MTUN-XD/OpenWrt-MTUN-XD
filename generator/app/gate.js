@@ -37,10 +37,26 @@
   /** 当前该用哪个哈希 —— 读到文件就用文件的，读不到退回装机时注的那个常量。 */
   function currentHash() { return toolHash || TOOL_HASH; }
 
+  /** 带超时的 fetch：探路 / 校验 / 拉哈希都不允许无限挂住（挂住 = 界面永不初始化）。 */
+  function fetchT(url, opts, ms) {
+    if (!root.AbortController) return root.fetch(url, opts);
+    var ac = new root.AbortController();
+    var timer = root.setTimeout(function () { ac.abort(); }, ms || 2500);
+    opts = opts || {};
+    opts.signal = ac.signal;
+    return root.fetch(url, opts).then(function (r) {
+      root.clearTimeout(timer);
+      return r;
+    }, function (e) {
+      root.clearTimeout(timer);
+      throw e;
+    });
+  }
+
   /** 现拉一次 toolhash.txt（`no-store`）；拉不到就用兜底常量，别把门整个卡死。 */
   function loadToolHash() {
     if (!root.fetch) return Promise.resolve();
-    return root.fetch(TOOL_HASH_URL, { cache: 'no-store' })
+    return fetchT(TOOL_HASH_URL, { cache: 'no-store' }, 2500)
       .then(function (r) { return r.ok ? r.text() : ''; })
       .then(function (t) {
         t = (t || '').trim();
@@ -106,7 +122,7 @@
    * 或连不上。注意：只看状态码、不带密钥，不能当登录校验用。
    */
   function servesMihomo() {
-    return root.fetch(root.location.origin + '/version', { cache: 'no-store' })
+    return fetchT(root.location.origin + '/version', { cache: 'no-store' }, 2500)
       .then(function (res) {
         return !!(res.ok || res.status === 401 || res.status === 403);
       }, function () {
@@ -116,10 +132,10 @@
 
   /** 拿面板那把去问 mihomo：200 = 对；401 / 403 = 错；其它状态当异常报出去。 */
   function verify(secret) {
-    return root.fetch(root.location.origin + '/version', {
+    return fetchT(root.location.origin + '/version', {
       cache: 'no-store',
       headers: { Authorization: 'Bearer ' + secret }
-    }).then(function (res) {
+    }, 4000).then(function (res) {
       if (res.ok) return true;
       if (res.status === 401 || res.status === 403) return false;
       throw new Error('HTTP ' + res.status);

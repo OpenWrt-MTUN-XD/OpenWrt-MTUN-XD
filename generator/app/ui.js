@@ -2283,9 +2283,11 @@
     // 跟着系统变会把宿主的明确选择覆盖掉。
     var hosted = doc.body && doc.body.classList.contains('headerless');
     if (root.matchMedia && !hosted) {
-      root.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-        if (!state.theme) applyTheme();
-      });
+      var mq = root.matchMedia('(prefers-color-scheme: dark)');
+      var onScheme = function () { if (!state.theme) applyTheme(); };
+      // 老 Safari（<14）只有 addListener，没有 addEventListener —— 不支持就静默不跟随
+      if (mq.addEventListener) mq.addEventListener('change', onScheme);
+      else if (mq.addListener) mq.addListener(onScheme);
     }
   }
 

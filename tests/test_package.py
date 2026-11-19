@@ -63,6 +63,7 @@ def main():
     ver = generator_version()
     ipk = os.path.join(ROOT, '%s_%s_%s.ipk' % (NAME, ver, ARCH))
 
+    created_pkg = not os.path.exists(ipk)
     if not no_build or not os.path.exists(ipk):
         build()
     if not os.path.exists(ipk):
@@ -82,16 +83,21 @@ def main():
     with tarfile.open(fileobj=io.BytesIO(ctl_bytes), mode='r:gz') as ctl:
         cm = tar_members(ctl)
         control = ctl.extractfile(cm['control']).read().decode('utf-8')
-        check(cm['postinst'].mode & 0o111 != 0, 'control.tar.gz 里 postinst 可执行', oct(cm['postinst'].mode))
-        check(cm['prerm'].mode & 0o111 != 0, 'control.tar.gz 里 prerm 可执行', oct(cm['prerm'].mode))
-        check('postinst' in cm and 'prerm' in cm, '维护脚本齐全')
+        postinst = cm.get('postinst')
+        prerm = cm.get('prerm')
+        check(postinst is not None and prerm is not None, '维护脚本齐全')
+        check(postinst is not None and postinst.mode & 0o111 != 0,
+              'control.tar.gz 里 postinst 可执行', oct(postinst.mode) if postinst else '缺失')
+        check(prerm is not None and prerm.mode & 0o111 != 0,
+              'control.tar.gz 里 prerm 可执行', oct(prerm.mode) if prerm else '缺失')
 
     fields = dict(re.findall(r'^([A-Za-z-]+):\s*(.*)$', control, re.M))
     check(fields.get('Package') == NAME, 'Package 名对', fields.get('Package'))
     check(fields.get('Version') == ver, 'Version 跟生成器一致', '%s vs %s' % (fields.get('Version'), ver))
     check(fields.get('Architecture') == ARCH, 'Architecture: all', fields.get('Architecture'))
-    check((fields.get('Depends') or '').replace(' ', '') == 'curl,luci-base,ca-bundle,kmod-tun',
-          'Depends: curl, luci-base, ca-bundle, kmod-tun', fields.get('Depends'))
+    check(set(x.strip() for x in (fields.get('Depends') or '').split(',') if x.strip())
+          == {'curl', 'luci-base', 'ca-bundle', 'kmod-tun'},
+          'Depends 含 curl / luci-base / ca-bundle / kmod-tun', fields.get('Depends'))
     check('\r' not in control, 'control 里没有 CRLF（路由器不认）')
 
     # acl.d 写坏了要到路由器上才发现 —— 这里先解析一遍
@@ -317,18 +323,25 @@ def main():
     check(build_mod.keep_pkgs(['%s-8.9.36.apk' % NAME], '8.9.36') == {'%s-8.9.36.apk' % NAME},
           '还没有上一版时只留当前')
 
+    # ── CHANGELOG 必须真的写了这一版（build.py 取不到会静默回落成套话）────────
+    cl_path = os.path.join(ROOT, 'CHANGELOG.md')
+    if os.path.exists(cl_path):
+        cl = open(cl_path, encoding='utf-8').read()
+        m = re.search(r'^## %s[^\n]*\n(.*?)(?=^## |\Z)' % re.escape(ver), cl, re.M | re.S)
+        body = (m.group(1) if m else '').strip()
+        check(m is not None, 'CHANGELOG 有当前版本小节（%s）' % ver)
+        check(len(body) > 40, 'CHANGELOG 当前版本小节正文非空', '%d 字符' % len(body))
+
     # ── 状态文案 ↔ 安装脚本判据必须一致 ──────────────────────────────────
     # install.sh 的 core_running() 是「跑 status | head -1 | grep 运行中」；
     # 文案一改就静默失配（2026-11-17 客户案例：内核正常，安装却报「没在跑」）。
     sbin_src = open(os.path.join(ROOT, 'package/usr/sbin/mtun-xd'), encoding='utf-8').read()
     inst_src = open(os.path.join(ROOT, 'install.sh'), encoding='utf-8').read()
     check('（运行中）' in sbin_src, 'status 输出含「（运行中）」')
-    check("corestate" in inst_src, 'install.sh 用 corestate 判断内核状态')
-    check('corestate' in inst_src and "grep -q '运行中'" not in inst_src,
-          '内核状态只认 corestate（老版本回退分支已删）')
+    check('corestate' in inst_src, 'install.sh 用 corestate 判断内核状态')
+    # 封死「改个引号就绕过」：只要 install.sh 里出现「运行中」就算失败
+    check('运行中' not in inst_src, 'install.sh 不再依赖显示文案判断内核状态')
     check('corestate()' in sbin_src, '套件提供 corestate 命令')
-    check('（运行中）' in sbin_src and 'corestate' in inst_src,
-          '显示文案与安装判据解耦')
 
     # ── 终端输出排版：标题/结论前不允许自带空行（交互输出用真终端验证过，这里做静态兜底）──
     check("printf '\\n▶" not in sbin_src and "printf '\\n▶" not in inst_src,
@@ -353,7 +366,7 @@ def main():
         check(bool(got) and got.group(1) == want,
               '固件包版本与 APP_VERSION 一致（%s）' % want)
         check('$(PKG_BUILD_DIR)/package/.' in mk, '固件包直接复用 package/ 目录')
-        check('mtun-xd setup' not in mk or True, '固件包不重复实现 setup')
+        check('mtun-xd setup' not in mk, '固件包不重复实现 setup')
     if os.path.exists(fw_boot):
         boot = open(fw_boot, encoding='utf-8').read()
         check('mtun-xd setup' in boot, '首次开机调用同一个 setup 实现')
@@ -374,6 +387,12 @@ def main():
             print('  · %s' % f)
         return 1
     print('\n✔ 打包自检通过（%d 项）' % len(notes))
+    # 自检过程自己打的包别留在仓库根（.gitignore 挡得住提交，挡不住它一直躺着）
+    if created_pkg and os.path.exists(ipk):
+        try:
+            os.remove(ipk)
+        except OSError:
+            pass
     return 0
 
 

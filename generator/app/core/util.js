@@ -304,6 +304,26 @@
     return out;
   }
 
+  /**
+   * 数一份生成的配置里 `proxies:` 段写入了多少个节点（界面第 3 步显示用）。
+   * 只认块写法：顶格 `proxies:` 到下一个顶格 key 之间、`  - name: ` 开头的行。
+   * ⚠️ 引擎必须保持这个块写法；tests/unit/build.test.mjs 用真实产物钉住了这点。
+   */
+  function countProxies(text) {
+    var s2 = '\n' + String(text == null ? '' : text);
+    var head = '\nproxies:\n';
+    var at = s2.indexOf(head);
+    if (at === -1) return 0;
+    var rest = s2.slice(at + head.length);
+    var end = rest.search(/\n[a-z][a-z-]*:/);
+    var body = '\n' + (end === -1 ? rest : rest.slice(0, end));
+    var n = 0;
+    var re = /\n {2}- name: /g;
+    while (re.exec(body)) n++;
+    return n;
+  }
+
+  MH.countProxies = countProxies;
   MH.truthy = truthy;
   MH.pyStr = pyStr;
   MH.urlDec = urlDec;

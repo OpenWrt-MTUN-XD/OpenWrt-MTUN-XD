@@ -779,6 +779,46 @@ describe('buildConfig：一机一IP 的参数', () => {
   });
 });
 
+describe('countProxies：用引擎真实产物钉住块写法', () => {
+  const build = (nodes, opts) => {
+    const eng = new MH.SplitEngine();
+    Object.assign(eng, {
+      proxies: nodes,
+      secret: '123456',
+      port: 9090,
+      stack: 'mixed',
+      ipv6_enabled: true,
+      webrtc_protect: true,
+      return_mode: false,
+      mainland: false,
+      redir_host: false,
+      controller_listen: MH.DEFAULT_LISTEN,
+      direct_ips: [],
+      direct_domains: [],
+    }, opts || {});
+    return eng.generate();
+  };
+
+  test('单节点 / 名字带空格与 # / 名字带冒号', () => {
+    const one = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+    expect(MH.countProxies(build(one, { default_node: 'A' }))).toBe(1);
+
+    const odd = [
+      { name: 'has space # and: colon', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' },
+    ];
+    expect(MH.countProxies(build(odd, { default_node: odd[0].name }))).toBe(1);
+  });
+
+  test('三个节点只引用一个：引擎只写被引用的，计数与产物一致', () => {
+    const nodes = ['A', 'B', 'C'].map((n, i) => ({
+      name: n, type: 'trojan', server: 'h' + i + '.example.com', port: 443, password: 'p',
+    }));
+    // 引擎会剔除没被任何规则/组引用的节点 —— 界面显示的「写入 N 个」必须跟这个一致
+    const text = build(nodes, { default_node: 'A' });
+    expect(MH.countProxies(text)).toBe(1);
+  });
+});
+
 describe('buildConfig 与 golden 用例等价', () => {
   test('用界面状态装配出的配置，与直接装配引擎的结果一致', () => {
     // 守住"界面这一层没有在搬运过程中篡改任何字段"：

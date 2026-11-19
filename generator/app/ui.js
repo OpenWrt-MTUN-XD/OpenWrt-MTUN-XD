@@ -1217,18 +1217,8 @@
    * 跑一遍 js-yaml 太重。
    */
   function writtenProxies(text) {
-    var s = '\n' + String(text == null ? '' : text);
-    var head = '\nproxies:\n';
-    var at = s.indexOf(head);
-    if (at === -1) return 0;
-    var rest = s.slice(at + head.length);
-    // 下一个顶格 key（proxy-groups: / rule-providers: / rules: …）就是这段的结尾
-    var end = rest.search(/\n[a-z][a-z-]*:/);
-    var body = '\n' + (end === -1 ? rest : rest.slice(0, end));
-    var n = 0;
-    var re = /\n {2}- name: /g;
-    while (re.exec(body)) n++;
-    return n;
+    // 实现放在 core/util.js：单测会用引擎真实产物钉住「块写法」这个前提
+    return MH.countProxies(text);
   }
 
   /** UTF-8 字节数 —— 界面上说「多少 KB」「超过 10 MiB」都得按字节算。 */

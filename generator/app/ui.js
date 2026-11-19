@@ -2114,6 +2114,14 @@
     function addRule() {
       var targets = MH.splitRuleTargets($('rule-target').value);
       if (!targets.length) return;                 // 空的：什么都不做，也别清（本来就没内容）
+      // IP 段起止反了（或八位组越界）：引擎会整条丢掉，用户看到的却是「加进去了没反应」
+      var badRange = targets.filter(function (t) {
+        return MH.classify(t) === 'ip' && t.indexOf('-') !== -1 && !MH.ipRangeToCidrs(t);
+      });
+      if (badRange.length) {
+        toast('IP 段起止反了或地址不合法（' + badRange[0] + '），请写成 192.168.1.10-192.168.1.20', 'err');
+        return;
+      }
       var added = addRules($('rule-target').value);
       $('rule-target').value = '';
       if (!added) toast('这 ' + targets.length + ' 条已经在列表里了');

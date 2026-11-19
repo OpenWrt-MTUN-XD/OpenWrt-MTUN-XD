@@ -219,9 +219,9 @@
     while (cur <= b) {
       var size = 1;
       while (size < 0x80000000 && (cur & (size * 2 - 1)) === 0 && cur + size * 2 - 1 <= b) size *= 2;
-      // size 是块大小；前缀长度 = 32 - log2(size)
-      var bits = 0, t = size;
-      while (t > 1) { t >>= 1; bits++; }
+      // size 是块大小；前缀长度 = 32 - log2(size)。
+      // ⚠️ 不能用 `t >>= 1` 数位：2^31 是有符号位移的负数，会立刻退出循环，把 /1 写成 /31
+      var bits = Math.round(Math.log2(size));
       out.push(intToIpv4(cur) + '/' + (32 - bits));
       if (out.length > 4096) return null;
       cur += size;

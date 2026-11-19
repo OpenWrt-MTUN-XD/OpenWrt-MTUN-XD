@@ -236,11 +236,12 @@
     if (!m) return true;
     var want = m[1].indexOf('128') !== -1 ? 16 : 32;
     var s = String(password || '').trim();
+    // 环境里没有 atob（老浏览器 / 非浏览器宿主）就放行：误丢一个能用的节点比让内核报错更糟
+    if (typeof root.atob !== 'function') return true;
     try {
       var norm = s.replace(/-/g, '+').replace(/_/g, '/');
       while (norm.length % 4) norm += '=';
-      var bin = root.atob ? root.atob(norm) : '';
-      return bin.length === want;
+      return root.atob(norm).length === want;
     } catch (e) {
       return false;
     }
@@ -1023,6 +1024,10 @@
           }
           if (!yamlPortOk(p)) { _yamlDropped += 1; return false; }
           if (!credOk(p)) { _yamlDropped += 1; return false; }
+          // Clash YAML 里的 2022 密钥同样要在写盘前拦下（内核只会回一句 illegal base64）
+          if (p.type === 'ss' && !ssKeyOk(p.method || p.cipher, p.password)) {
+            _badKeys += 1; return false;
+          }
           return true;
         });
         if (proxies.length) {

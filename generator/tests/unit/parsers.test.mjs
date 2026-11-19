@@ -31,6 +31,15 @@ describe('节点链接解析（对齐基线）', () => {
     expect(MH.parseAnyInput(s.b64_double)).toEqual(s.parsed_b64_double);
   });
 
+  test('Clash YAML 里的 2022 坏密钥同样被丢弃', () => {
+    const bad = Buffer.from('shortkey').toString('base64');
+    const yaml = 'proxies:\n  - name: b\n    type: ss\n    server: h.example.com\n'
+      + '    port: 1\n    cipher: 2022-blake3-aes-128-gcm\n    password: "' + bad + '"\n';
+    const n = MH.parseAnyInput(yaml);
+    expect(n.length).toBe(0);
+    expect(MH.badKeys()).toBe(1);
+  });
+
   test('SS-2022 密钥长度不对的节点被丢弃并计数', () => {
     // 合法：16 字节密钥的 base64
     const good = Buffer.from(Array.from({length:16}, (_,i)=>i)).toString('base64');

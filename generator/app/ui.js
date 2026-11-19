@@ -1533,7 +1533,7 @@
     var badKeys = MH.badKeys ? MH.badKeys() : 0;
     var note = droppedNote
       + (droppedNodes ? '（跳过 ' + droppedNodes + ' 个节点：类型 / 主机端口 / 凭据不合法）' : '')
-      + (badKeys ? '（跳过 ' + badKeys + ' 个 SS-2022 节点：密钥长度不对，密钥需是 16/32 字节的 base64）' : '')
+      + (badKeys ? '（跳过 ' + badKeys + ' 个 SS-2022 节点：密钥格式或长度不对（需 16/32 字节的 base64））' : '')
       + (repaired ? '（已自动修正 ' + repaired + ' 条链接里未转义的 #）' : '');
     if (added === 0) {
       toast('未新增节点，解析出的 ' + nodes.length + ' 个节点均已存在。' + note);

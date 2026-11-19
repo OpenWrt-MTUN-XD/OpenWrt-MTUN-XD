@@ -256,8 +256,20 @@
     var at = s.lastIndexOf(':');
     if (at === -1) return yamlAddr(s);
     var host = s.slice(0, at), port = s.slice(at + 1);
+    // ⚠️ 裸 IPv6（`::1`、`2001:db8::1`）和「IPv6+端口」在字面上分不开：末段是数字就会被当端口，
+    //    产出 `[:]:1` 这种非法地址。这里要求 IPv6 必须显式写成 `[::1]:1053`，否则直接报错。
+    if (looksLikeBareIPv6(s)) {
+      throw new Error('DNS 监听地址里的 IPv6 必须带端口和方括号，例如 [::1]:1053');
+    }
     if (!/^[0-9]+$/.test(port)) return yamlAddr(listenHost(s));
     return yamlAddr(listenHost(host) + ':' + port);
+  }
+
+  /** 整串本身就是合法 IPv6（多段冒号、无方括号）—— 这种输入没法再拆出端口。 */
+  function looksLikeBareIPv6(s) {
+    if (s.charAt(0) === '[' || s.indexOf(':') === -1) return false;
+    if (/^[0-9.]+:[0-9]+$/.test(s)) return false;       // IPv4:port
+    return /^[0-9A-Fa-f:.]+$/.test(s) && (s.match(/:/g) || []).length >= 2;
   }
 
   function joinBlocks(blocks) {

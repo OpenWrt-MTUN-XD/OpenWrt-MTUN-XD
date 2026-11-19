@@ -2114,14 +2114,6 @@
     function addRule() {
       var targets = MH.splitRuleTargets($('rule-target').value);
       if (!targets.length) return;                 // 空的：什么都不做，也别清（本来就没内容）
-      // mihomo 内核不支持按 MAC 匹配（实测 1.19.34：unsupported rule type: SRC-MAC）。
-      // 与其写一条永远匹配不上的 DOMAIN 死规则，不如当场说清替代方案。
-      var macs = targets.filter(function (t) { return MH.classify(t) === 'mac'; });
-      if (macs.length) {
-        toast('内核不支持按 MAC 分流（' + macs[0] + '）：给这台设备固定 IP 后，用 IP / IP 段规则，'
-          + '或在「内网控制」里按源 IP 分配', 'err');
-        return;
-      }
       var added = addRules($('rule-target').value);
       $('rule-target').value = '';
       if (!added) toast('这 ' + targets.length + ' 条已经在列表里了');

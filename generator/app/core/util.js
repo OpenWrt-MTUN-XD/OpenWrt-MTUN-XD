@@ -183,18 +183,10 @@
     return ['1', 'true', 'yes', 'on'].indexOf(String(s).toLowerCase()) !== -1;
   }
 
-  /** MAC 地址（`aa:bb:cc:dd:ee:ff` / `aa-bb-...` / `aabb.ccdd.eeff`）。 */
-  function isMac(v) {
-    var s2 = String(v == null ? '' : v).trim();
-    return /^[0-9a-fA-F]{2}([:-])(?:[0-9a-fA-F]{2}\1){4}[0-9a-fA-F]{2}$/.test(s2) ||
-      /^[0-9a-fA-F]{4}\.[0-9a-fA-F]{4}\.[0-9a-fA-F]{4}$/.test(s2);
-  }
-
-  /** Python 的 `classify` —— IP 返回 'ip'，MAC 返回 'mac'，其余非空返回 'domain'。 */
+  /** Python 的 `classify` —— IP 返回 'ip'，其余非空返回 'domain'。 */
   function classify(v) {
     v = (v == null ? '' : String(v)).trim();
     if (!v) return '';
-    if (isMac(v)) return 'mac';
     if (v.indexOf(':') !== -1) return 'ip';
     if (/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v)) return 'ip';
     // `192.168.1.10-192.168.1.20` 这种网段写法也是 IP（mihomo 没有 IP 段类型，输出时展开成 CIDR）。
@@ -380,7 +372,6 @@
   MH.sInt = sInt;
   MH.sBool = sBool;
   MH.classify = classify;
-  MH.isMac = isMac;
   MH.ipRangeToCidrs = ipRangeToCidrs;
   MH.isIp = isIp;
   MH.isIpv6 = isIpv6;

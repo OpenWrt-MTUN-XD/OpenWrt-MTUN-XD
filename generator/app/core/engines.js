@@ -126,9 +126,6 @@
    */
   function ruleLines(t, action) {
     var out = [];
-    // mihomo 没有 SRC-MAC 这类规则（1.19.34 实测 unsupported rule type: SRC-MAC）；
-    // MAC 目标在界面那层就被拦下了，这里再兜一道，绝不写成 DOMAIN 死规则。
-    if (MH.classify(t) === 'mac') return out;
     var cidrs = MH.ipRangeToCidrs(t);
     if (cidrs) {
       for (var i = 0; i < cidrs.length; i++) {

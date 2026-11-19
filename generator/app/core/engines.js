@@ -149,6 +149,9 @@
     var t = String(ip == null ? '' : ip).trim();
     var to = action || 'DIRECT';
     if (MH.isPrivateCidr(t)) {
+      // 私网分支同样要校验：`fd00::1/129`、`192.168.1.1/33`、带 '-' 的 v6 段都是
+      // 畸形输入，直接拼进 SRC-IP-CIDR 会让内核整份拒载（payloadRule error）。
+      if (!validIp(t)) return null;
       var v = t;
       if (v.indexOf('/') === -1) v += v.indexOf(':') !== -1 ? '/128' : '/32';
       return '  - SRC-IP-CIDR,' + v + ',' + to + ',no-resolve';

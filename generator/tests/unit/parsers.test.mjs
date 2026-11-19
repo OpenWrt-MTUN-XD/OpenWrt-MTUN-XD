@@ -32,6 +32,33 @@ describe('IP 规则：内网按来源、公网按目标', () => {
   });
 });
 
+describe('畸形 IP 不能进配置（回归保护）', () => {
+  test('掩码越界 / 缺段 / 带端口都算不合法', () => {
+    expect(MH.isValidCidr('192.168.1.1/33')).toBe(false);
+    expect(MH.isValidCidr('fd00::1/129')).toBe(false);
+    expect(MH.isValidCidr('192.168.100.50')).toBe(true);
+    expect(MH.isValidCidr('fd00::1')).toBe(true);
+    expect(MH.looksLikeBadIp('192.168/16')).toBe(true);
+    expect(MH.looksLikeBadIp('10/8')).toBe(true);
+    expect(MH.looksLikeBadIp('192.168.1.1:8080')).toBe(true);
+    expect(MH.looksLikeBadIp('192.168.1.10')).toBe(false);
+  });
+
+  test('引擎把畸形私网输入丢掉，而不是写进 SRC-IP-CIDR', () => {
+    const mk = () => {
+      const e = new MH.SplitEngine();
+      e.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+      e.secret = '1'; e.port = 9090; e.default_node = 'A';
+      return e;
+    };
+    for (const bad of ['fd00::1/129', '192.168.1.1/33', 'fd00::10-fd00::20']) {
+      const e = mk();
+      e.custom_rules = [{ target: bad, action: 'A' }];
+      expect(e.generate()).not.toContain(bad);
+    }
+  });
+});
+
 describe('IP 段（a-b）展开成 CIDR', () => {
   test('classify 认得 IP 段', () => {
     expect(MH.classify('192.168.100.100-192.168.100.200')).toBe('ip');

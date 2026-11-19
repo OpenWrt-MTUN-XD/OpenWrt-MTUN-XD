@@ -381,10 +381,14 @@
     var t = String(c == null ? '' : c).trim();
     if (!t) return false;
     if (t.indexOf(':') !== -1) {
-      var v6 = t.replace(/^\[|\]$/g, '').toLowerCase();
-      if (v6 === '::1' || v6 === '::1/128') return true;
-      if (/^f[cd][0-9a-f]{2}:/.test(v6)) return true;      // fc00::/7
-      if (/^fe[89ab][0-9a-f]:/.test(v6)) return true;      // fe80::/10
+      var v6p = t.split('/');
+      if (v6p.length > 2) return false;
+      var v6 = v6p[0].replace(/^\[|\]$/g, '').toLowerCase();
+      if (!isIpv6(v6)) return false;                       // 先验整体合法，别把 fd00::10-fd00::20 当内网
+      if (v6p.length === 2 && (!/^[0-9]+$/.test(v6p[1]) || parseInt(v6p[1], 10) > 128)) return false;
+      if (v6 === '::1') return true;
+      if (/^f[cd][0-9a-f]{0,2}:/.test(v6)) return true;    // fc00::/7
+      if (/^fe[89ab][0-9a-f]{0,2}:/.test(v6)) return true; // fe80::/10
       return false;
     }
     var m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}(?:\/(\d{1,2}))?$/.exec(t);
@@ -420,6 +424,37 @@
     return isPrivateCidr(v);
   }
   MH.isPrivateTarget = isPrivateTarget;
+
+  /** 合法 CIDR（v4 / v6，可省掩码）：地址与掩码范围都要对。 */
+  function isValidCidr(t) {
+    var parts = String(t == null ? '' : t).trim().split('/');
+    if (parts.length > 2) return false;
+    var a = parts[0].trim();
+    var v4 = ipv4ToInt(a) !== null;
+    var v6 = !v4 && isIpv6(a);
+    if (!v4 && !v6) return false;
+    if (parts.length === 2) {
+      if (!/^[0-9]+$/.test(parts[1])) return false;
+      if (parseInt(parts[1], 10) > (v4 ? 32 : 128)) return false;
+    }
+    return true;
+  }
+  MH.isValidCidr = isValidCidr;
+
+  /** 看着像 IP / CIDR，但按 mihomo 的语法不合法（缺段、带端口、掩码越界、带 '-' 的 v6 段…）。 */
+  function looksLikeBadIp(t) {
+    var s2 = String(t == null ? '' : t).trim();
+    if (!s2) return false;
+    if (s2.indexOf('-') !== -1) return false;          // IP 段由 ipRangeToCidrs 单独判
+    if (/^\d{1,3}(?:\.\d{1,3}){1,3}$/.test(s2)) return classify(s2) !== 'ip';
+    if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(s2)) return true;   // 带端口的 IP
+    if (/^[0-9a-fA-F:.\/]+$/.test(s2) && (s2.indexOf('/') !== -1 || s2.indexOf(':') !== -1)) {
+      if (classify(s2) !== 'ip') return true;
+      return !isValidCidr(s2);
+    }
+    return false;
+  }
+  MH.looksLikeBadIp = looksLikeBadIp;
   MH.ipRangeToCidrs = ipRangeToCidrs;
   MH.isIp = isIp;
   MH.isIpv6 = isIpv6;

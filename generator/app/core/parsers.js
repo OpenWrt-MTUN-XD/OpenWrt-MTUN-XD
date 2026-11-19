@@ -227,10 +227,6 @@
     return { raw: raw, remark: remark, params: params };
   }
 
-  /**
-   * SS-2022 的密钥必须是 base64 的定长随机串：aes-128-gcm=16 字节、aes-256-gcm/chacha20=32 字节。
-   * 长度不对内核会回 `decode key: illegal base64 data`，用户完全看不懂 —— 这里提前丢弃并计数。
-   */
   /** SS-2022 密钥归一化：单段去首尾空白，多段（服务器:用户）逐段去空白再拼回。 */
   function normalizeSsKey(password) {
     var s = String(password == null ? '' : password);
@@ -238,6 +234,10 @@
     return s.split(':').map(function (x) { return x.trim(); }).join(':');
   }
 
+  /**
+   * SS-2022 的密钥必须是 base64 的定长随机串：aes-128-gcm=16 字节、aes-256-gcm/chacha20=32 字节。
+   * 长度不对内核会回 `decode key: illegal base64 data`，用户完全看不懂 —— 这里提前丢弃并计数。
+   */
   function ssKeyOk(method, password) {
     var m = /^2022-(blake3-aes-128-gcm|blake3-aes-256-gcm|blake3-chacha20-poly1305)$/.exec(String(method || ''));
     if (!m) return true;
@@ -304,7 +304,8 @@
       method = urlDec(method);
       password = urlDec(password);
     }
-    password = normalizeSsKey(password);
+    // 只有 2022 系列才归一化：经典 ss 的密码是内核凭据，trim 掉空格会静默改坏认证
+    if (/^2022-/.test(String(method || ''))) password = normalizeSsKey(password);
     if (!ssKeyOk(method, password)) {
       _badKeys += 1;
       if (_badKeyInfo.length < 3) {
@@ -1050,7 +1051,9 @@
           if (!yamlPortOk(p)) { _yamlDropped += 1; return false; }
           if (!credOk(p)) { _yamlDropped += 1; return false; }
           // Clash YAML 里的 2022 密钥同样要在写盘前拦下（内核只会回一句 illegal base64）
-          if (p.type === 'ss') p.password = normalizeSsKey(p.password);
+          if (p.type === 'ss' && /^2022-/.test(String(p.method || p.cipher || ''))) {
+            p.password = normalizeSsKey(p.password);
+          }
           if (p.type === 'ss' && !ssKeyOk(p.method || p.cipher, p.password)) {
             _badKeys += 1;
             if (_badKeyInfo.length < 3) {

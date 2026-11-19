@@ -31,6 +31,13 @@ describe('节点链接解析（对齐基线）', () => {
     expect(MH.parseAnyInput(s.b64_double)).toEqual(s.parsed_b64_double);
   });
 
+  test('经典 ss 的密码空格原样保留（只有 2022 才归一化）', () => {
+    const b64 = (x) => Buffer.from(x, 'utf8').toString('base64');
+    const n = MH.parseAnyInput('ss://' + b64('aes-256-gcm: pass ') + '@h.example.com:1#c');
+    expect(n.length).toBe(1);
+    expect(n[0].password).toBe(' pass ');
+  });
+
   test('2022 密钥两端空白要去掉（链接与 YAML 两条路径）', () => {
     const k = Buffer.from(Array.from({length:16}, (_,i)=>i)).toString('base64');
     const link = MH.parseAnyInput('ss://2022-blake3-aes-128-gcm:' + encodeURIComponent(' ' + k + ' ') + '@h.example.com:1#a');

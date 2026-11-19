@@ -103,6 +103,7 @@ return view.extend({
 			]);
 		});
 
+		self._upBtns = btns;   // ⚠️ 在这里记，不能等 start()：首次升级前 coreAct 拿不到 []
 		this.refreshStatus(statusEls);
 
 		// 默认不缩放（三页统一 100%）。这页不是 iframe，真要缩只能用 zoom
@@ -158,6 +159,7 @@ return view.extend({
 				if (cmd === 'core-start') { waitRun(0); return; }
 				coreSet(st);
 				coreLog(st === 'stopped' ? 'OK 服务已停止' : ('OK 当前状态：' + st));
+				setBusy(self._upBtns || [], false);   // ⚠️ 停止这条分支也必须解锁
 				self.refreshStatus(statusEls);
 			}).catch(function () { coreLog('FAIL 执行失败（看套件日志）'); setBusy(self._upBtns || [], false); coreRefresh(); });
 		};

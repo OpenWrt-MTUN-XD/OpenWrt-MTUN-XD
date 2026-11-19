@@ -4,6 +4,24 @@ import { loadCore, loadFixtures } from '../helpers/load.mjs';
 const MH = loadCore();
 const fx = loadFixtures();
 
+describe('MAC 目标：内核不支持，只能拦下', () => {
+  test('classify 认出三种 MAC 写法', () => {
+    expect(MH.classify('aa:bb:cc:dd:ee:ff')).toBe('mac');
+    expect(MH.classify('AA-BB-CC-DD-EE-FF')).toBe('mac');
+    expect(MH.classify('aabb.ccdd.eeff')).toBe('mac');
+    expect(MH.classify('aa:bb:cc:dd:ee')).toBe('ip');   // 少一段，按冒号当 IPv6 形态
+  });
+
+  test('引擎不会把 MAC 写成 DOMAIN 死规则', () => {
+    const eng = new MH.SplitEngine();
+    eng.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+    eng.secret = '123456'; eng.port = 9090; eng.default_node = 'A';
+    eng.custom_rules = [{ target: 'aa:bb:cc:dd:ee:ff', action: 'A' }];
+    const t = eng.generate();
+    expect(t).not.toContain('aa:bb:cc:dd:ee:ff');
+  });
+});
+
 describe('IP 段（a-b）展开成 CIDR', () => {
   test('classify 认得 IP 段', () => {
     expect(MH.classify('192.168.100.100-192.168.100.200')).toBe('ip');

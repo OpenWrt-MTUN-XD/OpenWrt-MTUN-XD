@@ -1508,10 +1508,11 @@
         toast('输入的 Clash YAML 格式有误：' + yamlErr, 'err');
         return false;
       }
-      // 全被"type 内核不认"挡掉了：这才是真实原因，别让用户去查协议列表
-      var droppedType = MH.yamlDropped ? MH.yamlDropped() : 0;
-      if (droppedType) {
-        toast(droppedType + ' 个节点的类型不受核心支持或缺少类型定义，已自动跳过。', 'err');
+      // 全被过滤掉了：计数器涵盖「类型不支持 / 主机或端口不合法 / 缺凭据」三类，
+      // 文案别再只说「类型」，否则用户拿着端口写错的 YAML 会被引到错误方向。
+      var droppedNodes = MH.yamlDropped ? MH.yamlDropped() : 0;
+      if (droppedNodes) {
+        toast(droppedNodes + ' 个节点被跳过（类型不受支持 / 主机或端口不合法 / 缺少必填凭据）。', 'err');
         return false;
       }
       toast('未检测到有效节点，请检查分享链接或订阅内容。', 'err');
@@ -1528,9 +1529,9 @@
     // 密码里带了没转义的 `#` 的链接，解析器会自动补上转义（见 parsers.js 的
     // fixUnescapedHash）。这等于替用户改了输入，得说一声 —— 免得他以为密码被读错了。
     var repaired = MH.hashRepairs();
-    var droppedTypes = MH.yamlDropped ? MH.yamlDropped() : 0;
+    var droppedNodes = MH.yamlDropped ? MH.yamlDropped() : 0;
     var note = droppedNote
-      + (droppedTypes ? '（跳过 ' + droppedTypes + ' 个类型不受支持的节点）' : '')
+      + (droppedNodes ? '（跳过 ' + droppedNodes + ' 个节点：类型 / 主机端口 / 凭据不合法）' : '')
       + (repaired ? '（已自动修正 ' + repaired + ' 条链接里未转义的 #）' : '');
     if (added === 0) {
       toast('未新增节点，解析出的 ' + nodes.length + ' 个节点均已存在。' + note);

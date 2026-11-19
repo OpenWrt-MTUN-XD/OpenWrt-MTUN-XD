@@ -602,10 +602,6 @@ def publish_dist(made):
     for p in made:
         shutil.copy2(p, os.path.join(d, os.path.basename(p)))
     shutil.copy2(os.path.join(HERE, 'install.sh'), os.path.join(d, 'install.sh'))
-    # 老套件 → 新套件的无感迁移脚本（存量客户一条命令换过来）
-    mig = os.path.join(HERE, 'deploy', 'migrate-legacy.sh')
-    if os.path.exists(mig):
-        shutil.copy2(mig, os.path.join(d, 'migrate.sh'))
     # 让 install.sh 从 CF 上直接知道最新版本号（不用调 API，省配额）
     with open(os.path.join(d, 'latest.txt'), 'w', newline='\n') as f:
         f.write('v%s\n' % VERSION)

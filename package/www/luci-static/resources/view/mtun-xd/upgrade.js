@@ -169,85 +169,9 @@ return view.extend({
 		var btnStart = coreBtn('启动服务', 'cbi-button-apply', 'core-start');
 		var btnStop = coreBtn('停止服务', 'cbi-button-reset', 'core-stop');
 
-		// ── 80 端口转发（对应 uci mtun-xd.main.expose）──
-		// 状态一律现问脚本（expose status），不在页面里另存一份，免得和 uci / 标记文件不一致。
-		var exposeStatusText = E('span', {}, '读状态…');
-		// 读不到状态时按钮会被锁住 —— 给一个重试入口，别逼用户刷新整页
-		var btnExposeRetry = E('a', {
-			href: '#',
-			style: 'display:none; margin-left:6px; color:' + P.accent + '; cursor:pointer; text-decoration:underline;',
-			click: function (ev) {
-				if (ev && ev.preventDefault) ev.preventDefault();
-				btnExposeRetry.style.display = 'none';
-				exposeStatusText.textContent = '正在重读状态 …';
-				exposeRefresh();
-			}
-		}, '重试');
-		var exposeStatus = E('span', {
-			style: 'font-size:12.5px; color:' + P.muted + ';'
-		}, [exposeStatusText, btnExposeRetry]);
-		// 文案不当状态机：on/off 单独记，按钮只负责显示
-		var exposeOn = false;
-		var exposeBtnStyle = function () {
-			// 颜色跟「启动服务 / 停止服务」同一套：要做的动作是什么，就用哪种按钮色
-			btnExpose.className = 'cbi-button ' + (exposeOn ? 'cbi-button-reset' : 'cbi-button-apply');
-			btnExpose.style.height = '32px';
-			btnExpose.style.padding = '0 18px';
-			btnExpose.style.borderRadius = '8px';
-			btnExpose.style.fontSize = '13.5px';
-			btnExpose.style.fontWeight = '500';
-			btnExpose.style.letterSpacing = '.3px';
-		};
-		var exposeSet = function (st) {
-			exposeOn = (st === 'on');
-			// 四字，跟「启动服务 / 停止服务」对齐
-			btnExpose.textContent = exposeOn ? '关闭转发' : '开启转发';
-			exposeBtnStyle();
-			btnExpose.disabled = false;
-			btnExposeRetry.style.display = 'none';
-			exposeStatusText.textContent = exposeOn ? '转发已开启' : '转发已关闭';
-		};
-		var exposeRefresh = function () {
-			fs.exec(C.SCRIPT, ['expose', 'status']).then(function (r) {
-				var st = (((r || {}).stdout) || '').trim();
-				if (st === 'on' || st === 'off') { exposeSet(st); return; }
-				// 读不出明确状态时别猜：锁住按钮，避免下一次操作方向反掉
-				btnExpose.disabled = true;
-				btnExpose.textContent = '状态未知';
-				exposeStatusText.textContent = '80 端口读不出来';
-				btnExposeRetry.style.display = '';
-			}).catch(function () {
-				btnExpose.disabled = true;
-				btnExpose.textContent = '状态未知';
-				exposeStatusText.textContent = '80 端口读不出来';
-				btnExposeRetry.style.display = '';
-			});
-		};
-		var btnExpose = E('button', {
-			type: 'button',
-			class: 'cbi-button cbi-button-apply',
-			style: 'height:32px; padding:0 18px; border-radius:8px; font-size:13.5px; font-weight:500; letter-spacing:.3px;',
-			disabled: true,
-			click: function () {
-				var want = exposeOn ? 'off' : 'on';
-				btnExpose.disabled = true;
-				btnExposeRetry.style.display = 'none';
-				exposeStatusText.textContent = want === 'on' ? '正在开启转发 …' : '正在关闭转发 …';
-				// 中性措辞：on/off 会重启 uhttpd，RPC 回包可能被切断 —— 成败交给随后的状态刷新说话
-				coreLog('已下发 80 端口' + (want === 'on' ? '挂载' : '卸载') + '，正在核对状态 …');
-				fs.exec(C.SCRIPT, ['expose', want]).then(function () {
-					exposeRefresh();
-				}).catch(function () {
-					coreLog('⚠️ 80 端口命令回包异常（可能只是 uhttpd 重启），正在核对状态 …');
-					exposeRefresh();
-				});
-			}
-		}, '读取…');
-		exposeRefresh();
-
 		var corebar = E('div', {
 			style: 'flex:0 0 auto; display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:22px; padding:12px 0 4px;'
-		}, [btnStart, btnStop, btnExpose, exposeStatus]);
+		}, [btnStart, btnStop]);
 		coreRefresh();
 
 		var root = E('div', {}, [corebar, inner]);

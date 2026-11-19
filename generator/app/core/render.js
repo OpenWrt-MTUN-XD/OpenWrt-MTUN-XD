@@ -15,7 +15,7 @@
   var renderGeneric = MH.renderGeneric;
   var b64urlNopad = MH.b64urlNopad;
 
-  // 节点 → YAML 渲染（ip-version 为出站代理通用字段，仅 ssh 例外）
+  // 节点 → YAML 渲染（ip-version 是所有出站通用的 BasicOption 字段，含 ssh）
   // mihomo 的出站都嵌了 BasicOption，因此都支持 ip-version。
   var IPVERSION_TYPES = ['ss', 'ssr', 'trojan', 'vmess', 'vless', 'hysteria2',
     'hysteria', 'tuic', 'wireguard', 'snell', 'http',
@@ -34,8 +34,30 @@
   function certFingerprint(v) {
     var s = String(v == null ? '' : v).trim();
     if (!s) return '';
+    // 两种来源：Clash 的 64 位 hex，或 hysteria2 链接里的 base64（pinSHA256）
+    if (!/^[0-9a-fA-F]{64}$/.test(s.replace(/:/g, ''))) {
+      var m = /^[A-Za-z0-9+/]{43}=?$|^[A-Za-z0-9_-]{43}$/.test(s) ? b64ToHex(s) : '';
+      if (m) return m;
+    }
     var hex = s.replace(/:/g, '').replace(/^\s+|\s+$/g, '').toLowerCase();
     return /^[0-9a-f]{64}$/.test(hex) ? hex : '';
+  }
+
+  /** base64（标准或 url-safe，允许无 padding）→ 小写 hex；解不出 32 字节就返回空串。 */
+  function b64ToHex(s) {
+    try {
+      var norm = String(s).replace(/-/g, '+').replace(/_/g, '/');
+      while (norm.length % 4) norm += '=';
+      var bin = root.atob ? root.atob(norm) : '';
+      if (bin.length !== 32) return '';
+      var out = '';
+      for (var i = 0; i < bin.length; i++) {
+        out += ('0' + bin.charCodeAt(i).toString(16)).slice(-2);
+      }
+      return out;
+    } catch (e) {
+      return '';
+    }
   }
 
   function get(p, k, d) {
@@ -596,9 +618,14 @@
         var resOut = [];
         for (var i9 = 0; i9 < res.length; i9++) {
           var rv = String(res[i9]).trim();
-          if (rv !== '') resOut.push(gScalar(rv));
+          if (rv === '') continue;
+          // ⚠️ 这里**不能**用 gScalar：它会给数字加引号，而 mihomo 的 reserved 是 []uint8，
+          //    `"1"` 进 uint8 会被拒 → 整份配置加载失败（wg 节点连累所有节点）。
+          var rn = Number(rv);
+          if (!isFinite(rn) || rn < 0 || rn > 255) continue;
+          resOut.push(String(Math.floor(rn)));
         }
-        I(2, 'reserved: [' + resOut.join(', ') + ']');
+        if (resOut.length) I(2, 'reserved: [' + resOut.join(', ') + ']');
       }
       // ⚠️ 官网 wg 示例的顺序是 persistent-keepalive → ip-stack → udp → mtu，
       // 别写成 mtu → udp → persistent-keepalive（见 README 差异表）。
@@ -712,7 +739,8 @@
       I(2, 'server: ' + gScalar(p.server));
       I(2, 'port: ' + pyStr(p.port));
       I(2, 'username: ' + yq(get(p, 'username', '')));
-      I(2, 'password: ' + yq(get(p, 'password', '')));
+      // 只用私钥的节点不写空 password（mihomo 会当成空口令去认证，噪音且容易误判）
+      if (truthy(get(p, 'password', ''))) I(2, 'password: ' + yq(p.password));
       // 键名两种写法都吃：链接解析器给 private_key，Clash YAML 给 private-key。
       var sshPk = p.private_key || p['private-key'];
       if (truthy(sshPk)) I(2, 'private-key: ' + yq(sshPk));

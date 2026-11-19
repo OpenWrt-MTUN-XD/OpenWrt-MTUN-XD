@@ -110,7 +110,7 @@
     if (isAiRule(r)) return 'AI';
     if (isTkRule(r)) return 'TK';
     if (isTencentRule(r)) return 'TC';
-    if (r.type !== 'geosite') return r.match === 'suffix' ? r.target + '（后缀）' : r.target;
+    if (r.type !== 'geosite') return r.target;
     return 'geosite:' + r.target;
   }
 
@@ -262,11 +262,6 @@
         continue;
       }
       if (acts.indexOf('DIRECT') !== -1) {
-        // 后缀匹配必须留在自定义块里，否则会退化成 DOMAIN（只匹配一个域名）
-        if (r.match === 'suffix') {
-          nodeRules.push({ target: target, actions: acts.slice(), match: 'suffix' });
-          continue;
-        }
         // 内网目标 = 「这台设备直连」，按来源匹配；留在自定义块里走 SRC-IP-CIDR。
         // 公网目标才是「访问这些 IP 直连」，进直连块按目标匹配。
         if (MH.classify(target) === 'ip' && MH.isPrivateTarget(target)) {
@@ -2106,7 +2101,6 @@
       if (!targets.length) return 0;
       var acts = ruleActions.length ? ruleActions.slice() : ['DIRECT'];
       var key = acts.slice().sort().join('\u0000');
-      var matchSel = $('rule-match') ? $('rule-match').value : 'auto';
       var added = 0;
       targets.forEach(function (target) {
         // 手输 `geosite:<分类>` 也认，存成 {type:'geosite'} —— 生成 `GEOSITE,<分类>,<出口>`
@@ -2114,12 +2108,9 @@
         var entry = cat
           ? { target: cat, type: 'geosite', actions: acts.slice() }
           : { target: target, actions: acts.slice() };
-        // 只有域名才有「精确 / 后缀」之分；auto 不写进数据（旧数据也是这个形态）
-        if (!cat && matchSel !== 'auto') entry.match = matchSel;
         // 「目标 + 出口组合」都一样才算重复。同一个目标配不同出口是有意义的，别按目标去重。
         var dup = state.customRules.some(function (r) {
           return r.target === entry.target && (r.type || '') === (entry.type || '') &&
-            (r.match || 'auto') === (entry.match || 'auto') &&
             ruleActionsOf(r).slice().sort().join('\u0000') === key;
         });
         if (!dup) { state.customRules.push(entry); added++; }
@@ -2165,14 +2156,6 @@
         toast('域名写法不合法（' + badDomain[0] + '）：不能带逗号 / 空格 / 斜杠 / 冒号 / 通配符，'
           + '也不能有空的标签或首尾的 -', 'err');
         return;
-      }
-      // 后缀匹配只对域名有意义
-      if ($('rule-match') && $('rule-match').value === 'suffix') {
-        var ips = targets.filter(function (t) { return MH.classify(t) === 'ip'; });
-        if (ips.length) {
-          toast('后缀匹配只对域名有效（' + ips[0] + '）：IP 请用「自动」或「精确」', 'err');
-          return;
-        }
       }
       var added = addRules($('rule-target').value);
       $('rule-target').value = '';

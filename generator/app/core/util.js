@@ -387,8 +387,11 @@
       if (!isIpv6(v6)) return false;                       // 先验整体合法，别把 fd00::10-fd00::20 当内网
       if (v6p.length === 2 && (!/^[0-9]+$/.test(v6p[1]) || parseInt(v6p[1], 10) > 128)) return false;
       if (v6 === '::1') return true;
-      if (/^f[cd][0-9a-f]{0,2}:/.test(v6)) return true;    // fc00::/7
-      if (/^fe[89ab][0-9a-f]{0,2}:/.test(v6)) return true; // fe80::/10
+      // IPv6 省略前导零：fc::1 展开是 0x00fc::1（全球单播），不是 ULA。必须按数值判首个 16 位组，
+      // 不能用前缀正则（那会把 fc:: / fc0:: / fcd:: / fe8:: 都当成内网）。
+      var first = v6.indexOf('::') === 0 ? 0 : parseInt(v6.split(':')[0] || '0', 16);
+      if ((first & 0xfe00) === 0xfc00) return true;   // fc00::/7  (fc00–fdff)
+      if ((first & 0xffc0) === 0xfe80) return true;   // fe80::/10 (fe80–febf)
       return false;
     }
     var m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}(?:\/(\d{1,2}))?$/.exec(t);
@@ -427,9 +430,9 @@
 
   /** 合法 CIDR（v4 / v6，可省掩码）：地址与掩码范围都要对。 */
   function isValidCidr(t) {
-    var parts = String(t == null ? '' : t).trim().split('/');
+    var parts = String(t == null ? '' : t).trim().replace(/^\[|\]$/g, '').split('/');
     if (parts.length > 2) return false;
-    var a = parts[0].trim();
+    var a = parts[0].trim().replace(/^\[|\]$/g, '');
     var v4 = ipv4ToInt(a) !== null;
     var v6 = !v4 && isIpv6(a);
     if (!v4 && !v6) return false;

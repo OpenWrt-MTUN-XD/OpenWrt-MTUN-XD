@@ -93,22 +93,13 @@
    * 单条规则。第二个参数是目标出口：某个节点名，或 'DIRECT'；不传就是 DIRECT。
    */
   /** IP / CIDR 合法性（非法条目直接丢，别让内核因为一行废规则整份拒载）。 */
+  /** 合法 CIDR 判定 —— 实现只有一份，在 core/util.js（MH.isValidCidr）。 */
   function validIp(ip) {
-    var parts = String(ip).split('/');
-    if (parts.length > 2) return false;
-    var a = parts[0].trim();
-    var v4 = ipv4ToInt(a) !== null;
-    var v6 = !v4 && isIpv6(a);
-    if (!v4 && !v6) return false;
-    if (parts.length === 2) {
-      if (!/^[0-9]+$/.test(parts[1])) return false;
-      if (parseInt(parts[1], 10) > (v4 ? 32 : 128)) return false;
-    }
-    return true;
+    return MH.isValidCidr(ip);
   }
 
   function ipRule(ip, action) {
-    ip = String(ip == null ? '' : ip).trim();
+    ip = String(ip == null ? '' : ip).trim().replace(/^\[|\]$/g, '');
     if (!ip) return null;
     if (!validIp(ip)) return null;
     var to = action || 'DIRECT';
@@ -146,7 +137,7 @@
    * 内核实测：`SRC-IP-CIDR` 同时接受 IPv4 / IPv6；`SRC-IP-CIDR6` 不存在（unsupported rule type）。
    */
   function scopedIpRule(ip, action) {
-    var t = String(ip == null ? '' : ip).trim();
+    var t = String(ip == null ? '' : ip).trim().replace(/^\[|\]$/g, '');
     var to = action || 'DIRECT';
     if (MH.isPrivateCidr(t)) {
       // 私网分支同样要校验：`fd00::1/129`、`192.168.1.1/33`、带 '-' 的 v6 段都是

@@ -32,6 +32,25 @@ describe('IP 规则：内网按来源、公网按目标', () => {
   });
 });
 
+describe('IPv6 私网判定按数值（不靠前缀正则）', () => {
+  test('fc:: / fc0:: / fcd:: / fe8:: 是全球单播，不是内网', () => {
+    for (const v of ['fc::1', 'fc0::1', 'fcd::1', 'fe8::1']) {
+      expect(MH.isPrivateCidr(v)).toBe(false);
+    }
+    for (const v of ['fd00::1', 'fdff::1', 'fe80::1', 'febf::1', '::1']) {
+      expect(MH.isPrivateCidr(v)).toBe(true);
+    }
+  });
+
+  test('带方括号的 IPv6 会被去掉括号后使用', () => {
+    const e = new MH.SplitEngine();
+    e.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+    e.secret = '1'; e.port = 9090; e.default_node = 'A';
+    e.custom_rules = [{ target: '[fd00::1]', action: 'A' }];
+    expect(e.generate()).toContain('SRC-IP-CIDR,fd00::1/128,A,no-resolve');
+  });
+});
+
 describe('畸形 IP 不能进配置（回归保护）', () => {
   test('掩码越界 / 缺段 / 带端口都算不合法', () => {
     expect(MH.isValidCidr('192.168.1.1/33')).toBe(false);

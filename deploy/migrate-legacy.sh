@@ -110,6 +110,31 @@ else
     warn '老包不在包管理器里（手工铺的？）—— 只挪走脚本，不调包管理器'
 fi
 
+# ── 4.5) 清老套件残留 ────────────────────────────────────────────
+# 包管理器只删它登记过的文件；下面这些是运行时/手工铺出来的，必须自己清：
+#   · /etc/rc.d 里指向已删 init 的悬空链接（老 postinst 跑的 enable）
+#   · 老套件的 LuCI 菜单 / ACL / 页面目录（手工装或残留时）
+#   · /tmp 里的老标记与日志
+#   · /etc/config/mihomo-suite（老套件自己的设置；新套件不读，备份里已留一份）
+scrub_old() {
+    rm -f /usr/sbin/mihomo-suite 2>/dev/null
+    rm -f /etc/init.d/mihomo-suite-selfcheck /etc/init.d/mihomo-suite-firstboot 2>/dev/null
+    rm -f /etc/config/mihomo-suite 2>/dev/null
+    rm -f /usr/share/luci/menu.d/luci-app-mihomo-suite.json 2>/dev/null
+    rm -f /usr/share/rpcd/acl.d/luci-app-mihomo-suite.json 2>/dev/null
+    rm -rf /www/luci-static/resources/view/mihomo-suite 2>/dev/null
+    rm -rf /www/luci-static/resources/mihomo-suite 2>/dev/null
+    rm -f /tmp/mihomo-suite.* 2>/dev/null
+    # 悬空的开机链接（只删链接本身，别碰 /etc/init.d/mihomo —— 那是新套件的）
+    for l in /etc/rc.d/*mihomo-suite*; do
+        [ -e "$l" ] || [ -L "$l" ] || continue
+        case "$l" in
+            *mihomo-suite*) rm -f "$l" 2>/dev/null ;;
+        esac
+    done
+}
+scrub_old
+
 # ── 5) 装新包 ─────────────────────────────────────────────────────
 VER=$(curl -fsSL -m 30 "$CF/latest.txt" 2>/dev/null | tr -d ' \t\r\n' | sed 's/^v//')
 case "$VER" in
@@ -146,6 +171,8 @@ else
     die '没找到 /usr/sbin/mtun-xd —— 新包不完整'
 fi
 
+scrub_old   # 装完再兜一遍（旧文件可能在包管理器删除后又冒出来）
+
 # ── 7) 核对 ───────────────────────────────────────────────────────
 ok=1
 PID1=$(pidof mihomo 2>/dev/null | awk '{print $1}')
@@ -162,6 +189,22 @@ fi
     [ "$SHA1" = "$SHA0" ] && say '  ✔ config.yaml 没被动过' || { warn 'config.yaml 变了！'; ok=0; }
 }
 /usr/sbin/mtun-xd status 2>/dev/null | sed 's/^/  /'
+# 老套件残留必须为 0：包、脚本、菜单、ACL、页面目录、rc.d 链接
+left=0
+pkg_installed "$OLD" && { warn "老包还在：$OLD"; left=$((left+1)); }
+for f in /usr/sbin/mihomo-suite /etc/config/mihomo-suite \
+         /usr/share/luci/menu.d/luci-app-mihomo-suite.json \
+         /usr/share/rpcd/acl.d/luci-app-mihomo-suite.json; do
+    [ -e "$f" ] && { warn "残留文件：$f"; left=$((left+1)); }
+done
+[ -d /www/luci-static/resources/view/mihomo-suite ] && { warn '残留目录：view/mihomo-suite'; left=$((left+1)); }
+[ -d /www/luci-static/resources/mihomo-suite ] && { warn '残留目录：resources/mihomo-suite'; left=$((left+1)); }
+for l in /etc/rc.d/*mihomo-suite*; do
+    { [ -e "$l" ] || [ -L "$l" ]; } || continue
+    warn "残留开机项：$l"; left=$((left+1))
+done
+if [ "$left" = 0 ]; then say '  ✔ 老套件残留：0'; else ok=0; fi
+
 c80=$(curl -s -o /dev/null -m 8 -w '%{http_code}' http://127.0.0.1/ui/ 2>/dev/null || echo 000)
 [ "$c80" = 200 ] && say '  ✔ /ui/ 200' || warn "  ⚠️ /ui/ 返回 $c80（用 expose on 或稍后再看）"
 

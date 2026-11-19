@@ -49,9 +49,9 @@ return view.extend({
 				E('div', {}, ['内核没跑，或面板目录缺失 —— 先跑 ', E('code', {}, '/usr/sbin/mtun-xd status'), ' 看一眼。']),
 				E('div', { style: 'color:var(--mh-muted);' }, '目录没了就 ', E('code', {}, '/usr/sbin/mtun-xd ui'), ' 补装。')
 			] : isLoop ? [
-				E('h3', { style: 'margin:0 0 6px;' }, '检查服务是否正常启动'),
-			E('div', {}, '127.0.0.1:端口  路由管理地址可显示面板。'),
-			E('div', { style: 'color:var(--mh-muted);' }, '如需外网访问监听（0.0.0.0:端口）重启内核。')
+				E('h3', { style: 'margin:0 0 6px;' }, '内核只监听本机回环'),
+			E('div', {}, ['面板挂在 ', E('code', {}, '127.0.0.1'), '，浏览器从路由器管理地址访问不到。']),
+			E('div', { style: 'color:var(--mh-muted);' }, ['把口子挂到 80 上即可：', E('code', {}, '/usr/sbin/mtun-xd expose on'), '（或把监听改成 0.0.0.0 后重启内核）。'])
 			] : [
 				E('h3', { style: 'margin:0 0 6px;' }, '连不上面板'),
 				E('div', {}, ['浏览器够不着 ', E('code', {}, showAddr), '（端口没放行，或不在内网）。'])

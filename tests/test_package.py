@@ -94,6 +94,15 @@ def main():
           'Depends: curl, luci-base, ca-bundle, kmod-tun', fields.get('Depends'))
     check('\r' not in control, 'control 里没有 CRLF（路由器不认）')
 
+    # acl.d 写坏了要到路由器上才发现 —— 这里先解析一遍
+    import json as _json
+    acl_path = os.path.join(ROOT, 'package', 'usr', 'share', 'rpcd', 'acl.d', '%s.json' % NAME)
+    try:
+        _acl = _json.load(open(acl_path, encoding='utf-8'))
+        check(NAME in _acl, 'acl.d 是合法 JSON 且含本包条目')
+    except Exception as e:
+        check(False, 'acl.d 能解析', str(e))
+
     # ── data ──────────────────────────────────────────────────────────────
     with tarfile.open(fileobj=io.BytesIO(dat_bytes), mode='r:gz') as dat:
         dm = tar_members(dat)
@@ -194,9 +203,8 @@ def main():
     # 随包的两个 80 端口适配脚本也得过语法检查（CI 容易漏掉 deploy/ 这一层）
     for wf in ('ci.yml', 'release.yml'):
         wsrc = open(os.path.join(ROOT, '.github', 'workflows', wf), encoding='utf-8').read()
-        check('sh -n deploy/mihomo-haproxy.sh' in wsrc
-              and 'sh -n deploy/mihomo-kwrt-nginx.sh' in wsrc,
-              '%s 会做 deploy/ 脚本的语法检查' % wf)
+        check('sh tools/check-shell.sh' in wsrc,
+              '%s 走统一的 shell 检查（覆盖 deploy/ 等全部脚本）' % wf)
     check('expose_off' in cli and 'HAPROXY_UHTTPD_BAK' in cli,
           'expose off / uninstall 会恢复 uhttpd 80 监听')
     check('expose_ensure >/dev/null 2>&1 || true' in cli,

@@ -69,7 +69,7 @@ return view.extend({
 					E('div', {}, ['内核没跑，或工具目录缺失 —— 先跑 ', E('code', {}, '/usr/sbin/mtun-xd status'), ' 看一眼。']),
 					E('div', { style: 'color:var(--mh-muted);' }, '目录没了就 ', E('code', {}, '/usr/sbin/mtun-xd tool'), ' 补装。')
 				] : isLoop ? [
-								E('h3', { style: 'margin:0; font-weight:400;' }, '启动服务后可使用配置工具')
+								E('h3', { style: 'margin:0; font-weight:400;' }, '配置工具只监听本机回环：跑 /usr/sbin/mtun-xd expose on 把它挂到 80 上')
 				] : [
 					E('h3', { style: 'margin:0 0 6px;' }, '连不上配置工具'),
 					E('div', {}, ['浏览器够不着 ', E('code', {}, 'http://' + String(window.location.hostname) + ':' + String(port) + '/ui/config/'), '（端口没放行，或不在内网）。'])

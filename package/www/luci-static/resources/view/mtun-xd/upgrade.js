@@ -220,7 +220,7 @@ return view.extend({
 				if (!m) return;
 				var el = els[map[m[1]]];
 				if (!el) return;
-				// 内核那行脚本已经带了「（运行中）/（未运行）」；面板 / 控制台补一个
+				// 状态文案全部由脚本给（内核带运行态，面板/控制台不再补后缀）
 				el.textContent = '当前：' + (m[2]);
 			});
 		}).catch(function (e) {

@@ -160,14 +160,20 @@ def versioned_views(files):
 
 
 # ── ipk：光 tar.gz 就行（debian-binary + control.tar.gz + data.tar.gz）──
+TEXT_EXT = ('.sh', '.js', '.json', '.css', '.md', '.txt', '.conf', '.lua', '.htm', '.html')
+
 def read_lf(p):
-    """按**二进制**读进来，把 CRLF 统一成 LF。
+    """按**二进制**读进来，把 CRLF 统一成 LF（只对文本类文件；二进制原样，别改字节）。
 
     注意：包里那几个 shell 脚本是搬到路由器直接跑的，CRLF 会让第一行变成 `#!/bin/sh\r`、
     内核只报一句光秃秃的 `not found`；.gitattributes 钉了 LF，这里是打包时的兜底。
     """
     with open(p, 'rb') as f:
-        return f.read().replace(b'\r\n', b'\n')
+        data = f.read()
+    # 二进制（图标 / lmo / 字体）不能动：改了字节会和实际大小对不上
+    if os.path.splitext(p)[1].lower() not in TEXT_EXT:
+        return data
+    return data.replace(b'\r\n', b'\n')
 
 
 def tar_gz(path, entries):

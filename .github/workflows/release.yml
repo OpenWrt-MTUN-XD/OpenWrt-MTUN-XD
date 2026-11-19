@@ -69,15 +69,15 @@ jobs:
         run: bun test tests/unit
       - name: shell 语法
         run: |
-          sh -n install.sh
-          sh -n package/usr/sbin/mtun-xd
-          sh -n control/postinst
-          sh -n control/prerm
-          sh -n deploy/mihomo-haproxy.sh
-          sh -n deploy/mihomo-kwrt-nginx.sh
-          sh -n generator/deploy/generator.sh
-          sh -n generator/deploy/mihomo-apply
-          sh -n openwrt/files/mtun-xd-firstboot
+          # 走统一脚本：15 个 shell 全覆盖（以后加文件不用改 CI）
+          sh tools/check-shell.sh
+          # 发出去的四个前端文件必须能过语法检查
+          node --check package/www/luci-static/resources/mtun-xd/common.js
+          node --check package/www/luci-static/resources/view/mtun-xd/panel.js
+          node --check package/www/luci-static/resources/view/mtun-xd/generator.js
+          node --check package/www/luci-static/resources/view/mtun-xd/upgrade.js
+          node tools/check-yaml-tokens.mjs
+          node tools/check-copy-integrity.mjs
       - name: 打包自检
         # 发版前先造一遍 ipk 逐项验（见 tests/test_package.py）—— 包坏了别等用户装的时候才发现
         run: python3 tests/test_package.py

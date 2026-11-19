@@ -31,8 +31,11 @@ start() {
 			curl -fsSL -m 8 -o /dev/null "https://mtun-xd.wxcircle.top/latest.txt" 2>/dev/null && break
 			sleep 10
 		done
-		/usr/sbin/mtun-xd setup
-		touch /etc/mtun-xd-firstboot.done 2>/dev/null
+		# 只有 setup 真的成功才写标记：失败时下次开机还会重试，
+		# 否则一次网络抖动就会让机器永久停在一个空壳状态。
+		if /usr/sbin/mtun-xd setup; then
+			touch /etc/mtun-xd-firstboot.done 2>/dev/null
+		fi
 	) >/tmp/mtun-xd-firstboot.log 2>&1 &
 }
 

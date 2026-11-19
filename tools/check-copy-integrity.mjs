@@ -1,7 +1,11 @@
 // 复制完整性验收：确认 (1) 复制走的是原始字符串，(2) 高亮切词后拼回去与原文逐字相同。
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ui = readFileSync('D:/AI工作区/MTUN-XD/generator/app/ui.js', 'utf8');
+// 用脚本自身位置拼路径：换机器 / 换目录都能跑
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ui = readFileSync(join(ROOT, 'generator/app/ui.js'), 'utf8');
 const start = ui.indexOf('function yamlTokens(line) {');
 const end = ui.indexOf('  /**', start);
 const yamlTokens = new Function(ui.slice(start, end) + '\nreturn yamlTokens;')();
@@ -74,7 +78,7 @@ console.log((copyRaw ? 'PASS  ' : 'FAIL  ') + '复制写入的是原始字符串
 if (!copyRaw) bad++;
 
 // 4) 行号不可选中（否则手动复制会带上行号）
-const css = readFileSync('D:/AI工作区/MTUN-XD/generator/app/style.css', 'utf8');
+const css = readFileSync(join(ROOT, 'generator/app/style.css'), 'utf8');
 const noSelect = /\.ln-no\s*\{[^}]*user-select:\s*none/.test(css);
 console.log((noSelect ? 'PASS  ' : 'FAIL  ') + '行号列 user-select:none');
 if (!noSelect) bad++;

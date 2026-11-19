@@ -221,7 +221,7 @@ return view.extend({
 				var el = els[map[m[1]]];
 				if (!el) return;
 				// 内核那行脚本已经带了「（运行中）/（未运行）」；面板 / 控制台补一个
-				el.textContent = '当前：' + (m[1] === '内核' ? m[2] : m[2] + '（运行中）');
+				el.textContent = '当前：' + (m[2]);
 			});
 		}).catch(function (e) {
 			Object.keys(els).forEach(function (k) {

@@ -23,6 +23,8 @@ UCI_CFG=uhttpd
 UCI_SEC=mihomo
 CGI_PORT=9091
 STATE=/etc/mihomo-kwrt-nginx.state
+# 用户原有 nginx conf 的持久备份（off 时还原）
+NGX_PREV=/etc/mihomo-kwrt-nginx.prev
 ADDR_CACHE=/etc/mihomo-kwrt-nginx.addr
 OFF_MARK=/etc/mtun-xd.expose-off
 SUITE_ADDR_CACHE=/etc/mtun-xd.expose-addr
@@ -415,6 +417,9 @@ do_install() {
     say "→ 写盘口：uhttpd 127.0.0.1:$CGI_PORT"
 
     # 1) uhttpd：main 段停掉（80/443 归 nginx），另起一个只跑 CGI 的段
+    # ⚠️ 不能只写 enabled=0：老固件的 uhttpd rc 不读这个开关，80 仍被它占着，nginx 绑不上。
+    #    这里直接停服务（状态已记进 state，off 时恢复）。
+    /etc/init.d/uhttpd stop >/dev/null 2>&1 || true
     uci -q set "$UCI_CFG.main.enabled=0"
     uci -q get "$UCI_CFG.$UCI_SEC" >/dev/null 2>&1 || uci -q set "$UCI_CFG.$UCI_SEC=uhttpd"
     uci -q set "$UCI_CFG.$UCI_SEC.enabled=1"
@@ -449,7 +454,8 @@ do_install() {
     say "→ 80 端口：挂上内核的口子"
     NGX_LOC_EXISTED=0
     if [ -f "$NGX_LOC" ]; then
-        cp "$NGX_LOC" "$NGX_LOC.prev.$$"
+        # 持久备份：用户原有的 conf，off 时必须还原，不能一删了之
+        cp "$NGX_LOC" "$NGX_PREV"
         NGX_LOC_EXISTED=1
     fi
     write_nginx_loc "$addr"
@@ -471,7 +477,7 @@ do_install() {
         die "80 端口的写盘口没通（GET 不是 405，已还原 nginx 配置）—— 看 logread -e nginx；修不好就 $0 off"
     fi
 
-    [ -f "$NGX_LOC.prev.$$" ] && rm -f "$NGX_LOC.prev.$$"
+    # 备份留给 off 还原
 
     printf '%s' "$addr" > "$SUITE_ADDR_CACHE"
     say "✔ 80 端口：已挂好（$addr）"
@@ -487,7 +493,11 @@ do_off() {
     [ -f "$STATE" ] || die "本脚本没装过（没有 $STATE）"
 
     if [ -f "$NGX_LOC" ]; then
-        rm -f "$NGX_LOC"
+        if [ -f "$NGX_PREV" ]; then
+            mv -f "$NGX_PREV" "$NGX_LOC"     # 装之前就有：原样放回
+        else
+            rm -f "$NGX_LOC"
+        fi
         /etc/init.d/nginx reload >/dev/null 2>&1 || true
     fi
 

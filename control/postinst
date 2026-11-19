@@ -65,6 +65,6 @@ fi
 #    旧的（apk/opkg 事务没提交），会误判成「套件落后于 kit」。
 MIHOMO_KIT_NO_SELFUPGRADE=1 /usr/sbin/mtun-xd setup
 # 菜单缓存里还记着旧版页面文件名 —— 不清的话当前会话点菜单仍是旧界面
-rm -f /tmp/luci-indexcache.*.json 2>/dev/null
+rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
 rm -rf /tmp/luci-modulecache 2>/dev/null
 exit 0

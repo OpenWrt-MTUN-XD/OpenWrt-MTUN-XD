@@ -231,7 +231,7 @@ def build_ipk(files):
         'Maintainer: OpenWrt-MTUN-XD\n'
         'Section: luci\n'
         'Priority: optional\n'
-        'Depends: curl, luci-base\n'
+        'Depends: curl, luci-base, ca-bundle, kmod-tun\n'
         'Source: %s\n'
         'SourceName: %s\n'
         'License: MIT\n'
@@ -281,7 +281,7 @@ def apk_args(out):
         '-I', 'origin:%s' % NAME,
         # 注意：依赖要写在**同一个 -I** 里、空格分隔 —— 重复的 `-I depends:` 是覆盖不是追加
         # （只留下最后一个，curl 会被 luci-base 挤掉）。
-        '-I', 'depends:curl luci-base',
+        '-I', 'depends:curl luci-base ca-bundle kmod-tun',
     ] + [
         '-F', 'root',
         '-s', 'post-install:./postinst',
@@ -506,7 +506,7 @@ def publish_release(made):
         # 半份 Release 不能当成功（下次重跑会补传——见 release.yml 的判定）
         print('⚠️ Release 建好了，但有附件没传上 —— 再跑一次')
         return False
-    print('GitHub Release → %s（私有仓库，只有你自己能看/下）' % tag)
+    print('GitHub Release → %s' % tag)
     return True
 
 
@@ -592,7 +592,7 @@ def publish_dist(made):
     for p in made:
         shutil.copy2(p, os.path.join(d, os.path.basename(p)))
     shutil.copy2(os.path.join(HERE, 'install.sh'), os.path.join(d, 'install.sh'))
-    # 让 install.sh 从 CF 上直接知道最新版本号（私有仓库之后 releases/latest 也解析不了）
+    # 让 install.sh 从 CF 上直接知道最新版本号（不用调 API，省配额）
     with open(os.path.join(d, 'latest.txt'), 'w', newline='\n') as f:
         f.write('v%s\n' % VERSION)
     write_index(d)

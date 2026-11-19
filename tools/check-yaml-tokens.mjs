@@ -1,7 +1,11 @@
 // 高亮器验收：抽 ui.js 里的真实 yamlTokens，逐条检查「着色类别」与「原文无损」。
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const src = readFileSync('D:/AI工作区/MTUN-XD/generator/app/ui.js', 'utf8');
+// 用脚本自身位置拼路径：换机器 / 换目录都能跑
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const src = readFileSync(join(ROOT, 'generator/app/ui.js'), 'utf8');
 const start = src.indexOf('function yamlTokens(line) {');
 const end = src.indexOf('  /**', start);
 if (start < 0 || end < 0) throw new Error('yamlTokens not found');

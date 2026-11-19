@@ -47,9 +47,8 @@ MIRRORS="https://github.com https://ghfast.top/https://github.com https://gh-pro
 #    install.sh 解析版本号时才不会跑偏去找 luci-app-*.apk。
 # ⚠️ 两份都要：安装脚本 + 它要铺的包（zip / tar.gz）；后者用 `MIHOMO_KIT_FILE` 指给脚本
 #    （我们这边镜像会挨个回退，它那边只有一个 URL）。
-KIT_REL="OpenWrt-MTUN-XD/OpenWrt-MTUN-XD-genkit/releases/download/genkit"
-# ⚠️ 第一条路是自己家的 CF 静态站（见 wrangler.jsonc）：仓库转私有后 release 附件要 token，
-#    只有这儿还能拿；GitHub + 镜像那条留着当兜底（仓库还公开、或者 CF 抽风时用）。
+KIT_REL="OpenWrt-MTUN-XD/genkit/releases/download/genkit"
+# 第一条路是 CF 静态站（见 wrangler.jsonc），GitHub + 镜像留着兜底（CF 抽风时用）。
 REPO_GH='OpenWrt-MTUN-XD/OpenWrt-MTUN-XD'
 GH='https://github.com'
 GH_API='https://api.github.com'
@@ -70,7 +69,7 @@ NGINX_LOC=/etc/nginx/conf.d/mtun-xd.locations
 KEEP_CONFIG=1
 # 下载校验值的兜底开关：正常路径必须拿到 GitHub 官方 SHA-256。
 # 只有用户明确知道风险、且所在网络确实取不到元数据时才允许放行。
-ALLOW_UNVERIFIED=${MIHOMO_ALLOW_UNVERIFIED:-0}
+ALLOW_UNVERIFIED=${MIHOMO_ALLOW_UNVERIFIED:-$ALLOW_UNVERIFIED}
 # TUN 那两样（自编译 / 精简固件常见缺）：开机重建 /dev/net/tun 的 init 脚本，
 # 以及"我们建过什么"的标记（卸载时按它回滚）。
 TUN_INIT=/etc/init.d/mihomo-tun
@@ -217,9 +216,7 @@ release_meta() {   # release_meta <owner/repo> <tag>；输出缓存文件路径
     local repo="$1" ver="$2" cache url
     cache="$TMP/release-${repo#*/}-${ver#v}.json"
     if [ ! -s "$cache" ]; then
-        for url in \
-            "$GH_API/repos/$repo/releases/tags/$ver" \
-            "https://api.github.com/repos/$repo/releases/tags/$ver"; do
+        for url in "$GH_API/repos/$repo/releases/tags/$ver"; do
             rm -f "$cache"
             if curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
                     --user-agent "MTUN-XD" \
@@ -283,7 +280,7 @@ release_asset_sha() {   # release_asset_sha <owner/repo> <tag> <asset name>
 }
 
 dl() {   # dl <github 路径> <落地文件> [期望 SHA-256]
-    # ⚠️ 第一顺位是自己家 CF 的反代（/gh/…，Worker 见 src/index.js）：国内直连 GitHub 多半
+    # ⚠️ 第一顺位是 GitHub 直连（/gh/ 反代已随旧项目下线）：国内直连多半
     #    "连得上但很慢/半路断"，先试它等于点一下升级先干等十几秒；CF 第二次起直接命中边缘缓存。
     # ⚠️ 试两次 + 连接超时 8 秒：CF 边缘偶发 5xx / 握手慢，只试一次会放弃整条路；等 15 秒又太久。
     # ⚠️ 给了第三个参数就必须逐份核对；镜像返回 200 但内容不对不算成功。
@@ -298,6 +295,8 @@ dl() {   # dl <github 路径> <落地文件> [期望 SHA-256]
         fi
     done
     for m in $MIRRORS; do
+        # 第一段已经直连过 github.com，镜像表里的同名项跳过（否则同一 URL 白试两轮）
+        [ "$m/" = "$GH/" ] && continue
         if curl -fL --retry 1 --connect-timeout 15 -m 300 \
                 --user-agent "Mozilla/5.0" -o "$2" "$m/$1" >/dev/null 2>&1; then
             if [ -z "${3:-}" ]; then return 0; fi
@@ -310,7 +309,7 @@ dl() {   # dl <github 路径> <落地文件> [期望 SHA-256]
 }
 
 latest_tag() {   # 用 302 解析最新 tag（不吃 API 配额）
-    # ① 自己家的反代（跟 dl 一个道理：国内稳）—— 同样试两次、连接超时 8 秒
+    # ① GitHub 直连（不吃 API 配额，只解析 302）—— 试两次、连接超时 8 秒
     local i t=''
     for i in 1 2; do
         t=$(curl -sI --connect-timeout 8 --user-agent "Mozilla/5.0" \
@@ -685,11 +684,12 @@ fetch_core() {
     for f in $files; do
         rm -f "$TMP/mihomo.gz" "$TMP/mihomo"
         want=$(release_asset_sha MetaCubeX/mihomo "$ver" "$f" 2>/dev/null) || want=''
+        if [ -z "$want" ] && [ "$ALLOW_UNVERIFIED" != 1 ]; then
+            # 摘要取不到只代表「这个候选查不了」，换个候选继续，别把整次安装判死
+            say "    ⚠️ 核心：$f 拿不到官方 SHA-256，换下一个候选"
+            continue
+        fi
         if [ -z "$want" ]; then
-            if [ "$ALLOW_UNVERIFIED" != 1 ]; then
-                say "✘ 核心：拿不到官方 SHA-256，拒绝下载（确认风险后可设 MIHOMO_ALLOW_UNVERIFIED=1）"
-                return 1
-            fi
             say "⚠️ 核心：官方 SHA-256 不可用，按 MIHOMO_ALLOW_UNVERIFIED=1 放行"
         fi
         dl "MetaCubeX/mihomo/releases/download/${ver}/${f}" "$TMP/mihomo.gz" "$want" \
@@ -1002,15 +1002,15 @@ install_tool() {
         fi
         if [ -z "$kgot" ] || { [ "$kgot" != "$kwant" ] && [ "$kgot" != "$ksums" ]; }; then
             say "✘ 配置工具：$kname 校验失败（官方 ${kwant:-未知} ／ 校验和 ${ksums:-无} ／ 实际 ${kgot:-读不到}），已中止"
-            say "  → CDN 可能还在发布中，等一两分钟重跑；确认来源可信可设 MTUN_XD_ALLOW_UNVERIFIED=1"
+            say "  → CDN 可能还在发布中，等一两分钟重跑；确认来源可信可设 MIHOMO_ALLOW_UNVERIFIED=1"
             kitok=0; break
         fi
     done
     if [ "$kitok" != 1 ]; then
-        if [ "${MTUN_XD_ALLOW_UNVERIFIED:-0}" = 1 ]; then
-            say "⚠️ 配置工具：校验未完成，按 MTUN_XD_ALLOW_UNVERIFIED=1 继续"
+        if [ "$ALLOW_UNVERIFIED" = 1 ]; then
+            say "⚠️ 配置工具：校验未完成，按 MIHOMO_ALLOW_UNVERIFIED=1 继续"
         else
-            say "  → 确认来源可信可设 MTUN_XD_ALLOW_UNVERIFIED=1 重试"
+            say "  → 确认来源可信可设 MIHOMO_ALLOW_UNVERIFIED=1 重试"
             return 1
         fi
     fi
@@ -1065,6 +1065,9 @@ upgrade_console() {
 # 页面需要「面板在哪个地址、外部前缀是什么、secret 是多少」这三样；直接把整份
 # config.yaml 的读权限开给 ACL 等于把节点密码、订阅地址一起交出去。这里只吐这三个字段。
 # 输出是一行 JSON，前端 JSON.parse 直接用。
+# JSON 字符串转义（secret 里可能真有引号/反斜杠）
+json_esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+
 panelinfo() {
     local host port ui sec ctrl
     sec=$(cfg_get secret)
@@ -1080,7 +1083,7 @@ panelinfo() {
     fi
     ui=$(cfg_get external-ui)
     printf '{"host":"%s","port":"%s","secret":"%s","ui":"%s"}\n' \
-        "$host" "$port" "$sec" "$ui"
+        "$(json_esc "$host")" "$(json_esc "$port")" "$(json_esc "$sec")" "$(json_esc "$ui")"
 }
 
 # 配置工具的登录密码（生成器那个 iframe 要用）。同样是「只给这一样」而不是整份文件。
@@ -1951,8 +1954,12 @@ setup() {
     # 把内核的口子挂到 uhttpd 那个端口上（只开 80 就能完全管理这套）。
     # ⚠️ 失败只警告：挂不上不影响 9090 那条老路，别把整套 setup 判死。
     # ⚠️ 人主动关过（expose off 留了标记）就别擅自开回来。
+    # UCI 的 expose 开关（/etc/config/mtun-xd）：0 = 不挂 80，保持 9090 直连
+    expose_cfg=$(uci -q get mtun-xd.main.expose 2>/dev/null)
     if [ -f "$EXPOSE_OFF_MARK" ]; then
         say "⚠️ 80 端口：你手动关过（expose off）—— 要开回来跑 mtun-xd expose on"
+    elif [ "$expose_cfg" = "0" ]; then
+        say "⚠️ 80 端口：配置里 expose=0，跳过挂载（用 9090 直连）"
     else
         if expose_on; then expose_ok=1; fi
     fi
@@ -2118,7 +2125,7 @@ uninstall_all() {
                   /etc/rc.d/S99mtun-xd-selfcheck
             rm -rf /usr/share/mtun-xd /www/luci-static/resources/mtun-xd
             rm -rf /www/luci-static/resources/view/mtun-xd
-            rm -rf /tmp/luci-modulecache /tmp/luci-indexcache.* 2>/dev/null
+            rm -rf /tmp/luci-modulecache /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
             # ⚠️ 本脚本自己也在删的清单里：等一秒再删，别让正在读它的 shell 报怪话。
             ( sleep 1; rm -f /usr/sbin/mtun-xd ) >/dev/null 2>&1 &
             printf '✔ %s\n' "$finalmsg"
@@ -2190,12 +2197,12 @@ case "${1:-}" in
                         echo 1 > "$DONE"
                         exit 1
                     }
-                    ( MTUN_XD_SELFCOPY=1 sh "$SELFCOPY" console --run 2>&1 </dev/null | scrub_stream >>"$LOG"
-                      rc=$?
-                      rm -f "$SELFCOPY"
-                      echo $rc > "$DONE" ) >/dev/null 2>&1 </dev/null &
+                    ( { MTUN_XD_SELFCOPY=1 sh "$SELFCOPY" console --run 2>&1 </dev/null; echo $? > "$DONE"; } \
+                        | scrub_stream >>"$LOG"
+                      rm -f "$SELFCOPY" ) >/dev/null 2>&1 </dev/null &
                 else
-                    ( "$0" "$1" --run 2>&1 </dev/null | scrub_stream >>"$LOG"; echo $? > "$DONE" ) >/dev/null 2>&1 </dev/null &
+                    ( { "$0" "$1" --run 2>&1 </dev/null; echo $? > "$DONE"; } \
+                        | scrub_stream >>"$LOG" ) >/dev/null 2>&1 </dev/null &
                 fi
                 exit 0
                 ;;

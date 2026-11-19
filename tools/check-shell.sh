@@ -11,11 +11,22 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 STRICT=0
 [ "${1:-}" = "--strict" ] && STRICT=1
 
+# 全部 shell 脚本都过一遍：只挑 4 个的话，control/ 与 openwrt/ 里的变量名拼错永远查不出来
+# ⚠️ 不用 find：Windows 的 Git sh 里 PATH 可能先撞到 Windows 自带的 find.exe。
 FILES="
 $ROOT/package/usr/sbin/mtun-xd
 $ROOT/install.sh
 $ROOT/deploy/mihomo-haproxy.sh
 $ROOT/deploy/mihomo-kwrt-nginx.sh
+$ROOT/control/postinst
+$ROOT/control/prerm
+$ROOT/openwrt/files/mtun-xd-firstboot
+$ROOT/generator/deploy/generator.sh
+$ROOT/generator/deploy/mihomo-apply
+$ROOT/tools/check-kit-sync.sh
+$ROOT/tools/verify-kit-digest.sh
+$ROOT/tools/check-shell.sh
+$ROOT/tools/uninstall-check.sh
 "
 
 if ! command -v shellcheck >/dev/null 2>&1; then

@@ -90,8 +90,8 @@ def main():
     check(fields.get('Package') == NAME, 'Package 名对', fields.get('Package'))
     check(fields.get('Version') == ver, 'Version 跟生成器一致', '%s vs %s' % (fields.get('Version'), ver))
     check(fields.get('Architecture') == ARCH, 'Architecture: all', fields.get('Architecture'))
-    check((fields.get('Depends') or '').replace(' ', '') == 'curl,luci-base',
-          'Depends: curl, luci-base', fields.get('Depends'))
+    check((fields.get('Depends') or '').replace(' ', '') == 'curl,luci-base,ca-bundle,kmod-tun',
+          'Depends: curl, luci-base, ca-bundle, kmod-tun', fields.get('Depends'))
     check('\r' not in control, 'control 里没有 CRLF（路由器不认）')
 
     # ── data ──────────────────────────────────────────────────────────────
@@ -316,7 +316,8 @@ def main():
     inst_src = open(os.path.join(ROOT, 'install.sh'), encoding='utf-8').read()
     check('（运行中）' in sbin_src, 'status 输出含「（运行中）」')
     check("corestate" in inst_src, 'install.sh 用 corestate 判断内核状态')
-    check("grep -q '运行中'" in inst_src, '没有 corestate 的老版本仍能回退判断')
+    check('corestate' in inst_src and "grep -q '运行中'" not in inst_src,
+          '内核状态只认 corestate（老版本回退分支已删）')
     check('corestate()' in sbin_src, '套件提供 corestate 命令')
     check('（运行中）' in sbin_src and 'corestate' in inst_src,
           '显示文案与安装判据解耦')

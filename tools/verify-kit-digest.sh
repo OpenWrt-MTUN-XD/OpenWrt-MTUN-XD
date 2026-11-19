@@ -1,6 +1,7 @@
 #!/bin/sh
 # 比对 CF 上的 kit 资产与 genkit Release 的官方 digest
-API=https://api.github.com/repos/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/releases/tags/genkit
+CF=https://mtun-xd.wxcircle.top
+API=https://api.github.com/repos/OpenWrt-MTUN-XD/genkit/releases/tags/genkit
 cd /tmp || exit 1
 meta=$(curl -fsSL -m 30 -H 'Accept: application/vnd.github+json' "$API") || { echo "no meta"; exit 1; }
 

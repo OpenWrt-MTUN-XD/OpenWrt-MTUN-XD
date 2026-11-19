@@ -13,12 +13,12 @@
 
 set -u
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+CF=https://mtun-xd.wxcircle.top
 API=https://api.github.com/repos/OpenWrt-MTUN-XD/genkit/releases/tags/genkit
 MODE=${1:-local}
 
-# ⚠️ 先走自己的 CF 反代：路由器直连 api.github.com 常常撞上「匿名 60 次/小时」限流（403）。
-meta=$(curl -fsSL -m 30 -H 'Accept: application/vnd.github+json' "$API_CF" 2>/dev/null)
-[ -n "$meta" ] || meta=$(curl -fsSL -m 30 -H 'Accept: application/vnd.github+json' "$API" 2>/dev/null)
+# ⚠️ 直连 api.github.com：匿名配额只有 60 次/小时，撞上就取不到（拿不到只报错，不误判）。
+meta=$(curl -fsSL -m 30 -H 'Accept: application/vnd.github+json' "$API" 2>/dev/null)
 [ -n "$meta" ] || { echo "✘ 取不到 genkit Release 元数据（网络？）"; exit 1; }
 printf '%s' "$meta" | grep -q '"digest"' || { echo "✘ 元数据里没有 digest"; exit 1; }
 

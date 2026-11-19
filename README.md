@@ -47,7 +47,7 @@
 SSH 登录路由器，以 root 执行：
 
 ```sh
-# GitHub（主地址）
+# Cloudflare 镜像（主地址，国内快）
 curl -fsSL https://raw.githubusercontent.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/main/install.sh -o /tmp/mtun-xd-install.sh && sh /tmp/mtun-xd-install.sh
 ```
 

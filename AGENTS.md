@@ -64,8 +64,11 @@ Windows 没有 `sh` 在 PATH 时，可使用：
 同时检查：
 
 ```powershell
-node --check src/index.js
 node --check generator/app/state.js
+node tools/check-yaml-tokens.mjs     # 高亮器 17 项
+node tools/check-copy-integrity.mjs  # 复制完整性 4 项
+sh tools/check-kit-sync.sh           # kit 与 dist/ 同源
+sh tools/check-shell.sh              # 全部 shell 脚本语法
 git diff --check
 ```
 

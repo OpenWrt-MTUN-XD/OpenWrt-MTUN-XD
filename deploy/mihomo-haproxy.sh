@@ -227,6 +227,13 @@ off() {
     /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
     # ⚠️ 还原完要**确认 80 上真的有人听**再删快照：删早了就成了"关掉之后
     #    80 空着、也没有东西能恢复"—— 那是把 LuCI 锁死。
+    # uhttpd 起来需要一点时间：最多等 10 秒，别测一次就把状态卡死
+    i=0
+    while [ "$i" -lt 10 ]; do
+        netstat -lnt 2>/dev/null | grep -q ':80 ' && break
+        i=$((i + 1))
+        sleep 1
+    done
     if ! netstat -lnt 2>/dev/null | grep -q ':80 '; then
         printf '✘ 80 端口没恢复（uhttpd 没起来）—— 快照保留在 %s，修好后再跑一次 off\n' "$UHTTPD_BAK" >&2
         return 1

@@ -79,9 +79,11 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "目标 Release: $tag"
 
-      # ⚠️ 不要 checkout tag：release 的 tag 指向 bot 生成的 `dist:` 提交，
-      #    那一条链上不一定带 openwrt/。包版本由 openwrt/Makefile 决定，和 tag 一致。
+      # ⚠️ 必须 checkout 目标 tag：包版本由 tag 对应的 openwrt/Makefile 决定，
+      #    用默认分支（可能已经往前走了）会打出比 tag 更新的包，再 --clobber 覆盖正确附件。
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.tag }}
 
       - name: 安装依赖
         run: |

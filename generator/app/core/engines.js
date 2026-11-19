@@ -252,16 +252,24 @@
   function dnsAddr(v) {
     var s = String(v == null ? '' : v).trim();
     if (!s) return yamlAddr(DNS_DEFAULTS.listen);
-    if (s.charAt(0) === '[') return yamlAddr(s);
+    // 带方括号但没有端口：`[::1]` 不是合法 listen 值
+    if (s.charAt(0) === '[') {
+      if (!/^\[[^\]]+\]:[0-9]+$/.test(s)) {
+        throw new Error('DNS 监听地址必须带端口，例如 [::1]:1053');
+      }
+      return yamlAddr(s);
+    }
     var at = s.lastIndexOf(':');
-    if (at === -1) return yamlAddr(s);
+    if (at === -1) throw new Error('DNS 监听地址必须带端口，例如 127.0.0.1:1053');
     var host = s.slice(0, at), port = s.slice(at + 1);
     // ⚠️ 裸 IPv6（`::1`、`2001:db8::1`）和「IPv6+端口」在字面上分不开：末段是数字就会被当端口，
     //    产出 `[:]:1` 这种非法地址。这里要求 IPv6 必须显式写成 `[::1]:1053`，否则直接报错。
     if (looksLikeBareIPv6(s)) {
       throw new Error('DNS 监听地址里的 IPv6 必须带端口和方括号，例如 [::1]:1053');
     }
-    if (!/^[0-9]+$/.test(port)) return yamlAddr(listenHost(s));
+    if (!/^[0-9]+$/.test(port)) {
+      throw new Error('DNS 监听地址必须带端口，例如 127.0.0.1:1053');
+    }
     return yamlAddr(listenHost(host) + ':' + port);
   }
 

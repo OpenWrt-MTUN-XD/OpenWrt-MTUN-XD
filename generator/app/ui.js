@@ -1541,10 +1541,13 @@
     var badKeys = MH.badKeys ? MH.badKeys() : 0;
     var note = droppedNote
       + (droppedNodes ? '（跳过 ' + droppedNodes + ' 个节点：类型 / 主机端口 / 凭据不合法）' : '')
-      + (badKeys ? '（跳过 ' + badKeys + ' 个 SS-2022 节点：密钥格式或长度不对（需 16/32 字节的 base64））' : '')
+      + (badKeys ? '（跳过 ' + badKeys + ' 个 SS-2022 节点：密钥格式或长度不对，需 16/32 字节 base64）' : '')
       + (repaired ? '（已自动修正 ' + repaired + ' 条链接里未转义的 #）' : '');
     if (added === 0) {
-      toast('未新增节点，解析出的 ' + nodes.length + ' 个节点均已存在。' + note);
+      // nodes 为空时不能再说「已存在」——那是另一回事
+      toast(nodes.length
+        ? ('未新增节点，解析出的 ' + nodes.length + ' 个节点均已存在。' + note)
+        : ('没有解析出可用节点。' + note));
     } else if (added < nodes.length) {
       toast('已成功导入 ' + added + ' 个节点，跳过 ' + (nodes.length - added) + ' 个重复节点。' + note, 'ok');
     } else {

@@ -297,6 +297,12 @@
       method = urlDec(method);
       password = urlDec(password);
     }
+    if (ssKeyOk(method, password)) {
+      // 有多段时把各段两端空白去掉：订阅里写成 `A : B` 的话，内核会拿到带空格的密钥
+      if (String(password || '').indexOf(':') !== -1) {
+        password = String(password).split(':').map(function (x) { return x.trim(); }).join(':');
+      }
+    }
     if (!ssKeyOk(method, password)) {
       _badKeys += 1;
       if (_badKeyInfo.length < 3) {

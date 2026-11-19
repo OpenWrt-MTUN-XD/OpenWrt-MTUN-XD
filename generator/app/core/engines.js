@@ -1016,8 +1016,12 @@
   OneIPEngine.prototype.genRules = function (allocation) {
     var L = ['rules:'];
 
-    // 自定义规则（"选节点"的那部分）：三档方案里都排在最前，一机一IP 也不例外
-    var custom = customRuleBlock(this.custom_rules);
+    // 自定义规则（"选节点"的那部分）：三档方案里都排在最前，一机一IP 也不例外。
+    // ⚠️ 一机一IP 只按源 IPv4 分流（ipv6_enabled = false），IPv6 目标写进来也永远匹配不上，
+    //    所以在这一层直接滤掉 —— 界面那边会先提示，这里是不让手滑绕过去。
+    var custom = customRuleBlock((this.custom_rules || []).filter(function (r) {
+      return r && !MH.isV6Target(r.target);
+    }));
     if (custom) {
       L.push.apply(L, custom);
       L.push('');
@@ -1047,6 +1051,7 @@
     if (this.direct_ips && this.direct_ips.length) {
       var seen = Object.create(null);
       for (var k = 0; k < this.direct_ips.length; k++) {
+        if (MH.isV6Target(this.direct_ips[k])) continue;   // 同上：内网控制不吃 IPv6
         var rule = ipRule(this.direct_ips[k]);
         if (rule && !seen[rule]) { seen[rule] = 1; L.push(rule); }
       }

@@ -2135,6 +2135,15 @@
         toast('IP / CIDR 写法不合法（' + badIp[0] + '）：请写成 192.168.0.0/16 或 192.168.1.10', 'err');
         return;
       }
+      // 内网控制只按源 IPv4 分流（该模式强制关闭 IPv6），IPv6 目标写进来只会是一条死规则
+      if (state.mode === 'oneip') {
+        var v6s = targets.filter(function (t) { return MH.isV6Target(t); });
+        if (v6s.length) {
+          toast('内网控制只支持 IPv4（该模式已关闭 IPv6）：' + v6s[0]
+            + ' —— 请改成 IPv4，或切到「精准分流」', 'err');
+          return;
+        }
+      }
       var added = addRules($('rule-target').value);
       $('rule-target').value = '';
       if (!added) toast('这 ' + targets.length + ' 条已经在列表里了');

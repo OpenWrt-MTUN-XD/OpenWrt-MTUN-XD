@@ -32,6 +32,29 @@ describe('IP 规则：内网按来源、公网按目标', () => {
   });
 });
 
+describe('内网控制：只吃 IPv4', () => {
+  test('isV6Target 认得各种 IPv6 写法', () => {
+    expect(MH.isV6Target('fd00::1')).toBe(true);
+    expect(MH.isV6Target('[2408:8000::1]')).toBe(true);
+    expect(MH.isV6Target('192.168.1.1')).toBe(false);
+    expect(MH.isV6Target('example.com')).toBe(false);
+  });
+
+  test('一机一IP 的产物里不出现 IPv6 规则', () => {
+    const one = new MH.OneIPEngine();
+    one.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+    one.secret = '1'; one.port = 9090; one.network = '192.168.100';
+    one.custom_rules = [{ target: 'a.com', action: 'A' }, { target: 'fd00::1', action: 'A' }];
+    one.direct_ips = ['fd00::2', '8.8.8.8'];
+    const y = one.generate();
+    expect(y).not.toContain('fd00::1');
+    expect(y).not.toContain('fd00::2');
+    expect(y).not.toContain('IP-CIDR6');
+    expect(y).toContain('8.8.8.8');
+    expect(y).toContain('DOMAIN,a.com');
+  });
+});
+
 describe('IPv6 私网判定按数值（不靠前缀正则）', () => {
   test('fc:: / fc0:: / fcd:: / fe8:: 是全球单播，不是内网', () => {
     for (const v of ['fc::1', 'fc0::1', 'fcd::1', 'fe8::1']) {

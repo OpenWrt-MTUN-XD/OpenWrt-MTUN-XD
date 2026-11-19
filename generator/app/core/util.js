@@ -444,6 +444,16 @@
   }
   MH.isValidCidr = isValidCidr;
 
+  /** 目标是不是 IPv6（用于「内网控制只吃 IPv4」这条界限）。 */
+  function isV6Target(t) {
+    var v = String(t == null ? '' : t).trim().replace(/^\[|\]$/g, '');
+    if (!v) return false;
+    if (v.indexOf(':') === -1) return false;
+    if (v.indexOf('-') !== -1) return false;   // IP 段单独由 ipRangeToCidrs 判
+    return isValidCidr(v);
+  }
+  MH.isV6Target = isV6Target;
+
   /** 看着像 IP / CIDR，但按 mihomo 的语法不合法（缺段、带端口、掩码越界、带 '-' 的 v6 段…）。 */
   function looksLikeBadIp(t) {
     var s2 = String(t == null ? '' : t).trim();

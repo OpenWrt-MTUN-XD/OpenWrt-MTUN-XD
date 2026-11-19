@@ -1,7 +1,7 @@
 #!/bin/sh
 # Mihomo 管理套件 —— 一行装（OpenWrt / iStoreOS，root 跑）
 #
-#   curl -fsSL https://raw.githubusercontent.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/main/install.sh \
+#   curl -fsSL https://mtun-xd.wxcircle.top/install.sh \
 #     -o /tmp/mtun-xd-install.sh && sh /tmp/mtun-xd-install.sh
 #
 # 这个脚本只干一件事：把**套件包**装上。剩下的（拉核心、拉面板、铺默认配置、起服务、
@@ -133,6 +133,10 @@ installed_ver() {
     fi
 }
 
+# 版本号只比「主体部分」：apk 里固件集成包会带 -r1，仓库包不带；
+# 直接字符串比会把「已经装好」判成失败（2026-11 实测）。
+ver_base() { printf '%s' "$1" | sed 's/^v//; s/-r[0-9][0-9]*$//'; }
+
 # 装完要验的几样：命令行、LuCI 菜单、LuCI 的三个 view + 它们的公共件 ——
 # 缺了 menu 项那页 404，缺 view / common.js 那几页白屏或 404。
 # ⚠️ 定义在这儿（不是装完才用）：判断"要不要装"的时候就得先看它们在不在。
@@ -171,15 +175,9 @@ notready() {
 # ⚠️ 只看"文件在不在"不够：配置坏 / 缺 TUN / 端口被占，包都在、内核却起不来。
 core_running() {
     [ -x /usr/sbin/mtun-xd ] || return 0
-    # 优先用 `corestate`（只输出 on/off，跟显示文案解耦）。
-    # ⚠️ 但**老版本套件没有这个命令**（12.13 及以前）：直接 grep 会永远判「没在跑」，
-    #    于是从老版本升级时又会白等 60 秒再报失败 —— 这里必须退回看 status 文案。
-    _st=$(/usr/sbin/mtun-xd corestate 2>/dev/null | head -1)
-    if [ -n "$_st" ]; then
-        [ "$_st" = on ]
-        return $?
-    fi
-    /usr/sbin/mtun-xd status 2>/dev/null | head -1 | grep -q '运行中'
+    # 用 `corestate`（只输出 on/off，跟显示文案解耦）。
+    # 本仓库从 2026.11 起就带这个命令，不再需要「老版本没有它」的回退分支。
+    [ "$(/usr/sbin/mtun-xd corestate 2>/dev/null | head -1)" = on ]
 }
 
 # ── 问最新版本号 ──────────────────────────────────────────────────────────
@@ -247,7 +245,7 @@ ui_step "1/6 安装套件"
 
 # ⚠️ 装包之前先清一次 LuCI 菜单缓存：它记着旧版的页面文件名（generator_8937_xxx.js），
 #    不清的话装到一半断线就留下一个"菜单指向已删除文件"的 404。装完末尾还会再清一次。
-rm -f /tmp/luci-indexcache.*.json 2>/dev/null
+rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
 rm -rf /tmp/luci-modulecache 2>/dev/null
 
 TMP="${TMPDIR:-/tmp}/mtun-xd-install.$$"
@@ -289,7 +287,7 @@ done
 # 顺序：仓库 dist/SHA256SUMS → GitHub Release 资产自带的 digest。
 # 两条都拿不到时**拒绝安装**（老部署没有 SHA256SUMS 也一样）—— 「没校验就装」
 # 等于把完整性交给了网络环境。确认来源可信时可显式跳过：
-#   MTUN_XD_ALLOW_UNVERIFIED=1 sh install.sh
+#   MIHOMO_ALLOW_UNVERIFIED=1 sh install.sh
 sums=$(curl -fsSL --connect-timeout 10 -m 30 "$CF/SHA256SUMS" 2>/dev/null)
 [ -n "$sums" ] || sums=$(curl -fsSL --connect-timeout 10 -m 30 "$RAW/dist/SHA256SUMS" 2>/dev/null)
 want=''
@@ -309,10 +307,10 @@ if [ -z "$want" ]; then
     fi
 fi
 if [ -z "$want" ]; then
-    if [ "${MTUN_XD_ALLOW_UNVERIFIED:-0}" = 1 ]; then
-        printf '⚠️  取不到官方摘要，按 MTUN_XD_ALLOW_UNVERIFIED=1 继续\n'
+    if [ "${MIHOMO_ALLOW_UNVERIFIED:-0}" = 1 ] || [ "${MTUN_XD_ALLOW_UNVERIFIED:-0}" = 1 ]; then
+        printf '⚠️  取不到官方摘要，按 MIHOMO_ALLOW_UNVERIFIED=1 继续\n'
     else
-        die "套件：取不到官方 SHA-256 摘要，拒绝安装（网络问题？确认可信可设 MTUN_XD_ALLOW_UNVERIFIED=1）"
+        die "套件：取不到官方 SHA-256 摘要，拒绝安装（网络问题？确认可信可设 MIHOMO_ALLOW_UNVERIFIED=1）"
     fi
 elif command -v sha256sum >/dev/null 2>&1; then
     got_hash=$(sha256sum "$TMP/$FILE" | cut -d' ' -f1)
@@ -371,13 +369,13 @@ if [ "$ONLY_PKG" = 1 ]; then
     fi
     rm -f "$MARK"
     # 版本为准（apk 的退出码可能是环境噪音，见上面那段注释）
-    [ "$(installed_ver)" = "$latest" ] || die "套件：安装失败（版本没对上：$(installed_ver)）"
+    [ "$(ver_base "$(installed_ver)")" = "$(ver_base "$latest")" ] || die "套件：安装失败（版本没对上：$(installed_ver)）"
     # 换完验一遍文件在不在（包坏了 / 被别的包删过都得能看出来）
     bad=$(missing)
     [ -z "$bad" ] || die "套件：包换了但文件还缺：$bad"
     # LuCI 的菜单缓存里还记着**旧版页面文件名** —— 不清掉，当前会话点菜单还是旧界面
     #（文件已经换了，只会 404 / 吃浏览器缓存）。清这个不会踢人下线。
-    rm -f /tmp/luci-indexcache.*.json 2>/dev/null
+    rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
     rm -rf /tmp/luci-modulecache 2>/dev/null
     # ⚠️ 打实际装上的版本，别打 $latest —— CF 还在发旧包时，apk/opkg 会打一句"没事干"就退了，
     #    那时候打 $latest 就是撒谎。
@@ -418,7 +416,7 @@ if [ "$PM" = apk ]; then
     apk update >/dev/null 2>&1 || say "    ⚠️ apk update 没成功，继续"
     pm apk add --allow-untrusted --no-scripts "$TMP/$FILE" >"$TMP/pm.log" 2>&1 || true
     # 同上：以实际装上的版本为准
-    [ "$(installed_ver)" = "$latest" ] || die "套件：安装失败（版本没对上：$(installed_ver)）"
+    [ "$(ver_base "$(installed_ver)")" = "$(ver_base "$latest")" ] || die "套件：安装失败（版本没对上：$(installed_ver)）"
     # ⚠️ 跟 opkg 那边一个道理：同一个版本在装的时候，包管理器多半只会说「已经装了」然后
     #    什么都不干（postinst 也不跑）→ 缺的文件永远补不回来。装完统一验一遍，缺了就强制重装。
     bad=$(missing)
@@ -460,7 +458,7 @@ ui_ok "已安装 luci-app-mtun-xd $(installed_ver)"
 # ⚠️ 装完再看一眼那三样：postinst 里的 setup 要是因为网络没拉成（它只警告不失败），
 #    这里补跑一次 —— 免得留下一台"包在、三样全缺"的机器。
 # 菜单缓存清掉（旧版页面文件名），当前会话下一次导航就按新菜单走
-rm -f /tmp/luci-indexcache.*.json 2>/dev/null
+rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
 rm -rf /tmp/luci-modulecache 2>/dev/null
 
 # 不管核心 / 面板是不是已经齐全，都完整跑一遍六步；已有组件显示“已就位”。
@@ -497,6 +495,6 @@ fi
 # ⚠️ CF 刚部署完那一小瞬，静态文件可能还是上一版：`apk add` 对"看起来已经装了"的同版本
 #    包会直接说没事干 → 实际装的还是旧版。只在版本不一致时点一句，不给正常安装加噪音。
 gotver=$(installed_ver)
-if [ -n "$gotver" ] && [ "$gotver" != "$latest" ]; then
+if [ -n "$gotver" ] && [ "$(ver_base "$gotver")" != "$(ver_base "$latest")" ]; then
     say "⚠️ 套件：装上的还是 $gotver（CF 可能还在发旧包）—— 过一两分钟再跑一次"
 fi

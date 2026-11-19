@@ -189,7 +189,7 @@
     // 这份配置到底有没有广告清单（决定载入后要不要盯 ruleCount）：生成器勾了「广告拦截」
     // 才会写 `rule-providers: / adblock:`。
     // 用 YAML 解析判断「有没有 rule-providers.adblock」，不再猜文本形态。
-    // 缩进（2/4/tab）、flow 写法、字段顺序怎么变都不会静默失效。
+    // 2/4 空格缩进、flow 写法、字段顺序怎么变都不会静默失效（tab 缩进本身就是非法 YAML）。
     try {
       var doc = null;
       if (root.MH && typeof root.MH.yamlLoad === 'function') doc = root.MH.yamlLoad(yaml);

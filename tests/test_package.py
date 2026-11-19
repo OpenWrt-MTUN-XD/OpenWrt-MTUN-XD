@@ -323,17 +323,12 @@ def main():
     check(build_mod.keep_pkgs(['%s-8.9.36.apk' % NAME], '8.9.36') == {'%s-8.9.36.apk' % NAME},
           '还没有上一版时只留当前')
 
-    # ── CHANGELOG 必须真的写了这一版（build.py 取不到会静默回落成套话）────────
-    cl_path = os.path.join(ROOT, 'CHANGELOG.md')
-    if os.path.exists(cl_path):
-        cl = open(cl_path, encoding='utf-8').read()
-        m = re.search(r'^## %s[^\n]*\n(.*?)(?=^## |\Z)' % re.escape(ver), cl, re.M | re.S)
-        body = (m.group(1) if m else '').strip()
-        check(m is not None, 'CHANGELOG 有当前版本小节（%s）' % ver)
-        check(len(body) > 40, 'CHANGELOG 当前版本小节正文非空', '%d 字符' % len(body))
-        # 发版说明用的就是这个解析器：它取不到 → Release 会退化成「维护性更新」
+    # ── CHANGELOG 必须真的写了这一版 ───────────────────────────────────────
+    # ⚠️ 必须调 build.py 的生产函数，别在这儿另写一份正则：两边规则一分家，
+    #    测试就会在「发版说明要丢整节」的那一刻恰好变绿（比没有断言更糟）。
+    if os.path.exists(os.path.join(ROOT, 'CHANGELOG.md')):
         sec = build_mod.changelog_section(ver)
-        check(len(sec) > 40, 'build.py 能从 CHANGELOG 取到当前版本说明', '%d 字符' % len(sec))
+        check(len(sec) > 40, 'build.py 能从 CHANGELOG 取到当前版本说明（%s）' % ver, '%d 字符' % len(sec))
 
     # ── 状态文案 ↔ 安装脚本判据必须一致 ──────────────────────────────────
     # install.sh 的 core_running() 是「跑 status | head -1 | grep 运行中」；

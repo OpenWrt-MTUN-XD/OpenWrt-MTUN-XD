@@ -188,9 +188,16 @@
     cfg.url = url;
     // 这份配置到底有没有广告清单（决定载入后要不要盯 ruleCount）：生成器勾了「广告拦截」
     // 才会写 `rule-providers: / adblock:`。
-    // 只要这份配置里「有 rule-providers 段」且段内定义了 adblock，就算带了广告清单。
-    // 不再依赖精确的缩进/换行形态 —— 生成器调整字段顺序或缩进时不会静默失效。
-    cfg.hasAdblock = /^rule-providers:\s*$/m.test(yaml) && /^\s{2}adblock:/m.test(yaml);
+    // 用 YAML 解析判断「有没有 rule-providers.adblock」，不再猜文本形态。
+    // 缩进（2/4/tab）、flow 写法、字段顺序怎么变都不会静默失效。
+    try {
+      var doc = null;
+      if (root.MH && typeof root.MH.yamlLoad === 'function') doc = root.MH.yamlLoad(yaml);
+      else if (root.jsyaml && typeof root.jsyaml.load === 'function') doc = root.jsyaml.load(yaml);
+      cfg.hasAdblock = !!(doc && doc['rule-providers'] && doc['rule-providers'].adblock);
+    } catch (e) {
+      cfg.hasAdblock = false;   // 解析不了就不盯 ruleCount，不影响写盘
+    }
     writeFile(cfg, yaml);
   }
 

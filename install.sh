@@ -307,10 +307,10 @@ if [ -z "$want" ]; then
     fi
 fi
 if [ -z "$want" ]; then
-    if [ "${MTUN_XD_ALLOW_UNVERIFIED:-0}" = 1 ]; then
-        printf '⚠️  取不到官方摘要，按 MTUN_XD_ALLOW_UNVERIFIED=1 继续\n'
+    if [ "${MIHOMO_ALLOW_UNVERIFIED:-0}" = 1 ] || [ "${MTUN_XD_ALLOW_UNVERIFIED:-0}" = 1 ]; then
+        printf '⚠️  取不到官方摘要，按 MIHOMO_ALLOW_UNVERIFIED=1 继续\n'
     else
-        die "套件：取不到官方 SHA-256 摘要，拒绝安装（网络问题？确认可信可设 MTUN_XD_ALLOW_UNVERIFIED=1）"
+        die "套件：取不到官方 SHA-256 摘要，拒绝安装（网络问题？确认可信可设 MIHOMO_ALLOW_UNVERIFIED=1）"
     fi
 elif command -v sha256sum >/dev/null 2>&1; then
     got_hash=$(sha256sum "$TMP/$FILE" | cut -d' ' -f1)

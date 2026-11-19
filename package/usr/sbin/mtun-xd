@@ -42,7 +42,7 @@ LOG=/tmp/mtun-xd.log
 DONE=/tmp/mtun-xd.done
 RAW=/tmp/mtun-xd.raw
 MIRRORS="https://github.com https://ghfast.top/https://github.com https://gh-proxy.com/https://github.com"
-# 生成器（配置工具）从独立的滚动 release 拉（OpenWrt-MTUN-XD/OpenWrt-MTUN-XD-genkit，tag `genkit`），跟核心 /
+# 生成器（配置工具）从独立的滚动 release 拉（OpenWrt-MTUN-XD/genkit，tag `genkit`），跟核心 /
 # 面板一样走上面那套镜像，不依赖生成器自己的网站（那只是它的线上本体）。
 # ⚠️ 那个 release 是 **prerelease**：`releases/latest` 才不会把它当成"最新版"，
 #    install.sh 解析版本号时才不会跑偏去找 luci-app-*.apk。
@@ -141,7 +141,7 @@ scrub_stream() {
                 str = substr(str, 1, i - 1) "***" substr(str, i + length(val))
             return str
         }
-        { print wipe(wipe($0, s), t) }
+        { print wipe(wipe($0, s), t); fflush() }
     '
 }
 
@@ -1219,9 +1219,9 @@ show_status() {
     fi
     cv=$(installed_pkg_ver)
     if [ -f "$UI/config/index.html" ] || [ "$brief" = 1 ]; then
-        echo "控制台：${cv:-装是装了，读不出版本号}"
+        echo "控制台：${cv:-未装（读不出版本号）}"
     else
-        echo "控制台：${cv:-装是装了，读不出版本号}（配置工具没装）"
+        echo "控制台：${cv:-未装}（配置工具没装）"
     fi
     # ⚠️ 顺序：内核必须留在**第一行** —— install.sh 的 core_running() 是
     #    `status | head -1 | grep 运行中`；其余三行按「内核 / 面板 / 控制台 / 配置工具」排，

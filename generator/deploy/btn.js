@@ -175,12 +175,17 @@
   //    ⚠️ 只探一次（`_wp` 记着），探完之前不亮 —— 最坏等 2.5 秒。
   var _wp = null;   // null=没探完 / true / false
   var _wpTimer = null;
+  var _wpTries = 0;    // 连续失败次数：只在启动阶段兜 3 次（约 20 秒），之后不再空转轮询
 
   /** 探失败先缓存 3 秒再重试：写盘口可能只是那一刻忙 / 隧道刚起，不能整页生命周期都不再亮。 */
   function rememberWritePort(ok) {
     _wp = ok;
     if (_wpTimer) { clearTimeout(_wpTimer); _wpTimer = null; }
-    if (!ok) {
+    if (ok) { _wpTries = 0; return; }
+    // ⚠️ 必须有上限：写盘口真不存在时（只装面板 / 远程面板），无限重试等于每 8 秒打两次
+    //    /cgi-bin/mihomo-apply，一直到页面关掉。3 次≈20 秒足够覆盖「uhttpd 刚起」那种抖动。
+    if (++_wpTries > 3) return;
+    {
       _wpTimer = setTimeout(function () {
         _wpTimer = null;
         if (_wp === false) {
@@ -233,6 +238,9 @@
     //    轮询就把点写回去、读数也变回原值，等于白拖。frozen 一置上就冻在那儿，直到刷新页面。
     if (dragging || frozen) return;
 
+    // ⚠️ 连的不是本机 → 一颗点都不亮，也不去探写盘口（远程面板探了也没用）
+    if (!isLocalBackend()) { a.style.display = 'none'; return; }
+
     // ⚠️ 还没探完（或失败后重置）→ 先藏起来并发起一次探测；探测回调会再调 place
     if (_wp === null) {
       a.style.display = 'none';
@@ -241,9 +249,6 @@
     }
     // ⚠️ 写盘口够不着 → 一颗点都不亮
     if (_wp !== true) { a.style.display = 'none'; return; }
-    // ⚠️ 连的不是本机 → 一颗点都不亮（连锚点都不去找）
-    if (!isLocalBackend()) { a.style.display = 'none'; return; }
-
     var t = anchor();
 
     if (t) {

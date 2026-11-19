@@ -212,6 +212,16 @@ def main():
         wsrc = open(os.path.join(ROOT, '.github', 'workflows', wf), encoding='utf-8').read()
         check('sh tools/check-shell.sh' in wsrc,
               '%s 走统一的 shell 检查（覆盖 deploy/ 等全部脚本）' % wf)
+    # 写盘 CGI 路径在 apply.js / btn.js 里是**刻意复制**的两份（两套 bundle 各自独立）：
+    # 断言两边的字面量集合一致，改一处漏另一处会立刻红，比注释里的「两边一起改」可靠。
+    cgi = {}
+    for rel in ('generator/app/apply.js', 'generator/deploy/btn.js'):
+        src = open(os.path.join(ROOT, rel), encoding='utf-8').read()
+        cgi[rel] = set(re.findall(r"/cgi-bin/mihomo-apply", src))
+    check(len(cgi['generator/app/apply.js']) > 0 and
+          cgi['generator/app/apply.js'] == cgi['generator/deploy/btn.js'],
+          '写盘 CGI 路径两边一致（apply.js / btn.js）')
+
     # 变量遮蔽：内层 `var X` 撞掉模块级同名变量时，node --check / 单测全绿，只有真的点一下才炸
     #（2026-11 实际事故：apply.js 的 `var doc` 让「载入配置文件」点了没反应）。零依赖、几秒钟。
     node = shutil.which('node')

@@ -125,8 +125,9 @@
         body: yaml,
         signal: ac ? ac.signal : undefined
       }).then(function (r) {
-        if (timer) root.clearTimeout(timer);
+        // 超时要一直管到 body 读完：CGI 是一次性输出，但「头到了、body 卡住」也该有上限
         return r.text().then(function (text) {
+          if (timer) root.clearTimeout(timer);
           return { ok: r.ok, status: r.status, text: text };
         });
       }).then(function (res) {
@@ -188,12 +189,18 @@
     return findCgi(d.base).then(function (url) {
       // ⚠️ 把试过哪些口写进报错里 —— 这条链是**静默**跑的，出问题时只有这几个字能帮你定位
       if (!url) throw new Error('够不着写盘接口（按序试过：本页 origin / 协议默认口）');
+      // 这条链在「工具密码连错 3 次」时跑，门是 setBusy(true) 状态：POST 挂住会让门永远
+      // 停在「校验中」，所以同样给 60s 上限。
+      var ac = root.AbortController ? new root.AbortController() : null;
+      var timer = ac ? root.setTimeout(function () { ac.abort(); }, 60000) : null;
       return root.fetch(url + '?rotate=1', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + oldSecret },
-        body: ''
+        body: '',
+        signal: ac ? ac.signal : undefined
       }).then(function (r) {
         return r.text().then(function (text) {
+          if (timer) root.clearTimeout(timer);
           if (!r.ok) {
             throw new Error('HTTP ' + r.status + ' ' + (text || '').trim().slice(0, 40) + ' @ ' + url);
           }
@@ -204,6 +211,9 @@
   }
 
   function apply(cfg, url) {
+    // B-2：双击的第二下在这里就挡掉 —— 否则会多弹一条「正在载入…」
+    var btn = doc.getElementById('apply-btn');
+    if (btn && btn.disabled) return;
     var yaml = (root.MH && root.MH.ui && root.MH.ui.getGenerated)
       ? root.MH.ui.getGenerated() : '';
     if (!yaml) { toast('还没有可载入的配置，先生成一次', 'err'); return; }
@@ -261,10 +271,18 @@
 
     var secret = readSecret();
     if (!secret) {
-      // 没登录（面板里没有、也没过登录门）→ 什么都不做：不显示按钮，也不改「监听地址」的默认值。
-      // 正常情况下走不到这儿（gate.js 过了门才跑到这里），这是兜底。
+      // 没登录（面板里没有、也没过登录门）→ 不装「载入配置文件」，但要说明为什么：
+      // 隐私模式禁 localStorage、或 secret.js 四路全空时会走到这里，静默消失太像坏了。
       if (root.console && root.console.log) {
         root.console.log('[apply] 拿不到 secret —— 不显示「载入配置文件」（这是有意的）');
+      }
+      var b0 = doc.getElementById('apply-btn');
+      if (b0) {
+        var t0 = doc.createElement('span');
+        t0.style.cssText = 'font-size:13px; line-height:1.6; color:#8a93a0;';
+        t0.textContent = '没拿到面板密码，所以没有「载入配置文件」——'
+          + '到面板登录一次，或从面板绿点重新进入本页。';
+        b0.parentNode.insertBefore(t0, b0);
       }
       return;
     }

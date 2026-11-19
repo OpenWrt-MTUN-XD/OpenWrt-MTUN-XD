@@ -227,10 +227,12 @@
     // 用 YAML 解析判断「有没有 rule-providers.adblock」，不再猜文本形态。
     // 2/4 空格缩进、flow 写法、字段顺序怎么变都不会静默失效（tab 缩进本身就是非法 YAML）。
     try {
-      var doc = null;
-      if (root.MH && typeof root.MH.yamlLoad === 'function') doc = root.MH.yamlLoad(yaml);
-      else if (root.jsyaml && typeof root.jsyaml.load === 'function') doc = root.jsyaml.load(yaml);
-      cfg.hasAdblock = !!(doc && doc['rule-providers'] && doc['rule-providers'].adblock);
+      // ⚠️ 变量名不能叫 doc —— 模块级的 doc 是 document，函数里再 var doc 会把它遮蔽掉，
+      //    apply() 开头的 doc.getElementById 直接抛 TypeError，表现就是「点载入没反应」。
+      var yamlDoc = null;
+      if (root.MH && typeof root.MH.yamlLoad === 'function') yamlDoc = root.MH.yamlLoad(yaml);
+      else if (root.jsyaml && typeof root.jsyaml.load === 'function') yamlDoc = root.jsyaml.load(yaml);
+      cfg.hasAdblock = !!(yamlDoc && yamlDoc['rule-providers'] && yamlDoc['rule-providers'].adblock);
     } catch (e) {
       cfg.hasAdblock = false;   // 解析不了就不盯 ruleCount，不影响写盘
     }

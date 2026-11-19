@@ -2127,7 +2127,11 @@
         return MH.classify(t) === 'ip' && t.indexOf('-') !== -1 && !MH.ipRangeToCidrs(t);
       });
       if (badRange.length) {
-        toast('IP 段起止反了或地址不合法（' + badRange[0] + '），请写成 192.168.1.10-192.168.1.20', 'err');
+        // IPv6 段是「不支持」而不是「写反了」：ipRangeToCidrs 只做 v4，文案要分开
+        var v6Range = badRange[0].indexOf(':') !== -1;
+        toast(v6Range
+          ? ('IPv6 段暂不支持（' + badRange[0] + '）：请改用 CIDR，例如 fd00::/64')
+          : ('IP 段起止反了或地址不合法（' + badRange[0] + '），请写成 192.168.1.10-192.168.1.20'), 'err');
         return;
       }
       var withPort = targets.filter(function (t) { return MH.hasHostPort(t); });

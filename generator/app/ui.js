@@ -1183,7 +1183,13 @@
     // 别改成读 state —— 那个值只派生自界面上的勾选框，不该从别处串进来。
     eng.mainland = false;
     eng.redir_host = state.redirHost;
-    applyAdvanced(eng);
+    // 进阶参数在收起的卡片里：出错时打个标记，界面据此自动展开，别再靠「DNS/端口」猜文案
+    try {
+      applyAdvanced(eng);
+    } catch (e) {
+      if (e && typeof e === 'object') e.adv = true;
+      throw e;
+    }
 
     // 默认出口必须是列表里真实存在的名字 —— 出现「智能选择」这种派生值、或节点被删后留下的旧
     // 名字，写进配置就是引用了一个不存在的 proxy-group / 节点，mihomo 会直接拒绝加载；这里兜一道底。
@@ -1298,7 +1304,7 @@
       // 报错的是被收起来的「进阶参数」里的字段（DNS / 端口）→ 自动展开，别让人对着一段
       // 红字找不到是哪个框。
       var adv = $('adv-panel');
-      if (adv && !adv.open && /DNS|端口/.test(e.message)) adv.open = true;
+      if (adv && !adv.open && e.adv) adv.open = true;
       if (!silent) toast(e.message, 'err');
       return false;
     }

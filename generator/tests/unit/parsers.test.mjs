@@ -31,11 +31,27 @@ describe('节点链接解析（对齐基线）', () => {
     expect(MH.parseAnyInput(s.b64_double)).toEqual(s.parsed_b64_double);
   });
 
+  test('SS-2022 密钥长度不对的节点被丢弃并计数', () => {
+    // 合法：16 字节密钥的 base64
+    const good = Buffer.from(Array.from({length:16}, (_,i)=>i)).toString('base64');
+    const ok = MH.parseAnyInput('ss://2022-blake3-aes-128-gcm:' + good + '@h.example.com:1#ok');
+    expect(ok.length).toBe(1);
+    // 非法：密钥只有 8 字节
+    const bad = Buffer.from('shortkey').toString('base64');
+    const n = MH.parseAnyInput('ss://2022-blake3-aes-128-gcm:' + bad + '@h.example.com:1#bad');
+    expect(n.length).toBe(0);
+    expect(MH.badKeys()).toBe(1);
+  });
+
   test('SS 明文 userinfo 的百分号要解（2022-blake3 的密钥含 + / =）', () => {
-    const n = MH.parseAnyInput('ss://2022-blake3-aes-128-gcm:a%2Bb%2Fc%3D@h.example.com:29126#k');
+    // 用真实 16 字节密钥：base64 里带 +、结尾带 =，整体百分号编码后塞进明文 userinfo
+    const key = Buffer.from(Array(16).fill(0xfb)).toString('base64');
+    expect(key).toContain('+');
+    const enc = encodeURIComponent(key);
+    const n = MH.parseAnyInput('ss://2022-blake3-aes-128-gcm:' + enc + '@h.example.com:29126#k');
     expect(n.length).toBe(1);
     expect(n[0].method).toBe('2022-blake3-aes-128-gcm');
-    expect(n[0].password).toBe('a+b/c=');
+    expect(n[0].password).toBe(key);
   });
 
   test('SS 密码不做二次解码（SIP002 里密码是原文）', () => {

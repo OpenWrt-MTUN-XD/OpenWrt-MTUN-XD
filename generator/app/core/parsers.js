@@ -227,6 +227,25 @@
     return { raw: raw, remark: remark, params: params };
   }
 
+  /**
+   * SS-2022 的密钥必须是 base64 的定长随机串：aes-128-gcm=16 字节、aes-256-gcm/chacha20=32 字节。
+   * 长度不对内核会回 `decode key: illegal base64 data`，用户完全看不懂 —— 这里提前丢弃并计数。
+   */
+  function ssKeyOk(method, password) {
+    var m = /^2022-(blake3-aes-128-gcm|blake3-aes-256-gcm|blake3-chacha20-poly1305)$/.exec(String(method || ''));
+    if (!m) return true;
+    var want = m[1].indexOf('128') !== -1 ? 16 : 32;
+    var s = String(password || '').trim();
+    try {
+      var norm = s.replace(/-/g, '+').replace(/_/g, '/');
+      while (norm.length % 4) norm += '=';
+      var bin = root.atob ? root.atob(norm) : '';
+      return bin.length === want;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function parseSs(u) {
     u = u.trim();
     if (u.indexOf('ss://') !== 0) return null;
@@ -268,6 +287,7 @@
       method = urlDec(method);
       password = urlDec(password);
     }
+    if (!ssKeyOk(method, password)) { _badKeys += 1; return null; }
 
     var pluginRaw = qget(params, 'plugin', '');
     var plugin = '';
@@ -955,10 +975,12 @@
 
   var _yamlError = null;
   var _yamlDropped = 0;
+  var _badKeys = 0;   // SS-2022 密钥长度不对被丢掉的条数
 
   function yamlError() { return _yamlError; }
   /** 因为 `type` 不认识 / 缺失被丢掉的节点数（界面提示用）。 */
   function yamlDropped() { return _yamlDropped; }
+  function badKeys() { return _badKeys; }
 
   /**
    * Clash YAML 里的 proxy 端口也得过一遍范围校验。
@@ -1027,6 +1049,7 @@
   function parseAnyInput(text) {
     _yamlError = null;
     _yamlDropped = 0;
+    _badKeys = 0;
     lastHashRepairs = 0;
     var got = parseYamlOrNodes(text);
     if (got && got.length) return got;
@@ -1047,6 +1070,7 @@
   MH.parseAnyInput = parseAnyInput;
   MH.yamlError = yamlError;
   MH.yamlDropped = yamlDropped;
+  MH.badKeys = badKeys;
   MH.hashRepairs = hashRepairs;
   MH.cleanName = cleanName;
   MH.hostOk = hostOk;

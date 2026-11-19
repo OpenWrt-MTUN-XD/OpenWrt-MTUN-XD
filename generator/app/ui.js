@@ -1530,8 +1530,10 @@
     // fixUnescapedHash）。这等于替用户改了输入，得说一声 —— 免得他以为密码被读错了。
     var repaired = MH.hashRepairs();
     var droppedNodes = MH.yamlDropped ? MH.yamlDropped() : 0;
+    var badKeys = MH.badKeys ? MH.badKeys() : 0;
     var note = droppedNote
       + (droppedNodes ? '（跳过 ' + droppedNodes + ' 个节点：类型 / 主机端口 / 凭据不合法）' : '')
+      + (badKeys ? '（跳过 ' + badKeys + ' 个 SS-2022 节点：密钥长度不对，密钥需是 16/32 字节的 base64）' : '')
       + (repaired ? '（已自动修正 ' + repaired + ' 条链接里未转义的 #）' : '');
     if (added === 0) {
       toast('未新增节点，解析出的 ' + nodes.length + ' 个节点均已存在。' + note);

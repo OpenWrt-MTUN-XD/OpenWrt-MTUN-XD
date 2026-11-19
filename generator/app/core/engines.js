@@ -245,6 +245,21 @@
     return (s.charAt(0) === '[' || s.indexOf('#') !== -1) ? yq(s) : s;
   }
 
+  /**
+   * DNS 监听地址：`host:port` 形态，host 是 IPv6 字面量时必须加方括号（`::1:1053` 是非法地址）。
+   * 没写端口时整串当主机（照 listenHost 处理）。
+   */
+  function dnsAddr(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!s) return yamlAddr(DNS_DEFAULTS.listen);
+    if (s.charAt(0) === '[') return yamlAddr(s);
+    var at = s.lastIndexOf(':');
+    if (at === -1) return yamlAddr(s);
+    var host = s.slice(0, at), port = s.slice(at + 1);
+    if (!/^[0-9]+$/.test(port)) return yamlAddr(listenHost(s));
+    return yamlAddr(listenHost(host) + ':' + port);
+  }
+
   function joinBlocks(blocks) {
     var L = ['rules:'];
     for (var i = 0; i < blocks.length; i++) {
@@ -478,7 +493,7 @@
     A('  respect-rules: true');
     A('  cache-algorithm: arc');
     A('  cache-max-size: 4096');
-    A('  listen: ' + yamlAddr(this.dns_listen || DNS_DEFAULTS.listen));
+    A('  listen: ' + dnsAddr(this.dns_listen || DNS_DEFAULTS.listen));
     A('  use-system-hosts: true');
     if (this.redir_host) {
       A('  enhanced-mode: redir-host');

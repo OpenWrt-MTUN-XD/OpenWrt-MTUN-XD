@@ -9,8 +9,10 @@ on:
       # 这条腿编的就是 package/ 的内容：脚本 / init / 前端改了必须验一遍
       - 'openwrt/**'
       - 'package/usr/sbin/**'
+      - 'package/usr/share/**'
       - 'package/etc/**'
       - 'package/www/**'
+      - 'deploy/**'
       - '.github/workflows/firmware.yml'
 
 jobs:

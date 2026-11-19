@@ -331,6 +331,9 @@ def main():
         body = (m.group(1) if m else '').strip()
         check(m is not None, 'CHANGELOG 有当前版本小节（%s）' % ver)
         check(len(body) > 40, 'CHANGELOG 当前版本小节正文非空', '%d 字符' % len(body))
+        # 发版说明用的就是这个解析器：它取不到 → Release 会退化成「维护性更新」
+        sec = build_mod.changelog_section(ver)
+        check(len(sec) > 40, 'build.py 能从 CHANGELOG 取到当前版本说明', '%d 字符' % len(sec))
 
     # ── 状态文案 ↔ 安装脚本判据必须一致 ──────────────────────────────────
     # install.sh 的 core_running() 是「跑 status | head -1 | grep 运行中」；

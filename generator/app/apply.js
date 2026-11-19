@@ -101,7 +101,19 @@
   }
 
   function writeFile(cfg, yaml) {
+    // A-3′：按钮级防重复 —— 双击/回车上屏都只发一次写盘请求
+    var btn = doc.getElementById('apply-btn');
+    if (btn && btn.disabled) return;
+    var label = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '载入中…'; }
+    function done() {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+    }
+
     function post(secret) {
+      // A-1′：写盘要跑 mihomo -t（最长 25s）再重载，必须给超时；否则慢机上页面永远停在「正在载入…」
+      var ac = root.AbortController ? new root.AbortController() : null;
+      var timer = ac ? root.setTimeout(function () { ac.abort(); }, 60000) : null;
       root.fetch(cfg.url, {
         method: 'POST',
         // 带 Authorization 就不是简单请求，浏览器会先发 OPTIONS 预检；CGI 那边已把
@@ -110,12 +122,15 @@
           'Content-Type': 'text/plain;charset=utf-8',
           'Authorization': 'Bearer ' + secret
         },
-        body: yaml
+        body: yaml,
+        signal: ac ? ac.signal : undefined
       }).then(function (r) {
+        if (timer) root.clearTimeout(timer);
         return r.text().then(function (text) {
           return { ok: r.ok, status: r.status, text: text };
         });
       }).then(function (res) {
+        done();
         // ⚠️ 提示里带上**写到哪台机器** —— 页面所在的那台，先把这事说清楚免得误伤。
         if (res.ok) {
           // CGI 回的是 `ok <字节数> (reload: api (地址) | restart | none)`，**none 是失败**：
@@ -123,6 +138,11 @@
           var m = /reload:\s*([^\s)]+)/.exec(res.text || '');
           if (m && m[1] === 'none') {
             toast('只写进了文件，内核没吃上 —— 重启内核才生效：/etc/init.d/mihomo restart', 'err');
+            return;
+          }
+          if (!m) {
+            // A-2′：没拿到 reload 字段（CGI 改版 / 老格式）→ 跟 none 同级谨慎，别谎报成功
+            toast('配置已写入，但没拿到内核重载结果 —— 到路由器上确认一下是否已生效', 'err');
             return;
           }
           toast('已载入配置文件（' + root.location.hostname + '）', 'ok');
@@ -140,7 +160,13 @@
         var msg = res.text;
         try { msg = JSON.parse(res.text).message || msg; } catch (e) { /* 不是 JSON 就用原文 */ }
         toast('载入失败：' + (msg || res.status), 'err');
-      }).catch(function () {
+      }).catch(function (e) {
+        done();
+        if (timer) root.clearTimeout(timer);
+        if (e && (e.name === 'AbortError' || /abort/i.test(String(e.message || '')))) {
+          toast('等不到写盘回执（60 秒）—— 到路由器上看 /etc/mihomo/config.yaml 是否已更新', 'err');
+          return;
+        }
         toast('载入失败：连不上写盘接口', 'err');
       });
     }

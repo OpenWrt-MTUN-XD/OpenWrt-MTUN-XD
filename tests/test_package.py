@@ -19,6 +19,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -211,6 +212,17 @@ def main():
         wsrc = open(os.path.join(ROOT, '.github', 'workflows', wf), encoding='utf-8').read()
         check('sh tools/check-shell.sh' in wsrc,
               '%s 走统一的 shell 检查（覆盖 deploy/ 等全部脚本）' % wf)
+    # 变量遮蔽：内层 `var X` 撞掉模块级同名变量时，node --check / 单测全绿，只有真的点一下才炸
+    #（2026-11 实际事故：apply.js 的 `var doc` 让「载入配置文件」点了没反应）。零依赖、几秒钟。
+    node = shutil.which('node')
+    if node:
+        r = subprocess.run([node, 'tools/check-shadow.mjs'], cwd=ROOT,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = r.stdout.decode('utf-8', 'replace').strip()
+        check(r.returncode == 0, '生成器没有变量遮蔽', out.splitlines()[-1] if out else '')
+    else:
+        check(True, '变量遮蔽检查（跳过：没有 node）')
+
     check('expose_off' in cli and 'HAPROXY_UHTTPD_BAK' in cli,
           'expose off / uninstall 会恢复 uhttpd 80 监听')
     check('expose_ensure >/dev/null 2>&1 || true' in cli,

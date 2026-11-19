@@ -144,6 +144,7 @@
   // ── 通用小工具 ──────────────────────────────────────────────
   function setStatus(text) { $('status-text').textContent = text; }
 
+  var smartWasOn = false;   // 上一帧「智能选择」是否生效（用于关闭时还原默认出口）
   var toastTimer = null;
   function toast(msg, kind) {
     // 提示直接写进底部状态栏：它是 sticky 的，三步里位置完全一样，
@@ -331,6 +332,13 @@
     var groups = [], seen = Object.create(null), seq = 0;
     // 只有精准分流才有「智能组占用节点」这回事；一机一IP 里所有节点随便选
     var smartOn = state.mode === 'split' && state.autoSelect && names.length >= 2;
+    // 关掉智能选择的那一帧强制还原手选出口 —— 池里只剩 1 个成员时 defaultNode 会被
+    // 写成那个成员（是有效名字），只靠「当前值失效才还原」会漏掉这种情况。
+    if (smartWasOn && !smartOn && state.defaultNodeMemory &&
+        names.indexOf(state.defaultNodeMemory) !== -1) {
+      state.defaultNode = state.defaultNodeMemory;
+    }
+    smartWasOn = smartOn;
     // 智能选择下，能参与自定义规则的只有反选的节点
     var mixed = smartOn ? names.filter(function (n) {
       return state.autoSelectExclude.indexOf(n) !== -1;
@@ -934,7 +942,10 @@
     // 否则标签写着「出口：B」、菜单里却看不到它，用户没法取消。
     acts.forEach(function (name) {
       if (name === 'DIRECT' || visible.indexOf(name) !== -1) return;
-      var row = ruleActionRow(name + '（当前默认出口）', name, true, names);
+      // 说清它为什么不在常规候选里：是默认出口，还是被智能选择排除了
+      var why = state.defaultNode === name ? '（当前默认出口）'
+        : (state.autoSelect ? '（已从智能选择排除）' : '（不在当前候选中）');
+      var row = ruleActionRow(name + why, name, true, names);
       row.className += ' muted';
       menu.appendChild(row);
     });

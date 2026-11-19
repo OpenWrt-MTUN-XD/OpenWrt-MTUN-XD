@@ -11,7 +11,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-mtun-xd
-PKG_VERSION:=2026.11.01
+PKG_VERSION:=2026.11.02
 PKG_RELEASE:=1
 
 PKG_LICENSE:=MIT

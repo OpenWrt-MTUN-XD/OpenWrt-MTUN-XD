@@ -227,8 +227,9 @@ return view.extend({
 				if (!m) return;
 				var el = els[map[m[1]]];
 				if (!el) return;
-				// 状态文案全部由脚本给（内核带运行态，面板/控制台不再补后缀）
-				el.textContent = '当前：' + (m[2]);
+				// 内核那行脚本已经带了「（运行中）/（未运行）」；面板 / 控制台补上同样的后缀，
+				// 三行保持一致的观感（以前就是这么显示的，别只改一处）
+				el.textContent = '当前：' + (m[1] === '内核' ? m[2] : m[2] + '（运行中）');
 			});
 		}).catch(function (e) {
 			Object.keys(els).forEach(function (k) {

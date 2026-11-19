@@ -220,17 +220,12 @@ release_meta() {   # release_meta <owner/repo> <tag>；输出缓存文件路径
     local repo="$1" ver="$2" cache url
     cache="$TMP/release-${repo#*/}-${ver#v}.json"
     if [ ! -s "$cache" ]; then
-        for url in "$GH_API/repos/$repo/releases/tags/$ver"; do
-            rm -f "$cache"
-            if curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
-                    --user-agent "MTUN-XD" \
-                    -H 'Accept: application/vnd.github+json' \
-                    -o "$cache" "$url" >/dev/null 2>&1 \
-               && grep -q '"assets"' "$cache" 2>/dev/null \
-               && grep -Eq '"digest"[[:space:]]*:[[:space:]]*"sha256:' "$cache" 2>/dev/null; then
-                break
-            fi
-        done
+        url="$GH_API/repos/$repo/releases/tags/$ver"
+        rm -f "$cache"
+        curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
+                --user-agent "MTUN-XD" \
+                -H 'Accept: application/vnd.github+json' \
+                -o "$cache" "$url" >/dev/null 2>&1 || rm -f "$cache"
     fi
     [ -s "$cache" ] || return 1
     printf '%s' "$cache"

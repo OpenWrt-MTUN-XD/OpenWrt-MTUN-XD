@@ -171,8 +171,11 @@ def read_lf(p):
     with open(p, 'rb') as f:
         data = f.read()
     # 二进制（图标 / lmo / 字体）不能动：改了字节会和实际大小对不上
-    if os.path.splitext(p)[1].lower() not in TEXT_EXT:
-        return data
+    ext = os.path.splitext(p)[1].lower()
+    if ext not in TEXT_EXT:
+        # 无扩展名的脚本（/usr/sbin、init.d、control/*）靠 shebang 认出来
+        if not (not ext and data[:2] == b'#!'):
+            return data
     return data.replace(b'\r\n', b'\n')
 
 

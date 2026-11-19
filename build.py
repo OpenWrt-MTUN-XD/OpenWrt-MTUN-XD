@@ -577,7 +577,7 @@ def write_index(d):
 def publish_dist(made):
     """把「路由器 / 别人要从网上拿的那几样」拷进 dist/ —— 随仓库一起发布的静态目录。
 
-    注意：CF 连的就是这个仓库（**可以私有**），所以路由器从 CF 域名下载跟仓库公不公开无关；
+    注意：CF 连的就是这个仓库，所以路由器从 CF 域名下载跟仓库公不公开无关；
     之所以不走 Release 附件 + raw.githubusercontent，是因为那些要求仓库公开。
     生成器的 kit（zip + generator.sh）不在这儿 —— 由 generator/scripts/make-router-kit.mjs 丢进来。
     """

@@ -17,7 +17,7 @@
 # scripts/make-router-kit.mjs 发布到套件仓库的 dist/ 和 GitHub 的 genkit release（唯一一份）。
 
 # 默认的下载地址 —— 指到套件那个 Cloudflare 站：生成器自己的站点只发页面，而 GitHub 的 genkit
-# release 在私有仓库下匿名下载一律 404（要 token），只有套件 CF 这条是公开可用的。
+# release 的包由调用方（套件）下好再用 MIHOMO_KIT_FILE 交过来；本脚本只有单一 URL，不做回退。
 # ⚠️ 常规路子还是套件：它自己用镜像把包下好、用 MIHOMO_KIT_FILE 指过来，根本不走这里。
 # ⚠️ 地址只放在变量里，不许打印（不想让客户看到托管域名）。
 BASE='https://mtun-xd.wxcircle.top'

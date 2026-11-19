@@ -30,9 +30,20 @@ $ROOT/tools/uninstall-check.sh
 "
 
 if ! command -v shellcheck >/dev/null 2>&1; then
-    echo "未安装 shellcheck，跳过（安装：apk add shellcheck / apt install shellcheck）"
+    # 没装 shellcheck 也不能「假通过」：至少用 sh -n 把语法过一遍
+    echo "未安装 shellcheck：只做 sh -n 语法检查（装 shellcheck 可查逻辑）"
+    bad=0
+    for f in $FILES; do
+        [ -f "$f" ] || continue
+        if ! sh -n "$f" 2>/dev/null; then
+            echo "✘ 语法错误：$f"
+            sh -n "$f" 2>&1 | head -3
+            bad=$((bad + 1))
+        fi
+    done
+    [ "$bad" = 0 ] && echo "✔ sh -n 全部通过（$(( $(echo "$FILES" | wc -l) )) 个文件）"
     [ "$STRICT" = 1 ] && exit 1
-    exit 0
+    exit "$bad"
 fi
 
 rc=0

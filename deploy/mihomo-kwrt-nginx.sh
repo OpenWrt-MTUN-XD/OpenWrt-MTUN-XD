@@ -213,8 +213,9 @@ EOF
 }
 
 restore_nginx_loc() {
+    # 还原到「装之前用户自己的那份」：备份落在 $NGX_PREV（见 do_install）
     if [ "${NGX_LOC_EXISTED:-0}" = 1 ]; then
-        mv "$NGX_LOC.prev.$$" "$NGX_LOC"
+        mv "$NGX_PREV" "$NGX_LOC"
     else
         rm -f "$NGX_LOC"
     fi

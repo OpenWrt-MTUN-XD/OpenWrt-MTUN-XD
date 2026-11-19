@@ -287,7 +287,7 @@ done
 # 顺序：仓库 dist/SHA256SUMS → GitHub Release 资产自带的 digest。
 # 两条都拿不到时**拒绝安装**（老部署没有 SHA256SUMS 也一样）—— 「没校验就装」
 # 等于把完整性交给了网络环境。确认来源可信时可显式跳过：
-#   MTUN_XD_ALLOW_UNVERIFIED=1 sh install.sh
+#   MIHOMO_ALLOW_UNVERIFIED=1 sh install.sh
 sums=$(curl -fsSL --connect-timeout 10 -m 30 "$CF/SHA256SUMS" 2>/dev/null)
 [ -n "$sums" ] || sums=$(curl -fsSL --connect-timeout 10 -m 30 "$RAW/dist/SHA256SUMS" 2>/dev/null)
 want=''

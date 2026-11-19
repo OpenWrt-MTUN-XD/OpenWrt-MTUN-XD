@@ -40,6 +40,7 @@ TMP="/tmp/mtun-xd.$$"
 SELFCOPY="/tmp/mtun-xd.self.$$"
 LOG=/tmp/mtun-xd.log
 DONE=/tmp/mtun-xd.done
+RAW=/tmp/mtun-xd.raw
 MIRRORS="https://github.com https://ghfast.top/https://github.com https://gh-proxy.com/https://github.com"
 # 生成器（配置工具）从独立的滚动 release 拉（OpenWrt-MTUN-XD/OpenWrt-MTUN-XD-genkit，tag `genkit`），跟核心 /
 # 面板一样走上面那套镜像，不依赖生成器自己的网站（那只是它的线上本体）。
@@ -69,7 +70,10 @@ NGINX_LOC=/etc/nginx/conf.d/mtun-xd.locations
 KEEP_CONFIG=1
 # 下载校验值的兜底开关：正常路径必须拿到 GitHub 官方 SHA-256。
 # 只有用户明确知道风险、且所在网络确实取不到元数据时才允许放行。
-ALLOW_UNVERIFIED=${MIHOMO_ALLOW_UNVERIFIED:-$ALLOW_UNVERIFIED}
+# 跳过校验的开关：两个名字都认，先落地成字面量 —— set -u 下不能直接展开未定义变量。
+ALLOW_UNVERIFIED=0
+[ "${MIHOMO_ALLOW_UNVERIFIED:-0}" = 1 ] && ALLOW_UNVERIFIED=1
+[ "${MTUN_XD_ALLOW_UNVERIFIED:-0}" = 1 ] && ALLOW_UNVERIFIED=1
 # TUN 那两样（自编译 / 精简固件常见缺）：开机重建 /dev/net/tun 的 init 脚本，
 # 以及"我们建过什么"的标记（卸载时按它回滚）。
 TUN_INIT=/etc/init.d/mihomo-tun
@@ -1523,6 +1527,8 @@ expose_live() {
 #   · 挂着、但那个地址已经不通了（载入配置文件把文件和内核弄错开了）→ 重挑一个能答的挂上
 # ⚠️ 人主动关过的（expose off 留了标记）不动。
 expose_ensure() {
+    # 配置里 expose=0 就是「不要 80」：开机自检也不能偷偷挂回去
+    [ "$(uci -q get mtun-xd.main.expose 2>/dev/null)" = "0" ] && return 0
     [ -f "$EXPOSE_OFF_MARK" ] && { echo off; return 0; }
     expose_on >/dev/null 2>&1
     local cur
@@ -2197,12 +2203,17 @@ case "${1:-}" in
                         echo 1 > "$DONE"
                         exit 1
                     }
-                    ( { MTUN_XD_SELFCOPY=1 sh "$SELFCOPY" console --run 2>&1 </dev/null; echo $? > "$DONE"; } \
-                        | scrub_stream >>"$LOG"
-                      rm -f "$SELFCOPY" ) >/dev/null 2>&1 </dev/null &
+                    ( MTUN_XD_SELFCOPY=1 sh "$SELFCOPY" console --run >"$RAW" 2>&1 </dev/null
+                      rc=$?
+                      scrub_stream <"$RAW" >>"$LOG"
+                      rm -f "$RAW" "$SELFCOPY"
+                      echo $rc > "$DONE" ) >/dev/null 2>&1 </dev/null &
                 else
-                    ( { "$0" "$1" --run 2>&1 </dev/null; echo $? > "$DONE"; } \
-                        | scrub_stream >>"$LOG" ) >/dev/null 2>&1 </dev/null &
+                    ( "$0" "$1" --run >"$RAW" 2>&1 </dev/null
+                      rc=$?
+                      scrub_stream <"$RAW" >>"$LOG"
+                      rm -f "$RAW"
+                      echo $rc > "$DONE" ) >/dev/null 2>&1 </dev/null &
                 fi
                 exit 0
                 ;;

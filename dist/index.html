@@ -26,34 +26,17 @@
     'curl -fsSL ' + location.origin + '/install.sh -o /tmp/mtun-xd-install.sh && '
       + 'sh /tmp/mtun-xd-install.sh';
 </script>
-<script>
-  // 包名带版本号：从 latest.txt 现算，发版时不用再手改这个页面（漏改会让下载页停在旧版）
-  fetch('./latest.txt', { cache: 'no-store' }).then(function (r) {
-    return r.ok ? r.text() : '';
-  }).then(function (t) {
-    var v = (t || '').trim().replace(/^v/, '');
-    if (!/^[0-9.]+$/.test(v)) return;
-    var apk = 'luci-app-mtun-xd-' + v + '.apk';
-    var ipk = 'luci-app-mtun-xd_' + v + '_all.ipk';
-    var a1 = document.getElementById('apk-a'), a2 = document.getElementById('ipk-a');
-    if (a1) { a1.href = './' + apk; a1.textContent = apk; }
-    if (a2) { a2.href = './' + ipk; a2.textContent = ipk; }
-    var l1 = document.getElementById('apk-li'), l2 = document.getElementById('ipk-li');
-    if (l1) l1.hidden = false;
-    if (l2) l2.hidden = false;
-  }).catch(function () { /* 取不到就只显示 install.sh 等固定项 */ });
-</script>
 
 <ul>
   <li><a href="./install.sh">install.sh</a> —— 一行装（自己认 apk / opkg）</li>
   <li><a href="./latest.txt">latest.txt</a> —— 当前版本号</li>
-  <li id="apk-li" hidden><a id="apk-a" href="#"></a> —— OpenWrt 25.x（apk）</li>
-  <li id="ipk-li" hidden><a id="ipk-a" href="#"></a> —— 24.10 及以前（opkg）</li>
+  <li><a href="./luci-app-mtun-xd-2026.11.06.apk">luci-app-mtun-xd-2026.11.06.apk</a> —— OpenWrt 25.x（apk）</li>
+  <li><a href="./luci-app-mtun-xd_2026.11.06_all.ipk">luci-app-mtun-xd_2026.11.06_all.ipk</a> —— 24.10 及以前（opkg）</li>
   <li><a href="./generator.sh">generator.sh</a> / <a href="./mihomo-deploy.zip">mihomo-deploy.zip</a> /
       <a href="./mihomo-deploy.tar.gz">mihomo-deploy.tar.gz</a> —— 配置工具（生成器）的部署包</li>
 </ul>
 
-<p style="color:#888">需要旧版回滚：到 <a href="https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/releases">GitHub Releases</a> 取对应版本。</p>
+<p style="color:#888">上一版（回滚用）：<a href="./luci-app-mtun-xd-2026.11.05.apk">2026.11.05 apk</a> · <a href="./luci-app-mtun-xd_2026.11.05_all.ipk">2026.11.05 ipk</a></p>
 
 <p style="color:#888">装完：路由器界面 → 服务 → MTUN-XD。</p>
 </body>

@@ -55,6 +55,29 @@ describe('内网控制：只吃 IPv4', () => {
   });
 });
 
+describe('方括号地址规范化（I-1/I-2/I-3）', () => {
+  test('括号 + 掩码不再把 ] 拼进规则', () => {
+    const mk = () => {
+      const e = new MH.SplitEngine();
+      e.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+      e.secret = '1'; e.port = 9090; e.default_node = 'A';
+      return e;
+    };
+    const lineOf = (t) => {
+      const e = mk();
+      e.custom_rules = [{ target: t, action: 'A' }];
+      return (e.generate().split('\n').find((l) => /CIDR/.test(l)) || '').trim();
+    };
+    expect(lineOf('[fd00::1]/128')).toBe('- SRC-IP-CIDR,fd00::1/128,A,no-resolve');
+    expect(lineOf('[fd00::1]/7')).toBe('- SRC-IP-CIDR,fd00::1/7,A,no-resolve');
+    expect(lineOf('[192.168.1.1]')).toBe('- SRC-IP-CIDR,192.168.1.1/32,A,no-resolve');
+    // 带端口：界面拦、引擎丢，绝不产出 DOMAIN 死规则
+    expect(MH.looksLikeBadIp('[fd00::1]:8080')).toBe(true);
+    expect(MH.looksLikeBadIp('1.2.3.4:8080')).toBe(true);
+    expect(lineOf('[fd00::1]:8080')).toBe('');
+  });
+});
+
 describe('IPv6 私网判定按数值（不靠前缀正则）', () => {
   test('fc:: / fc0:: / fcd:: / fe8:: 是全球单播，不是内网', () => {
     for (const v of ['fc::1', 'fc0::1', 'fcd::1', 'fe8::1']) {

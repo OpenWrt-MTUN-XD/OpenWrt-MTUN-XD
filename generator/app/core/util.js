@@ -185,7 +185,7 @@
 
   /** Python 的 `classify` —— IP 返回 'ip'，其余非空返回 'domain'。 */
   function classify(v) {
-    v = (v == null ? '' : String(v)).trim();
+    v = normalizeHost(v);
     if (!v) return '';
     if (v.indexOf(':') !== -1) return 'ip';
     if (/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v)) return 'ip';
@@ -428,9 +428,36 @@
   }
   MH.isPrivateTarget = isPrivateTarget;
 
+  /**
+   * 地址规范化：`[v6]`、`[v6]/128`、`[v6]:8080`、`[v4]` 里的方括号一律去掉，
+   * 返回 `host` / `host/mask` / `host:port` 的裸串。所有校验与渲染都先过这里，
+   * 免得各写一份 replace 而漏掉「括号 + 掩码」这种形态（I-1 就是这么炸的）。
+   */
+  function normalizeHost(t) {
+    var s2 = String(t == null ? '' : t).trim();
+    if (s2.charAt(0) === '[') {
+      var close = s2.indexOf(']');
+      if (close > 0) return s2.slice(1, close) + s2.slice(close + 1);
+    }
+    return s2;
+  }
+  MH.normalizeHost = normalizeHost;
+
+  /** 带端口的写法（`1.2.3.4:8080` / `[fd00::1]:8080`）—— 规则目标不接受端口。 */
+  function hasHostPort(t) {
+    var s2 = normalizeHost(t);
+    if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(s2)) return true;
+    var at = s2.lastIndexOf(':');
+    if (at === -1 || !/^\d+$/.test(s2.slice(at + 1))) return false;
+    // 去掉 `:端口` 后仍是合法 IPv6 → 说明这是 `[v6]:port`
+    return isIpv6(s2.slice(0, at));
+  }
+  MH.hasHostPort = hasHostPort;
+
   /** 合法 CIDR（v4 / v6，可省掩码）：地址与掩码范围都要对。 */
   function isValidCidr(t) {
-    var parts = String(t == null ? '' : t).trim().replace(/^\[|\]$/g, '').split('/');
+    if (hasHostPort(t)) return false;
+    var parts = normalizeHost(t).split('/');
     if (parts.length > 2) return false;
     var a = parts[0].trim().replace(/^\[|\]$/g, '');
     var v4 = ipv4ToInt(a) !== null;
@@ -456,8 +483,9 @@
 
   /** 看着像 IP / CIDR，但按 mihomo 的语法不合法（缺段、带端口、掩码越界、带 '-' 的 v6 段…）。 */
   function looksLikeBadIp(t) {
-    var s2 = String(t == null ? '' : t).trim();
+    var s2 = normalizeHost(t);
     if (!s2) return false;
+    if (hasHostPort(t)) return true;
     if (s2.indexOf('-') !== -1) return false;          // IP 段由 ipRangeToCidrs 单独判
     if (/^\d{1,3}(?:\.\d{1,3}){1,3}$/.test(s2)) return classify(s2) !== 'ip';
     if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(s2)) return true;   // 带端口的 IP

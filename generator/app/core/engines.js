@@ -99,7 +99,7 @@
   }
 
   function ipRule(ip, action) {
-    ip = String(ip == null ? '' : ip).trim().replace(/^\[|\]$/g, '');
+    ip = MH.normalizeHost(ip);
     if (!ip) return null;
     if (!validIp(ip)) return null;
     var to = action || 'DIRECT';
@@ -117,6 +117,7 @@
    */
   function ruleLines(t, action) {
     var out = [];
+    if (MH.hasHostPort(t)) return out;   // 规则目标不接受端口（界面会提示，这里兜底）
     var cidrs = MH.ipRangeToCidrs(t);
     if (cidrs) {
       for (var i = 0; i < cidrs.length; i++) {
@@ -137,7 +138,7 @@
    * 内核实测：`SRC-IP-CIDR` 同时接受 IPv4 / IPv6；`SRC-IP-CIDR6` 不存在（unsupported rule type）。
    */
   function scopedIpRule(ip, action) {
-    var t = String(ip == null ? '' : ip).trim().replace(/^\[|\]$/g, '');
+    var t = MH.normalizeHost(ip);
     var to = action || 'DIRECT';
     if (MH.isPrivateCidr(t)) {
       // 私网分支同样要校验：`fd00::1/129`、`192.168.1.1/33`、带 '-' 的 v6 段都是
@@ -153,6 +154,7 @@
   /** 按**目标**匹配的 IP 规则（直连 IP 块用）：IP 段展开成多条 IP-CIDR / IP-CIDR6。 */
   function destRuleLines(t, action) {
     var out = [];
+    if (MH.hasHostPort(t)) return out;
     var cidrs = MH.ipRangeToCidrs(t);
     if (cidrs) {
       for (var i = 0; i < cidrs.length; i++) {

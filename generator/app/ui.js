@@ -678,6 +678,11 @@
     }
     var smartOn = state.mode === 'split' && state.autoSelect && names.length >= 2;
     var smartPool = smartOn ? MH.SplitEngine.smartPool(state.nodes, state.autoSelectExclude) : [];
+    // 进智能选择之前先记住用户手选的出口：关掉开关时还原，别让出口自己跳回第一个节点
+    if (smartOn && state.defaultNode !== MH.SplitEngine.AUTO_GROUP &&
+        state.defaultNode !== 'DIRECT' && names.indexOf(state.defaultNode) !== -1) {
+      state.defaultNodeMemory = state.defaultNode;
+    }
     if (smartPool.length >= 2) {
       state.defaultNode = MH.SplitEngine.AUTO_GROUP;
       fillSelect($('default-node'), [MH.SplitEngine.AUTO_GROUP], state.defaultNode);
@@ -692,7 +697,11 @@
         fillSelect($('default-node'), ['DIRECT'], 'DIRECT');
       }
     } else {
-      if (names.indexOf(state.defaultNode) === -1) state.defaultNode = names[0];
+      if (names.indexOf(state.defaultNode) === -1) {
+        // 优先还原「开智能选择前那次手选」，它还在就沿用它，否则才回落第一个节点
+        var memo = state.defaultNodeMemory;
+        state.defaultNode = (memo && names.indexOf(memo) !== -1) ? memo : names[0];
+      }
       fillSelect($('default-node'), names, state.defaultNode);
     }
     renderRuleAction(names);
@@ -920,6 +929,14 @@
     menu.appendChild(ruleActionRow('直连', 'DIRECT', acts[0] === 'DIRECT', names));
     visible.forEach(function (name) {
       menu.appendChild(ruleActionRow(name, name, acts.indexOf(name) !== -1, names));
+    });
+    // 已选的出口如果被 ruleOptions 剔除了（比如它就是当前默认出口），菜单里补一行灰底，
+    // 否则标签写着「出口：B」、菜单里却看不到它，用户没法取消。
+    acts.forEach(function (name) {
+      if (name === 'DIRECT' || visible.indexOf(name) !== -1) return;
+      var row = ruleActionRow(name + '（当前默认出口）', name, true, names);
+      row.className += ' muted';
+      menu.appendChild(row);
     });
   }
 

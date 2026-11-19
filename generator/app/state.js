@@ -60,6 +60,8 @@
       // 与回国模式互斥 —— 一个说"全走代理"，一个说"国内走代理、国外直连"。
       globalProxy: false,
       defaultNode: '',
+      // 打开「智能选择」前用户手选的默认出口：关掉开关时还原，避免出口跳回第一个节点
+      defaultNodeMemory: '',
       // 本地出口：「国内出口」勾选后 GEOSITE,cn / GEOIP,CN 改走这个节点；默认不勾 = 国内直连。
       localExit: false,
       localExitNode: '',

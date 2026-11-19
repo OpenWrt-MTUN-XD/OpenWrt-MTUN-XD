@@ -698,6 +698,8 @@ body.headerless #status-version { display: none; }
   font-size: 13px; color: var(--text); white-space: nowrap;
 }
 .ms-item:hover { background: var(--accent-soft); }
+/* 已选但不在常规候选里的项（例如它就是当前默认出口）：灰一点，提示这是「补出来」的那行 */
+.ms-item.muted { opacity: .72; font-style: italic; }
 .ms-box {
   width: 14px; height: 14px; flex: none; border-radius: 4px;
   border: 1px solid var(--border-strong); background: transparent;

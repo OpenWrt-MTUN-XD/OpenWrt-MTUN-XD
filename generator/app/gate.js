@@ -66,7 +66,9 @@
     doc.documentElement.setAttribute('data-theme', theme);
   })();
 
-  var passed = false;    // 过了门就一路放行，后面再调 run 不用等
+  var passed = false;          // 过了门就一路放行，后面再调 run 不用等
+  // 可信入口（面板绿点 / LuCI 配置工具页）才有「载入配置文件」；直接打开只给下载。
+  var trustedEntry = false;
   var waiting = [];      // 等门的回调（main.js 和 apply.js 各调一次 run）
   var probing = null;    // 探路只发一次
   var hashReady = null;  // toolhash.txt 只拉一次
@@ -368,13 +370,13 @@
       //    的 `#tool=`（跨源，留不了记号）。验一下就用，效果同手输：进得去，但没有面板密码
       //    就没有「载入配置文件」。
       var fromLu = takeToolFromHash();
-      if (fromLu && isTool(fromLu)) { rememberTool(fromLu); open(); return; }
+      if (fromLu && isTool(fromLu)) { trustedEntry = true; rememberTool(fromLu); open(); return; }
 
       // ① 从绿点过来的（面板点那一下留了记号）→ 面板密码同源现成，验过直接进，不用工具密码。
-      if (fromPanel && secret) { tryPanel(secret); return; }
+      if (fromPanel && secret) { trustedEntry = true; tryPanel(secret); return; }
 
       // ② 两把都在手上（本机记过工具密码 + 面板登过）→ 也悄悄过
-      if (secret && isTool(tool)) { tryPanel(secret); return; }
+      if (secret && isTool(tool)) { trustedEntry = true; tryPanel(secret); return; }
 
       // ③ 剩下的（本机没记过工具密码）→ 问；已经知道的那把替你填好
       ask('', { tool: tool, panel: secret });
@@ -383,7 +385,16 @@
     });
   }
 
-  root.MHGate = { run: run };
+  /**
+   * 能不能显示「载入配置文件」：
+   *   · 从面板绿点进来 / 从 LuCI「配置工具」页进来 → 能（和以前一致）；
+   *   · 其它情况（直接打开这个页面、只拿工具密码）→ 不能，只给下载。
+   */
+  function canLoad() {
+    return trustedEntry;
+  }
+
+  root.MHGate = { run: run, canLoad: canLoad };
 
   if (!doc) return;
   // 探路开场就发（脚本在 <head> 里，比正文脚本早），等正文解析完基本已经有结果了。

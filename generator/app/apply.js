@@ -243,6 +243,20 @@
       return;
     }
 
+    var gate = root.MHGate;
+    if (gate && typeof gate.canLoad === 'function' && !gate.canLoad()) {
+      // 只有面板密码（门上一把钥匙）→ 允许生成/下载，不给写盘
+      var b = doc.getElementById('apply-btn');
+      if (b) {
+        var tip = doc.createElement('span');
+        tip.style.cssText = 'font-size:13px; line-height:1.6; color:#8a93a0;';
+        tip.textContent = '当前是「只下载」权限：可以生成、复制、下载配置；要直接载入路由器，'
+          + '请从 LuCI 的「配置工具」页进入（或刷新后输入工具密码）。';
+        b.parentNode.insertBefore(tip, b);
+      }
+      return;
+    }
+
     var d = derive();
     if (!d.base) return;
 

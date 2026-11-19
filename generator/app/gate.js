@@ -132,8 +132,13 @@
    *  （`crypto.subtle` 在 http 下不存在，别换）。 */
   function isTool(pw) {
     if (!currentHash() || !pw) return false;
-    if (!root.MHSha256 || !root.MHSha256.hex) return false;   // 兜底：脚本没加载就别误判
+    if (!root.MHSha256 || !root.MHSha256.hex) return false;
     return root.MHSha256.hex(pw) === currentHash();
+  }
+
+  /** 页面缺 sha256.js（套件没铺全）—— 这时不管输什么都进不去，得说清是文件缺了不是密码错。 */
+  function shaReady() {
+    return !!(root.MHSha256 && root.MHSha256.hex);
   }
 
   function readTool() {
@@ -234,6 +239,10 @@
     // 这把工具密码。前两次老老实实报错（不然手滑一次就把发出去的钥匙作废了）。
     // 注意：换得动的前提是手里有面板密码，别人乱输换不掉，不是 DoS 洞；到了次数就不再
     // 往回数，后面每次错都再试一次，免得「差一次」的状态被刷新洗掉。
+    if (!shaReady()) {
+      ask('页面缺少 sha256.js（套件没铺全），重新跑一次安装脚本');
+      return;
+    }
     if (!isTool(toolPw)) {
       wrongTries++;
       if (wrongTries >= WRONG_LIMIT) { rotateOnWrong(); return; }

@@ -754,8 +754,8 @@
       if (custom) blocks.push(custom);
 
       // 内网直连 / 内网域名 / NTP：三段的注释与规则见文件顶部常量。
-      // GEOIP,LAN 是 mihomo 内置伪规则，v4/v6 通吃，是原先六条 IP-CIDR 的严格超集；不加 no-resolve
-      // （这条规则的价值就在于解析出真实 IP 再判断是不是内网地址）。
+      // GEOIP,LAN 是 mihomo 内置伪规则，v4/v6 通吃，是原先六条 IP-CIDR 的严格超集；
+      // 带 no-resolve —— 这条只看目标 IP 字面量，域名交给紧随其后的 GEOSITE,private。
       blocks.push(LAN_DIRECT.slice());
       blocks.push(LAN_DOMAINS.slice());
 

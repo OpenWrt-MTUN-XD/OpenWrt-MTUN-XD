@@ -171,7 +171,7 @@
   function domainRule(d, action) {
     d = String(d == null ? '' : d).trim();
     if (!d) return null;
-    if (d.charAt(0) === '.') d = d.slice(1);
+    d = d.replace(/^\.+/, '').replace(/\.+$/, '');   // 首点（域后缀写法）/ 尾点（FQDN）都归一
     if (!d) return null;
     // 含逗号/空格/斜杠的「域名」会让规则行多一列 → 内核整份拒载（`proxy [y.com] not found`）
     if (!MH.isValidDomain(d)) return null;

@@ -479,10 +479,11 @@
    * 单标签主机名（`router`）允许；每段 1–63、总长 ≤253、首尾不能是 `-`。
    */
   function isValidDomain(d) {
-    var s2 = String(d == null ? '' : d).trim();
+    // 尾点（FQDN 写法）与首点（`.example.com` 这种「整个域后缀」的旧写法）都先去掉，
+    // 与引擎 domainRule 的处理保持一致 —— 否则会出现「界面拒、引擎接受」。
+    var s2 = String(d == null ? '' : d).trim().replace(/^\.+/, '').replace(/\.+$/, '');
     if (!s2 || s2.length > 253) return false;
     if (/[\s,\/:;#"'\\?&=%@<>|*]/.test(s2)) return false;
-    if (s2.charAt(0) === '.' || s2.charAt(s2.length - 1) === '.') return false;
     if (s2.charAt(0) === '-') return false;
     var labels = s2.split('.');
     for (var i = 0; i < labels.length; i++) {

@@ -2153,7 +2153,8 @@
         return MH.classify(t) === 'domain' && !MH.isValidDomain(t) && !geositeCategory(t);
       });
       if (badDomain.length) {
-        toast('目标不合法（' + badDomain[0] + '）：域名里不能有逗号 / 空格 / 斜杠 / 冒号', 'err');
+        toast('域名写法不合法（' + badDomain[0] + '）：不能带逗号 / 空格 / 斜杠 / 冒号 / 通配符，'
+          + '也不能有空的标签或首尾的 -', 'err');
         return;
       }
       var added = addRules($('rule-target').value);

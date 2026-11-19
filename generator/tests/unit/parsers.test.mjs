@@ -66,6 +66,10 @@ describe('域名目标校验（K-2/K-3）', () => {
     expect(MH.isValidDomain('192.168/16')).toBe(false);
     expect(MH.isValidDomain('a..b')).toBe(false);
     expect(MH.isValidDomain('-bad.com')).toBe(false);
+    // 尾点（FQDN）/ 首点（域后缀写法）：去掉后合法，且与引擎口径一致
+    expect(MH.isValidDomain('example.com.')).toBe(true);
+    expect(MH.isValidDomain('.example.com')).toBe(true);
+    expect(MH.isValidDomain('*.example.com')).toBe(false);
   });
 
   test('引擎不会写出会炸整份配置的 DOMAIN 行', () => {

@@ -198,6 +198,9 @@
       if (r.type === 'geosite') {
         // 目标是一个 GeoSite 分类（如 category-ai-!cn / tiktok）
         lines = ['  - GEOSITE,' + target + ',' + action];
+      } else if (r.match === 'suffix' && MH.classify(target) === 'domain' && MH.isValidDomain(target)) {
+        // 后缀匹配：DOMAIN-SUFFIX 本身含全部子域（不要写前导点）
+        lines = ['  - DOMAIN-SUFFIX,' + MH.normalizeHost(target).replace(/^\.+/, '') + ',' + action];
       } else {
         lines = ruleLines(target, action);
       }

@@ -55,6 +55,40 @@ describe('内网控制：只吃 IPv4', () => {
   });
 });
 
+describe('后缀匹配（DOMAIN-SUFFIX）', () => {
+  const mk = () => {
+    const e = new MH.SplitEngine();
+    e.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+    e.secret = '1'; e.port = 9090; e.default_node = 'A';
+    return e;
+  };
+  const lineOf = (r) => {
+    const e = mk();
+    e.custom_rules = [r];
+    return (e.generate().split('\n').find((l) => /DOMAIN(-SUFFIX)?,example/.test(l)) || '').trim();
+  };
+
+  test('后缀 → DOMAIN-SUFFIX，默认/精确 → DOMAIN', () => {
+    expect(lineOf({ target: 'example.com', action: 'A', match: 'suffix' }))
+      .toBe('- DOMAIN-SUFFIX,example.com,A');
+    expect(lineOf({ target: 'example.com', action: 'A', match: 'domain' }))
+      .toBe('- DOMAIN,example.com,A');
+    expect(lineOf({ target: 'example.com', action: 'A' })).toBe('- DOMAIN,example.com,A');
+  });
+
+  test('后缀 + 直连也走 DOMAIN-SUFFIX', () => {
+    expect(lineOf({ target: 'example.com', action: 'DIRECT', match: 'suffix' }))
+      .toBe('- DOMAIN-SUFFIX,example.com,DIRECT');
+  });
+
+  test('后缀选到 IP 目标时回落成 IP 规则', () => {
+    const e = mk();
+    e.custom_rules = [{ target: '8.8.8.8', action: 'A', match: 'suffix' }];
+    expect(e.generate()).toContain('IP-CIDR,8.8.8.8/32,A,no-resolve');
+    expect(e.generate()).not.toContain('DOMAIN-SUFFIX,8.8.8.8');
+  });
+});
+
 describe('域名目标校验（K-2/K-3）', () => {
   test('含逗号 / 空格 / 斜杠的目标不合法', () => {
     expect(MH.isValidDomain('example.com')).toBe(true);

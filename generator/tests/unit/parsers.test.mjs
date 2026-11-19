@@ -66,6 +66,18 @@ describe('域名目标校验（K-2/K-3）', () => {
     expect(MH.isValidDomain('192.168/16')).toBe(false);
     expect(MH.isValidDomain('a..b')).toBe(false);
     expect(MH.isValidDomain('-bad.com')).toBe(false);
+    // N-1：域名输出必须与校验用同一份归一值（不能写出带尾点的 DOMAIN）
+    {
+      const e = new MH.SplitEngine();
+      e.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+      e.secret = '1'; e.port = 9090; e.default_node = 'A';
+      e.custom_rules = [{ target: 'example.com.', action: 'A' }];
+      e.direct_domains = ['sub.example.com.'];
+      const y = e.generate();
+      expect(y).toContain('DOMAIN,example.com,A');
+      expect(y).toContain('DOMAIN,sub.example.com,DIRECT');
+      expect(y).not.toContain('example.com.,');
+    }
     // 尾点（FQDN）/ 首点（域后缀写法）：去掉后合法，且与引擎口径一致
     expect(MH.isValidDomain('example.com.')).toBe(true);
     expect(MH.isValidDomain('.example.com')).toBe(true);

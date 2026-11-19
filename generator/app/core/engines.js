@@ -169,9 +169,9 @@
   }
 
   function domainRule(d, action) {
-    d = String(d == null ? '' : d).trim();
-    if (!d) return null;
-    d = d.replace(/^\.+/, '');   // 首点（域后缀写法）；尾点已由 normalizeHost 统一去掉
+    // 必须在这里归一：校验（isValidDomain）会去尾点，输出也得用同一份值，
+    // 否则 `example.com.` 会通过校验却写出带尾点的 DOMAIN（永不匹配）。
+    d = MH.normalizeHost(d).replace(/^\.+/, '');
     if (!d) return null;
     // 含逗号/空格/斜杠的「域名」会让规则行多一列 → 内核整份拒载（`proxy [y.com] not found`）
     if (!MH.isValidDomain(d)) return null;

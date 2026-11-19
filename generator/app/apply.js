@@ -12,8 +12,8 @@
 (function (root) {
   'use strict';
 
-  var doc = root.document;
-  if (!doc) return;
+  var PAGE_DOC = root.document;   // 不要用 doc 这个名字：函数内 var doc 会遮蔽它
+  if (!PAGE_DOC) return;
 
   function toast(msg, kind) {
     if (root.MH && root.MH.ui && root.MH.ui.toast) root.MH.ui.toast(msg, kind);
@@ -102,7 +102,7 @@
 
   function writeFile(cfg, yaml) {
     // A-3′：按钮级防重复 —— 双击/回车上屏都只发一次写盘请求
-    var btn = doc.getElementById('apply-btn');
+    var btn = PAGE_DOC.getElementById('apply-btn');
     if (btn && btn.disabled) return;
     var label = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = '载入中…'; }
@@ -212,7 +212,7 @@
 
   function apply(cfg, url) {
     // B-2：双击的第二下在这里就挡掉 —— 否则会多弹一条「正在载入…」
-    var btn = doc.getElementById('apply-btn');
+    var btn = PAGE_DOC.getElementById('apply-btn');
     if (btn && btn.disabled) return;
     var yaml = (root.MH && root.MH.ui && root.MH.ui.getGenerated)
       ? root.MH.ui.getGenerated() : '';
@@ -228,7 +228,7 @@
     // 2/4 空格缩进、flow 写法、字段顺序怎么变都不会静默失效（tab 缩进本身就是非法 YAML）。
     try {
       // ⚠️ 变量名不能叫 doc —— 模块级的 doc 是 document，函数里再 var doc 会把它遮蔽掉，
-      //    apply() 开头的 doc.getElementById 直接抛 TypeError，表现就是「点载入没反应」。
+      //    apply() 开头的 PAGE_DOC.getElementById 直接抛 TypeError，表现就是「点载入没反应」。
       var yamlDoc = null;
       if (root.MH && typeof root.MH.yamlLoad === 'function') yamlDoc = root.MH.yamlLoad(yaml);
       else if (root.jsyaml && typeof root.jsyaml.load === 'function') yamlDoc = root.jsyaml.load(yaml);
@@ -252,11 +252,11 @@
   }
 
   function install(cfg, url) {
-    var btn = doc.getElementById('apply-btn');
+    var btn = PAGE_DOC.getElementById('apply-btn');
     if (!btn) return;
     if (!url) {
       // 够不着写盘口 ⇒ 根本不显示「载入配置文件」（信箱已撤，按了也没用），但必须说一句为什么。
-      var tip = doc.createElement('span');
+      var tip = PAGE_DOC.createElement('span');
       tip.style.cssText = 'font-size:13px; line-height:1.6; color:#8a93a0;';
       tip.textContent = '这台够不着写盘口 —— 从 LuCI 的「配置工具」页进（那页走的就是 80），'
         + '或者把这台的 80 端口映射/转发出来';
@@ -278,9 +278,9 @@
       if (root.console && root.console.log) {
         root.console.log('[apply] 拿不到 secret —— 不显示「载入配置文件」（这是有意的）');
       }
-      var b0 = doc.getElementById('apply-btn');
+      var b0 = PAGE_DOC.getElementById('apply-btn');
       if (b0) {
-        var t0 = doc.createElement('span');
+        var t0 = PAGE_DOC.createElement('span');
         t0.style.cssText = 'font-size:13px; line-height:1.6; color:#8a93a0;';
         t0.textContent = '没拿到面板密码，所以没有「载入配置文件」——'
           + '到面板登录一次，或从面板绿点重新进入本页。';
@@ -292,9 +292,9 @@
     var gate = root.MHGate;
     if (gate && typeof gate.canLoad === 'function' && !gate.canLoad()) {
       // 只有面板密码（门上一把钥匙）→ 允许生成/下载，不给写盘
-      var b = doc.getElementById('apply-btn');
+      var b = PAGE_DOC.getElementById('apply-btn');
       if (b) {
-        var tip = doc.createElement('span');
+        var tip = PAGE_DOC.createElement('span');
         tip.style.cssText = 'font-size:13px; line-height:1.6; color:#8a93a0;';
         tip.textContent = '当前是「只下载」权限：可以生成、复制、下载配置；要直接载入路由器，'
           + '请从 LuCI 的「配置工具」页或面板绿点进入。';
@@ -320,6 +320,6 @@
     else boot();
   }
 
-  if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start);
+  if (PAGE_DOC.readyState === 'loading') PAGE_DOC.addEventListener('DOMContentLoaded', start);
   else start();
 })(typeof globalThis !== 'undefined' ? globalThis : this);

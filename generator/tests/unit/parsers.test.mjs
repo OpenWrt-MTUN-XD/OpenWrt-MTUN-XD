@@ -55,6 +55,36 @@ describe('内网控制：只吃 IPv4', () => {
   });
 });
 
+describe('端口判定不能误伤 IPv6（J-1/J-3）', () => {
+  test('多段裸 IPv6 不算带端口', () => {
+    for (const v of ['fd00::2:1', 'fe80::1:2', '2001:db8::2:1', 'fd00::1', 'fd00:0:0:0:0:0:0:1']) {
+      expect(MH.hasHostPort(v)).toBe(false);
+      expect(MH.isValidCidr(v)).toBe(true);
+    }
+  });
+
+  test('真正的 host:port 才认', () => {
+    for (const v of ['[fd00::1]:8080', '1.2.3.4:8080', 'example.com:8080']) {
+      expect(MH.hasHostPort(v)).toBe(true);
+    }
+  });
+
+  test('多段裸 IPv6 能正常出规则', () => {
+    const mk = () => {
+      const e = new MH.SplitEngine();
+      e.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+      e.secret = '1'; e.port = 9090; e.default_node = 'A';
+      return e;
+    };
+    const e = mk();
+    e.custom_rules = [{ target: 'fd00::2:1', action: 'A' }];
+    expect(e.generate()).toContain('SRC-IP-CIDR,fd00::2:1/128,A,no-resolve');
+    const e2 = mk();
+    e2.direct_ips = ['fe80::1:2'];
+    expect(e2.generate()).toContain('IP-CIDR6,fe80::1:2/128,DIRECT,no-resolve');
+  });
+});
+
 describe('方括号地址规范化（I-1/I-2/I-3）', () => {
   test('括号 + 掩码不再把 ] 拼进规则', () => {
     const mk = () => {

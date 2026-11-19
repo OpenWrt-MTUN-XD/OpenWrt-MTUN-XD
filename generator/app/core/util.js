@@ -187,6 +187,8 @@
   function classify(v) {
     v = normalizeHost(v);
     if (!v) return '';
+    // host:port 不是 IP：不能当 v6 解析，否则会被静默丢（`example.com:8080`）
+    if (hasHostPort(v)) return 'domain';
     if (v.indexOf(':') !== -1) return 'ip';
     if (/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v)) return 'ip';
     // `192.168.1.10-192.168.1.20` 这种网段写法也是 IP（mihomo 没有 IP 段类型，输出时展开成 CIDR）。
@@ -445,12 +447,13 @@
 
   /** 带端口的写法（`1.2.3.4:8080` / `[fd00::1]:8080`）—— 规则目标不接受端口。 */
   function hasHostPort(t) {
-    var s2 = normalizeHost(t);
-    if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(s2)) return true;
-    var at = s2.lastIndexOf(':');
-    if (at === -1 || !/^\d+$/.test(s2.slice(at + 1))) return false;
-    // 去掉 `:端口` 后仍是合法 IPv6 → 说明这是 `[v6]:port`
-    return isIpv6(s2.slice(0, at));
+    var raw = String(t == null ? '' : t).trim();
+    if (/^\[[^\]]+\]:\d+$/.test(raw)) return true;                  // [v6]:port
+    if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(raw)) return true;      // v4:port
+    // 单冒号 + 数字结尾 + 冒号前没有冒号 → 域名/主机名:port（`example.com:8080`）
+    if (/^[^\s:\[\]]+:\d+$/.test(raw) && raw.indexOf('::') === -1) return true;
+    // 裸 IPv6 不是端口：`fd00::2:1`、`fe80::1:2` 都是合法地址，不能当 `host:port`
+    return false;
   }
   MH.hasHostPort = hasHostPort;
 

@@ -2130,6 +2130,11 @@
         toast('IP 段起止反了或地址不合法（' + badRange[0] + '），请写成 192.168.1.10-192.168.1.20', 'err');
         return;
       }
+      var withPort = targets.filter(function (t) { return MH.hasHostPort(t); });
+      if (withPort.length) {
+        toast('规则目标不接受端口（' + withPort[0] + '）：请去掉 :端口 再添加', 'err');
+        return;
+      }
       var badIp = targets.filter(function (t) { return MH.looksLikeBadIp(t); });
       if (badIp.length) {
         toast('IP / CIDR 写法不合法（' + badIp[0] + '）：请写成 192.168.0.0/16 或 192.168.1.10', 'err');

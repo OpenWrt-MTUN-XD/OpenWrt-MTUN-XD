@@ -25,8 +25,13 @@ return view.extend({
 			var src = url + qs + (qs ? '&' : '?') + '_t=' + Date.now();
 			// 提示里要显示的那个地址：0.0.0.0 / * / :: 是「全听」不是真地址 —— 显示它没意义，
 			// 换成浏览器打的那个主机名。
-			var showAddr = (/^(0\.0\.0\.0|\*|\[::\]|::)$/.test(String(panel.host))
-				? window.location.hostname : String(panel.host)) + ':' + String(panel.port);
+			var showHost = (/^(0\.0\.0\.0|\*|\[::\]|::)$/.test(String(panel.host))
+				? window.location.hostname : String(panel.host));
+			// IPv6 字面量要加方括号：`::1:9090` 是错的，`[::1]:9090` 才对
+			if (String(showHost).indexOf(':') !== -1 && String(showHost).charAt(0) !== '[') {
+				showHost = '[' + showHost + ']';
+			}
+			var showAddr = showHost + ':' + String(panel.port);
 
 			var frame = E('iframe', {
 				src: src,
@@ -39,9 +44,14 @@ return view.extend({
 
 			// 三种"打不开"要分开说清楚：config.yaml 里没写 external-ui（面板压根没被发出来，9090
 			// 上只有 API）、内核绑在回环上（活着但浏览器够不着）、其它（才可能是内核没在跑）。
-			var noUi = !panel.ui;
+			var readErr = !!panel.failed;          // panelinfo 没跑成（超时 / 权限 / 正忙）
+			var noUi = !readErr && !panel.ui;      // 真没写 external-ui 才算「未启用」
 			var isLoop = C.loopbackOnly(panel.host);
-			var hint = E('div', { style: 'display:none; padding:28px 32px; line-height:1.9;' }, noUi ? [
+			var hint = E('div', { style: 'display:none; padding:28px 32px; line-height:1.9;' }, readErr ? [
+				E('h3', { style: 'margin:0 0 6px;' }, '读不到套件信息'),
+				E('div', {}, ['执行 ', E('code', {}, '/usr/sbin/mtun-xd panelinfo'), ' 失败（超时 / 权限 / 内核正忙）—— 稍后刷新本页。']),
+				E('div', { style: 'color:var(--mh-muted);' }, '连不上就 ', E('code', {}, '/usr/sbin/mtun-xd status'), ' 看状态。')
+			] : noUi ? [
 				E('h3', { style: 'margin:0 0 6px;' }, '面板未启用'),
 				E('div', {}, ['config.yaml 里加一行 ', E('code', {}, 'external-ui: ui'), '，再重启内核。'])
 			] : viaHttp ? [
@@ -61,9 +71,13 @@ return view.extend({
 			// 内核没起来时 uhttpd 回 502/504（no-cors 那套会当成"通"）；直连探的是 /index.html。
 			var probe = function () {
 				if (viaHttp) {
-					return fetch('/version', { cache: 'no-store' }).then(function (r) {
-						return r.status < 500;      // 200/401 = 内核活着；502/504 = 没起来
-					}, function () { return false; });
+					// 同源同样要有上限：内核半死时 uhttpd 会一直吊着，页面既不出框也不出提示
+					return Promise.race([
+						fetch('/version', { cache: 'no-store' }).then(function (r) {
+							return r.status < 500;      // 200/401 = 内核活着；502/504 = 没起来
+						}, function () { return false; }),
+						new Promise(function (r) { setTimeout(function () { r(false); }, 2500); }),
+					]);
 				}
 				return Promise.race([
 					fetch(url + 'index.html', { mode: 'no-cors', cache: 'no-store' })
@@ -73,7 +87,7 @@ return view.extend({
 			};
 			// 注意：`external-ui` 没写 = 内核压根不发这个静态站，一定打不开 —— 连框都不建
 			// （没插进文档的 iframe 不会去加载 src，等于没请求）。
-			if (noUi) {
+			if (readErr || noUi) {
 				hint.style.display = '';
 			} else {
 				probe().then(function (ok) {
@@ -92,12 +106,13 @@ return view.extend({
 
 			// 没挂上（pkg 模式装的 / 手动 apk add / 上一版漏的）⇒ 后台自己补一次；
 			// 补成了整页重载一次走同源那条。
-			if (!viaHttp) C.selfHeal();
+			// ⚠️ noUi / readErr 不补：前者缺 external-ui（ensure 治不了），后者 CLI 都没跑成。
+			if (!viaHttp && !noUi && !readErr) C.selfHeal();
 
 			// 通栏（左右到边、底下接到页脚）
 			var body = E('div', {
 				style: 'flex:1 1 auto; min-height:0; display:flex; flex-direction:column; margin:-13px 0 0 0;'
-			}, noUi ? [hint] : [frame, hint]);
+			}, (readErr || noUi) ? [hint] : [frame, hint]);
 
 			// 缩放**跟着窗口宽度实时变**（实现在 common.js：窄屏不缩、宽屏按 baseSc 缩）
 			// Argon 的容器是 #tabmenu / footer：版式微调直接写一条 CSS，

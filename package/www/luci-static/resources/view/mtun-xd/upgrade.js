@@ -59,7 +59,6 @@ function logLine(out, msg) {
 	var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
 	var ts = p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
 	var t = out.textContent || '';
-	if (t.indexOf('点右边') >= 0) t = '';
 	out.textContent = t + (t ? '\n' : '') + '[' + ts + '] ' + msg;
 	out.scrollTop = out.scrollHeight;
 }
@@ -140,15 +139,19 @@ return view.extend({
 		var coreAct = function (cmd) {
 			btnStart.disabled = true;
 			btnStop.disabled = true;
+			setBusy(self._upBtns || [], true);   // 启停期间也别让升级按钮能点（互斥）
 			coreLog(cmd === 'core-start' ? '启动服务 …' : '停止服务 …');
 			var waitRun = function (n) {
 				fs.exec(C.SCRIPT, ['core-state']).then(function (r) {
 					var st = ((r && r.stdout) || '').trim();
-					if (st === 'running') { coreSet(st); coreLog('OK 服务已启动'); self.refreshStatus(statusEls); return; }
+					if (st === 'running') {
+						coreSet(st); coreLog('OK 服务已启动'); setBusy(self._upBtns || [], false);
+						self.refreshStatus(statusEls); return;
+					}
 					// 注意：开机 5 分钟内启动会先等 40 秒（init 脚本里的开机延迟）→ 等满 90 秒再判超时
-					if (n > 90) { coreSet(st); coreLog('FAIL 启动超时（90 秒）'); return; }
+					if (n > 90) { coreSet(st); coreLog('FAIL 启动超时（90 秒）'); setBusy(self._upBtns || [], false); return; }
 					setTimeout(function () { waitRun(n + 1); }, 1000);
-				}).catch(function () { coreLog('FAIL 查询状态失败'); coreRefresh(); });
+				}).catch(function () { coreLog('FAIL 查询状态失败'); setBusy(self._upBtns || [], false); coreRefresh(); });
 			};
 			fs.exec(C.SCRIPT, [cmd]).then(function (r) {
 				var st = ((r && r.stdout) || '').trim();
@@ -156,7 +159,7 @@ return view.extend({
 				coreSet(st);
 				coreLog(st === 'stopped' ? 'OK 服务已停止' : ('OK 当前状态：' + st));
 				self.refreshStatus(statusEls);
-			}).catch(function () { coreLog('FAIL 执行失败（看套件日志）'); coreRefresh(); });
+			}).catch(function () { coreLog('FAIL 执行失败（看套件日志）'); setBusy(self._upBtns || [], false); coreRefresh(); });
 		};
 		var coreBtn = function (label, cls, cmd) {
 			return E('button', {
@@ -239,6 +242,10 @@ return view.extend({
 		}
 
 		setBusy(btns, true);
+		// ⚠️ 升级和启停互斥：升级跑着的时候点「停止服务」会让健康检查判失败、触发回滚
+		btnStart.disabled = true;
+		btnStop.disabled = true;
+		self._upBtns = btns;
 		// 输出框里**只放脚本自己那几行**（→ / ✔ / ✘），页面别再往里塞「【面板更新】启动中…」
 		// 这种自己的话（两套文体混在一起最难看）；"跑起来了"由下面那行状态文字表示。
 		out.textContent = '';
@@ -257,10 +264,12 @@ return view.extend({
 					out.textContent = '✘ 启动失败：' + ((e && e.message) ? e.message : e) + '\n';
 					statusEls[card.kind].textContent = '✘ 没起来（看输出）';
 					setBusy(btns, false);
+					coreRefresh();
 				}, function () {
 					out.textContent = '✘ 启动失败：' + ((e && e.message) ? e.message : e) + '\n';
 					statusEls[card.kind].textContent = '✘ 没起来（看输出）';
 					setBusy(btns, false);
+					coreRefresh();
 				});
 			});
 		});
@@ -282,6 +291,7 @@ return view.extend({
 			// 再来一句就是把同一件事说两遍；跑完的信号放进状态行，失败才说话。
 			out.scrollTop = out.scrollHeight;
 			setBusy(btns, false);
+			coreRefresh();          // 升级期间锁掉的启停按钮，按真实状态恢复
 			return self.refreshStatus(statusEls).then(function () {
 				if (!ok && statusEls[kind]) {
 					statusEls[kind].textContent = '✘ 升级失败（原因见上面的输出）';
@@ -291,6 +301,8 @@ return view.extend({
 			if (n > 600) {
 				out.textContent += '\n（等太久了，不看了。完整日志在路由器 ' + C.LOG + '）\n';
 				setBusy(btns, false);
+				if (statusEls[kind]) statusEls[kind].textContent = '超时（日志：' + C.LOG + '）';
+				coreRefresh();
 				return;
 			}
 			return new Promise(function (r) {

@@ -120,6 +120,24 @@
     return '  - IP-CIDR,' + ip + ',' + to + ',no-resolve';
   }
 
+  /**
+   * 一段目标 → 若干行规则。IP 段（`a.b.c.d-e.f.g.h`）要展开成多条 IP-CIDR —— mihomo 没有
+   * IP 段类型，直接写 DOMAIN 会变成一条永远匹配不上的死规则（就是那个 bug）。
+   */
+  function ruleLines(t, action) {
+    var out = [];
+    var cidrs = MH.ipRangeToCidrs(t);
+    if (cidrs) {
+      for (var i = 0; i < cidrs.length; i++) {
+        var l = ipRule(cidrs[i], action);
+        if (l) out.push(l);
+      }
+      return out;
+    }
+    var one = MH.classify(t) === 'ip' ? ipRule(t, action) : domainRule(t, action);
+    return one ? [one] : [];
+  }
+
   function domainRule(d, action) {
     d = String(d == null ? '' : d).trim();
     if (!d) return null;
@@ -144,21 +162,27 @@
       var target = String(r.target == null ? '' : r.target).trim();
       var action = String(r.action == null ? '' : r.action).trim();
       if (!target || !action) continue;
-      var line;
+      var lines;
       if (r.type === 'geosite') {
         // 目标是一个 GeoSite 分类（如 category-ai-!cn / tiktok）
-        line = '  - GEOSITE,' + target + ',' + action;
+        lines = ['  - GEOSITE,' + target + ',' + action];
       } else {
-        line = MH.classify(target) === 'ip'
-          ? ipRule(target, action) : domainRule(target, action);
+        lines = ruleLines(target, action);
       }
-      if (!line || seen[line]) continue;
-      seen[line] = 1;
-      if (r.preset === 'ai' || (r.type === 'geosite' &&
-          (target === 'category-ai-!cn' || target === 'category-ai-cn'))) ai.push(line);
-      else if (r.preset === 'tk' || (r.type === 'geosite' && target === 'tiktok')) tk.push(line);
-      else if (r.preset === 'tencent' || (r.type === 'geosite' && target === 'tencent')) tencent.push(line);
-      else normal.push(line);
+      if (!lines || !lines.length) continue;
+      var isAi = r.preset === 'ai' || (r.type === 'geosite' &&
+        (target === 'category-ai-!cn' || target === 'category-ai-cn'));
+      var isTk = r.preset === 'tk' || (r.type === 'geosite' && target === 'tiktok');
+      var isTc = r.preset === 'tencent' || (r.type === 'geosite' && target === 'tencent');
+      for (var li = 0; li < lines.length; li++) {
+        var line = lines[li];
+        if (!line || seen[line]) continue;
+        seen[line] = 1;
+        if (isAi) ai.push(line);
+        else if (isTk) tk.push(line);
+        else if (isTc) tencent.push(line);
+        else normal.push(line);
+      }
     }
     if (!normal.length && !ai.length && !tk.length && !tencent.length) return null;
     var b = [];
@@ -195,8 +219,10 @@
       var b = ['  # 直连 IP'];
       var seenIp = Object.create(null);
       for (i = 0; i < ips.length; i++) {
-        r = ipRule(ips[i]);
-        if (r && !seenIp[r]) { seenIp[r] = 1; b.push(r); }
+        var lines = ruleLines(ips[i], 'DIRECT');
+        for (var li = 0; li < lines.length; li++) {
+          if (lines[li] && !seenIp[lines[li]]) { seenIp[lines[li]] = 1; b.push(lines[li]); }
+        }
       }
       if (b.length > 1) out.push(b);
     }

@@ -189,7 +189,47 @@
     if (!v) return '';
     if (v.indexOf(':') !== -1) return 'ip';
     if (/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(v)) return 'ip';
+    // `192.168.1.10-192.168.1.20` 这种网段写法也是 IP（mihomo 没有 IP 段类型，输出时展开成 CIDR）
+    if (ipRangeToCidrs(v)) return 'ip';
     return 'domain';
+  }
+
+  function ipv4ToInt(s) {
+    var m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
+    if (!m) return -1;
+    for (var i = 1; i <= 4; i++) if (parseInt(m[i], 10) > 255) return -1;
+    return ((parseInt(m[1], 10) << 24) | (parseInt(m[2], 10) << 16) |
+      (parseInt(m[3], 10) << 8) | parseInt(m[4], 10)) >>> 0;
+  }
+
+  function intToIpv4(n) {
+    n = n >>> 0;
+    return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+  }
+
+  /**
+   * `a.b.c.d-e.f.g.h` → 最小 CIDR 列表（mihomo 只有 IP-CIDR / IP-CIDR6，没有 IP 段类型）。
+   * 解析不了返回 null；跨度太大（> 512 条）也返回 null，避免一条输入炸出上千行规则。
+   */
+  function ipRangeToCidrs(v) {
+    var m = /^\s*(\d{1,3}(?:\.\d{1,3}){3})\s*-\s*(\d{1,3}(?:\.\d{1,3}){3})\s*$/.exec(String(v == null ? '' : v));
+    if (!m) return null;
+    var a = ipv4ToInt(m[1]), b = ipv4ToInt(m[2]);
+    if (a < 0 || b < 0 || a > b) return null;
+    var out = [];
+    // 标准 range→CIDR：从起始地址按对齐大小逐块吃掉
+    var cur = a;
+    while (cur <= b) {
+      var size = 1;
+      while (size < 0x80000000 && (cur & (size - 1)) === 0 && cur + size * 2 - 1 <= b) size *= 2;
+      // size 是块大小；前缀长度 = 32 - log2(size)
+      var bits = 0, t = size;
+      while (t > 1) { t >>= 1; bits++; }
+      out.push(intToIpv4(cur) + '/' + (32 - bits));
+      if (out.length > 512) return null;
+      cur += size;
+    }
+    return out;
   }
 
   // ── IP 字面量 ───────────────────────────────────────────────
@@ -335,6 +375,7 @@
   MH.sInt = sInt;
   MH.sBool = sBool;
   MH.classify = classify;
+  MH.ipRangeToCidrs = ipRangeToCidrs;
   MH.isIp = isIp;
   MH.isIpv6 = isIpv6;
   MH.ipText = ipText;

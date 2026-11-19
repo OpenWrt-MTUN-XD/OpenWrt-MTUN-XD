@@ -4,6 +4,30 @@ import { loadCore, loadFixtures } from '../helpers/load.mjs';
 const MH = loadCore();
 const fx = loadFixtures();
 
+describe('IP 段（a-b）展开成 CIDR', () => {
+  test('classify 认得 IP 段', () => {
+    expect(MH.classify('192.168.100.100-192.168.100.200')).toBe('ip');
+    expect(MH.classify('not-a-range')).toBe('domain');
+    expect(MH.classify('1.2.3.4-1.2.3.3')).toBe('domain');   // 起止反了
+  });
+
+  test('最小 CIDR 展开', () => {
+    expect(MH.ipRangeToCidrs('10.0.0.0-10.0.0.255')).toEqual(['10.0.0.0/24']);
+    expect(MH.ipRangeToCidrs('1.2.3.4-1.2.3.4')).toEqual(['1.2.3.4/32']);
+    expect(MH.ipRangeToCidrs('192.168.100.100-192.168.100.200').length).toBe(14);
+  });
+
+  test('引擎把 IP 段写成多条 IP-CIDR，而不是一条 DOMAIN', () => {
+    const eng = new MH.SplitEngine();
+    eng.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+    eng.secret = '123456'; eng.port = 9090; eng.default_node = 'A';
+    eng.direct_ips = ['192.168.100.100-192.168.100.100'];
+    const t = eng.generate();
+    expect(t).toContain('IP-CIDR,192.168.100.100/32,DIRECT,no-resolve');
+    expect(t).not.toContain('DOMAIN,192.168.100.100-');
+  });
+});
+
 describe('节点链接解析（对齐基线）', () => {
   test('parseAnyInput 纯链接文本', () => {
     expect(MH.parseAnyInput(fx.nodes_text)).toEqual(fx.parsed_nodes);

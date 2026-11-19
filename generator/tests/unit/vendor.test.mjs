@@ -18,6 +18,18 @@ import { ROOT, loadCore } from '../helpers/load.mjs';
  */
 const JS_YAML_SHA256 = '45dc3dd03dc07a06705a2c2989b8c7f7';
 
+// app/vendor/sha256.js 是自家实现（不是第三方），但它决定「登录门能不能验工具密码」：
+// 算错一位 = 门永远不放行。这里把当前实现钉住，改动时强制你重新看一遍向量测试。
+const SHA256_JS_SHA256 = '63b79bf10df66666597c0297b748ce5171b8033dc1f445bd1559d7481e7891e4';
+
+describe('门依赖的 sha256.js', () => {
+  test('实现文件与钉住的值一致（改动需重新过向量测试）', () => {
+    const buf = readFileSync(join(ROOT, 'app', 'vendor', 'sha256.js'));
+    expect(createHash('sha256').update(buf).digest('hex')).toBe(SHA256_JS_SHA256);
+    expect(buf.toString('utf8', 0, 200)).toContain('SHA-256');
+  });
+});
+
 describe('第三方文件完整性', () => {
   test('js-yaml 4.1.0 与官方发布物逐字节一致', () => {
     const buf = readFileSync(join(ROOT, 'app', 'vendor', 'js-yaml.min.js'));

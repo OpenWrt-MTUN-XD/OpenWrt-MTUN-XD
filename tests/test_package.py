@@ -221,6 +221,12 @@ def main():
     check(len(cgi['generator/app/apply.js']) > 0 and
           cgi['generator/app/apply.js'] == cgi['generator/deploy/btn.js'],
           '写盘 CGI 路径两边一致（apply.js / btn.js）')
+    # 安装器挂的是 /www/cgi-bin/<名字>，名字必须跟 JS 调的那条路径的尾名一致
+    gsh = open(os.path.join(ROOT, 'generator', 'deploy', 'generator.sh'), encoding='utf-8').read()
+    mounted = set(re.findall(r'/www/cgi-bin/(mihomo-apply)', gsh))
+    check(mounted == {'mihomo-apply'} and 'mihomo-apply' in
+          set(p.rsplit('/', 1)[-1] for p in cgi['generator/app/apply.js']),
+          '安装器挂载名与页面调用路径一致（mihomo-apply）')
 
     # 变量遮蔽：内层 `var X` 撞掉模块级同名变量时，node --check / 单测全绿，只有真的点一下才炸
     #（2026-11 实际事故：apply.js 的 `var doc` 让「载入配置文件」点了没反应）。零依赖、几秒钟。

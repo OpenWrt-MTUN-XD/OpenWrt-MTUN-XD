@@ -22,7 +22,10 @@
   // 哈希有两个来源，运行时优先 toolhash.txt（单独文件，每次 no-store 现拉）：
   //   ① `$G/toolhash.txt`：换密码要能立刻生效，而 gate.js 带 `?v=` 缓存，改它浏览器不一定马上看见。
   //   ② 下面的常量：装机时注进来的兜底，文件拿不到时用。
-  var TOOL_HASH = '8c059664ae1933d75d9ea34e94914c3a4fd9b3ad17d0573184a7efc9901d4847';
+  // ⚠️ 这里是**占位**，不是任何人的密码哈希：安装器（deploy/generator.sh）铺页面时会把这一行
+  //    改成本机 toolhash.txt 的值。留占位时门拒绝使用兜底 —— 否则「知道上游源码里那串哈希的人」
+  //    就能在 toolhash.txt 拉不到的情况下进门。
+  var TOOL_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
   var TOOL_HASH_URL = './toolhash.txt';   // ⚠️ 相对路径：跟 index.html 同目录
   var TOOL_KEY = 'mihomo-gen-tool';   // 记住「这台过了工具密码」，省得每次都输
 
@@ -35,7 +38,11 @@
   var wrongTries = 0;
 
   /** 当前该用哪个哈希 —— 读到文件就用文件的，读不到退回装机时注的那个常量。 */
-  function currentHash() { return toolHash || TOOL_HASH; }
+  function currentHash() {
+    if (toolHash) return toolHash;
+    // 全 0 = 还没来得及跑安装器：不给兜底，宁可提示「去跑 mtun-xd tool」
+    return /^0+$/.test(TOOL_HASH) ? '' : TOOL_HASH;
+  }
 
   /** 带超时的 fetch：探路 / 校验 / 拉哈希都不允许无限挂住（挂住 = 界面永不初始化）。 */
   function fetchT(url, opts, ms) {
@@ -265,6 +272,10 @@
     // 往回数，后面每次错都再试一次，免得「差一次」的状态被刷新洗掉。
     if (!shaReady()) {
       ask('页面缺少 sha256.js（套件没铺全），在路由器上跑 mtun-xd setup 补齐');
+      return;
+    }
+    if (!currentHash()) {
+      ask('配置工具还没初始化（没有工具密码哈希）：在路由器上跑 mtun-xd tool');
       return;
     }
     if (!isTool(toolPw)) {

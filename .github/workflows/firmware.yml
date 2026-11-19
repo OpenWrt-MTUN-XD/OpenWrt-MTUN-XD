@@ -7,7 +7,6 @@ on:
   push:
     paths:
       - 'openwrt/**'
-      - 'package/**'
       - '.github/workflows/firmware.yml'
 
 jobs:
@@ -67,7 +66,7 @@ jobs:
           [ -n "$pkg" ] || { echo '✘ 没有生成 ${{ matrix.fmt }}'; exit 1; }
           echo "大小: $(stat -c%s "$pkg") 字节"
 
-          need="usr/sbin/mtun-xd etc/init.d/mihomo etc/init.d/mtun-xd-firstboot usr/share/luci/menu.d/luci-app-mtun-xd.json www/luci-static/resources/view/mtun-xd/panel.js"
+          need="usr/sbin/mtun-xd etc/init.d/mihomo etc/init.d/mtun-xd-firstboot etc/config/mtun-xd usr/share/luci/menu.d/luci-app-mtun-xd.json www/luci-static/resources/view/mtun-xd/panel.js"
 
           if [ "${{ matrix.fmt }}" = "ipk" ]; then
             rm -rf /tmp/check
@@ -89,6 +88,7 @@ jobs:
           done
           [ -n "$APK" ] || { echo '✘ 没找到 apk 工具，无法校验 APKv3'; exit 1; }
           echo "apk 版本: $("$APK" --version 2>&1 | head -1)"
+          "$APK" extract --help 2>&1 | head -3 || true
 
           # 当前 SDK 的 apk 不提供 manifest，改用 extract 检查包内文件（只读，不装依赖）
           rm -rf /tmp/apkx

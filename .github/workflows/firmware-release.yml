@@ -32,11 +32,20 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "run=1" >> "$GITHUB_OUTPUT"; exit 0
           fi
+          # completed 也包含失败/取消：Release 工作流没成功就不要编包
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "Release 工作流结论: ${{ github.event.workflow_run.conclusion }} —— 跳过"
+            echo "run=0" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           pub=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
                 | grep -m1 '"published_at"' | sed 's/.*"published_at": *"\([^"]*\)".*/\1/')
           echo "最新 Release 发布时间: ${pub:-未知}"
-          age=$(( $(date +%s) - $(date -d "$pub" +%s 2>/dev/null || echo 0) ))
-          if [ "${age:-999999}" -le 1200 ]; then
+          # 判据：latest 必须是「这次 workflow_run 之后」才发布的（时间窗只当兜底）。
+          # 只比 1200 秒的话，发版后 20 分钟内的普通 push 也会被当成发版，白编 2×十几分钟。
+          run_at=$(date -d "${{ github.event.workflow_run.created_at }}" +%s 2>/dev/null || echo 0)
+          pub_at=$(date -d "$pub" +%s 2>/dev/null || echo 0)
+          age=$(( $(date +%s) - pub_at ))
+          if [ "$pub_at" -gt 0 ] && [ "$run_at" -gt 0 ] && [ "$pub_at" -ge "$run_at" ] && [ "${age:-999999}" -le 1200 ]; then
             echo "run=1" >> "$GITHUB_OUTPUT"
           else
             echo "run=0" >> "$GITHUB_OUTPUT"
@@ -121,5 +130,16 @@ jobs:
         run: |
           pkg=$(find sdk/bin/packages -name 'luci-app-mtun-xd*.${{ matrix.fmt }}' | head -1)
           [ -n "$pkg" ] || { echo '✘ 没有生成 ${{ matrix.fmt }}'; exit 1; }
-          echo "上传: $pkg"
+          name=$(basename "$pkg")
+          sha=$(sha256sum "$pkg" | cut -d" " -f1)
+          echo "上传: $name"
+          echo "sha256: $sha"
+          # 写进 job summary：Release 上的固件包没有独立校验文件，哈希只能从这儿查
+          {
+            echo "### 固件包 ${{ matrix.ver }}（${{ matrix.fmt }}）"
+            echo ""
+            echo '```'
+            echo "$sha  $name"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           gh release upload "$TAG" "$pkg" --clobber

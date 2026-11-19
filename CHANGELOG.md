@@ -1,6 +1,6 @@
 # 变更记录
 
-## 2026.11.05（未发布）
+## 2026.11.05
 
 ### 变更
 
@@ -14,6 +14,18 @@
 
 ### 修复
 
+- 节点解析：
+  - SS 密码不再二次解码（SIP002 的密码是原文，`pa%2Fss` 不再被改成 `pa/ss`）
+  - 密码里带 `@` 不再整条消失（12 处按最后一个 `@` 切分）
+  - 同一节点不同备注只留一条（去重键排除 `name` / `remarks`）
+  - YAML 里因主机 / 端口 / 凭据被丢弃的节点也计数，界面提示不再只说「类型不支持」
+  - `insecure` 与 `allowInsecure` 两个别名都认
+  - ssh 节点缺密码且无私钥时提前丢弃（不再等内核加载才报错）
+  - SSR 的 IPv6 主机不再散架
+- 节点渲染：
+  - WireGuard `reserved` 输出数字（带引号的 `"1"` 会让 `[]uint8` 拒载整份配置）
+  - hysteria2 的 `pinSHA256`（base64）能转成 `fingerprint` 的 hex，不再静默丢行
+  - 只用私钥的 ssh 节点不再写空 `password`
 - 固件 workflow 的 gate：取不到 Release 元数据时直接失败，不再安静跳过（会少挂固件包）
 - gate 去掉「发布时间 ≤1200 秒」这半句：runner 排队超过窗口时真发版反而被跳过
 - `Firmware` workflow 的触发面补回 `package/usr/sbin`、`package/etc`、`package/www`

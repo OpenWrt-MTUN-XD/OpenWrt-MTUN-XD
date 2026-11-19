@@ -171,16 +171,29 @@ return view.extend({
 
 		// ── 80 端口转发（对应 uci mtun-xd.main.expose）──
 		// 状态一律现问脚本（expose status），不在页面里另存一份，免得和 uci / 标记文件不一致。
+		var exposeStatusText = E('span', {}, '读状态…');
+		// 读不到状态时按钮会被锁住 —— 给一个重试入口，别逼用户刷新整页
+		var btnExposeRetry = E('a', {
+			href: '#',
+			style: 'display:none; margin-left:6px; color:' + P.accent + '; cursor:pointer; text-decoration:underline;',
+			click: function (ev) {
+				if (ev && ev.preventDefault) ev.preventDefault();
+				btnExposeRetry.style.display = 'none';
+				exposeStatusText.textContent = '正在重读状态 …';
+				exposeRefresh();
+			}
+		}, '重试');
 		var exposeStatus = E('span', {
 			style: 'font-size:12.5px; color:' + P.muted + ';'
-		}, '读状态…');
+		}, [exposeStatusText, btnExposeRetry]);
 		// 文案不当状态机：on/off 单独记，按钮只负责显示
 		var exposeOn = false;
 		var exposeSet = function (st) {
 			exposeOn = (st === 'on');
 			btnExpose.textContent = exposeOn ? '关闭 80 转发' : '开启 80 转发';
 			btnExpose.disabled = false;
-			exposeStatus.textContent = exposeOn ? '80 端口：已挂载' : '80 端口：未挂载';
+			btnExposeRetry.style.display = 'none';
+			exposeStatusText.textContent = exposeOn ? '80 端口：已挂载' : '80 端口：未挂载';
 		};
 		var exposeRefresh = function () {
 			fs.exec(C.SCRIPT, ['expose', 'status']).then(function (r) {
@@ -188,10 +201,12 @@ return view.extend({
 				if (st === 'on' || st === 'off') { exposeSet(st); return; }
 				// 读不出明确状态时别猜：锁住按钮，避免下一次操作方向反掉
 				btnExpose.disabled = true;
-				exposeStatus.textContent = '80 端口：状态未知';
+				exposeStatusText.textContent = '80 端口：状态未知';
+				btnExposeRetry.style.display = '';
 			}).catch(function () {
 				btnExpose.disabled = true;
-				exposeStatus.textContent = '80 端口：读不到状态';
+				exposeStatusText.textContent = '80 端口：读不到状态';
+				btnExposeRetry.style.display = '';
 			});
 		};
 		var btnExpose = E('button', {
@@ -202,7 +217,8 @@ return view.extend({
 			click: function () {
 				var want = exposeOn ? 'off' : 'on';
 				btnExpose.disabled = true;
-				exposeStatus.textContent = want === 'on' ? '正在挂载 80 端口 …' : '正在卸载 80 端口 …';
+				btnExposeRetry.style.display = 'none';
+				exposeStatusText.textContent = want === 'on' ? '正在挂载 80 端口 …' : '正在卸载 80 端口 …';
 				// 中性措辞：on/off 会重启 uhttpd，RPC 回包可能被切断 —— 成败交给随后的状态刷新说话
 				coreLog('已下发 80 端口' + (want === 'on' ? '挂载' : '卸载') + '，正在核对状态 …');
 				fs.exec(C.SCRIPT, ['expose', want]).then(function () {

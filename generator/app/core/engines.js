@@ -129,12 +129,46 @@
     var cidrs = MH.ipRangeToCidrs(t);
     if (cidrs) {
       for (var i = 0; i < cidrs.length; i++) {
+        var l = scopedIpRule(cidrs[i], action);
+        if (l) out.push(l);
+      }
+      return out;
+    }
+    var one = MH.classify(t) === 'ip' ? scopedIpRule(t, action) : domainRule(t, action);
+    return one ? [one] : [];
+  }
+
+  /**
+   * IP 规则按「内网还是公网」自动选匹配方向：
+   *   · 内网地址（10/8、172.16/12、192.168/16、127/8、169.254/16、100.64/10、fc00::/7…）
+   *     → `SRC-IP-CIDR`，按**来源**匹配，即「局域网里这台设备怎么走」；
+   *   · 公网地址 → `IP-CIDR` / `IP-CIDR6`，按目标匹配。
+   * 内核实测：`SRC-IP-CIDR` 同时接受 IPv4 / IPv6；`SRC-IP-CIDR6` 不存在（unsupported rule type）。
+   */
+  function scopedIpRule(ip, action) {
+    var t = String(ip == null ? '' : ip).trim();
+    var to = action || 'DIRECT';
+    if (MH.isPrivateCidr(t)) {
+      var v = t;
+      if (v.indexOf('/') === -1) v += v.indexOf(':') !== -1 ? '/128' : '/32';
+      return '  - SRC-IP-CIDR,' + v + ',' + to + ',no-resolve';
+    }
+    return ipRule(t, action);
+  }
+
+  /** 按**目标**匹配的 IP 规则（直连 IP 块用）：IP 段展开成多条 IP-CIDR / IP-CIDR6。 */
+  function destRuleLines(t, action) {
+    var out = [];
+    var cidrs = MH.ipRangeToCidrs(t);
+    if (cidrs) {
+      for (var i = 0; i < cidrs.length; i++) {
         var l = ipRule(cidrs[i], action);
         if (l) out.push(l);
       }
       return out;
     }
-    var one = MH.classify(t) === 'ip' ? ipRule(t, action) : domainRule(t, action);
+    if (MH.classify(t) !== 'ip') return [domainRule(t, action)].filter(Boolean);
+    var one = ipRule(t, action);
     return one ? [one] : [];
   }
 
@@ -219,7 +253,7 @@
       var b = ['  # 直连 IP'];
       var seenIp = Object.create(null);
       for (i = 0; i < ips.length; i++) {
-        var lines = ruleLines(ips[i], 'DIRECT');
+        var lines = destRuleLines(ips[i], 'DIRECT');
         for (var li = 0; li < lines.length; li++) {
           if (lines[li] && !seenIp[lines[li]]) { seenIp[lines[li]] = 1; b.push(lines[li]); }
         }

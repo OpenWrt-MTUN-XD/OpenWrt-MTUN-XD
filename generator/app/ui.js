@@ -262,7 +262,15 @@
         continue;
       }
       if (acts.indexOf('DIRECT') !== -1) {
-        if (MH.classify(target) === 'ip') ips.push(target); else domains.push(target);
+        // 内网目标 = 「这台设备直连」，按来源匹配；留在自定义块里走 SRC-IP-CIDR。
+        // 公网目标才是「访问这些 IP 直连」，进直连块按目标匹配。
+        if (MH.classify(target) === 'ip' && MH.isPrivateTarget(target)) {
+          nodeRules.push({ target: target, actions: acts.slice() });
+        } else if (MH.classify(target) === 'ip') {
+          ips.push(target);
+        } else {
+          domains.push(target);
+        }
       } else {
         nodeRules.push({ target: target, actions: acts });
       }

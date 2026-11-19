@@ -75,7 +75,7 @@ describe('精准分流（对齐基线）', () => {
     const y = eng.generate();
     expect(y).toContain('  # 定义 规则\n'
       + '  - DOMAIN,a.com,' + names[0] + '\n'
-      + '  - IP-CIDR,10.0.0.0/8,' + names[0] + ',no-resolve'
+      + '  - SRC-IP-CIDR,10.0.0.0/8,' + names[0] + ',no-resolve'
       + '\n\n  # 内网 直连');
     expect((y.match(/DOMAIN,a\.com,/g) || []).length).toBe(1);
   });
@@ -294,7 +294,8 @@ describe('输入校验的兜底', () => {
       { target: '10.0.0.0/8', action: 'DIRECT' },
     ] }).generate();
     expect(y).not.toContain('1.2.3.999');
-    expect(y).toContain('IP-CIDR,10.0.0.0/8,DIRECT,no-resolve');
+    // 内网目标按来源匹配（设备级直连）
+    expect(y).toContain('SRC-IP-CIDR,10.0.0.0/8,DIRECT,no-resolve');
   });
 
   test('监听地址是 IPv6 字面量时加方括号并加引号', () => {

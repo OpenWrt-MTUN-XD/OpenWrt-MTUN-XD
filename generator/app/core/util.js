@@ -371,7 +371,55 @@
   MH.looksLikeB64 = looksLikeB64;
   MH.sInt = sInt;
   MH.sBool = sBool;
+  /**
+   * 这个地址/CIDR 是不是内网（或本机/链路本地）：
+   *   IPv4：10/8、172.16/12、192.168/16、127/8、169.254/16、100.64/10
+   *   IPv6：fc00::/7、fe80::/10、::1/128
+   * 内网地址在自定义规则里按**来源**匹配（SRC-IP-CIDR），公网按目标匹配（IP-CIDR）。
+   */
+  function isPrivateCidr(c) {
+    var t = String(c == null ? '' : c).trim();
+    if (!t) return false;
+    if (t.indexOf(':') !== -1) {
+      var v6 = t.replace(/^\[|\]$/g, '').toLowerCase();
+      if (v6 === '::1' || v6 === '::1/128') return true;
+      if (/^f[cd][0-9a-f]{2}:/.test(v6)) return true;      // fc00::/7
+      if (/^fe[89ab][0-9a-f]:/.test(v6)) return true;      // fe80::/10
+      return false;
+    }
+    var m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}(?:\/(\d{1,2}))?$/.exec(t);
+    if (!m) return false;
+    var a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+    var mask = m[3] === undefined ? 32 : parseInt(m[3], 10);
+    // 只按前缀落在内网段里就算内网（10/8 等），不看具体的 /32
+    var first = (a << 24 | b << 16) >>> 0;
+    var inBlocks = [
+      [0x0A000000, 8], [0xAC100000, 12], [0xC0A80000, 16],
+      [0x7F000000, 8], [0xA9FE0000, 16], [0x64400000, 10],
+    ];
+    for (var i = 0; i < inBlocks.length; i++) {
+      var base = inBlocks[i][0], bits = inBlocks[i][1];
+      var blockMask = bits === 0 ? 0 : (0xFFFFFFFF << (32 - bits)) >>> 0;
+      if (((first & blockMask) >>> 0) === base && mask >= bits) return true;
+    }
+    return false;
+  }
+
   MH.classify = classify;
+  MH.isPrivateCidr = isPrivateCidr;
+
+  /** 目标（单 IP / CIDR / `a-b` 段）是否整体属于内网。段里只要有一段是公网就算公网。 */
+  function isPrivateTarget(t) {
+    var v = String(t == null ? '' : t).trim();
+    if (!v) return false;
+    var cidrs = ipRangeToCidrs(v);
+    if (cidrs) {
+      for (var i = 0; i < cidrs.length; i++) if (!isPrivateCidr(cidrs[i])) return false;
+      return true;
+    }
+    return isPrivateCidr(v);
+  }
+  MH.isPrivateTarget = isPrivateTarget;
   MH.ipRangeToCidrs = ipRangeToCidrs;
   MH.isIp = isIp;
   MH.isIpv6 = isIpv6;

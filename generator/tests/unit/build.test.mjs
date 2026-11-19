@@ -342,7 +342,8 @@ describe('buildConfig：选项搬运', () => {
     const rules = yamlOf().rules.join('\n');
     expect(rules).toContain('IP-CIDR,1.1.1.1/32,DIRECT,no-resolve');
     expect(rules).toContain('IP-CIDR6,2001:db8::1/128,DIRECT,no-resolve');
-    expect(rules).toContain('IP-CIDR,10.0.0.0/8,DIRECT,no-resolve');
+    // 内网 IP 按来源匹配（设备级），不是「目标在内网」
+    expect(rules).toContain('SRC-IP-CIDR,10.0.0.0/8,DIRECT,no-resolve');
     expect(rules).toContain('DOMAIN,a.com,DIRECT');
   });
 
@@ -356,7 +357,8 @@ describe('buildConfig：选项搬运', () => {
     const d = yamlOf();
     // rules[0] 就是自定义规则 —— 说明它排在所有固定块之前（位置即优先级）
     expect(d.rules[0]).toBe('DOMAIN,a.com,' + names[0]);
-    expect(d.rules[1]).toBe('IP-CIDR,10.0.0.0/8,' + names[0] + ',no-resolve');
+    // 内网 IP 在自定义规则里按来源匹配（这台设备怎么走），公网才按目标
+    expect(d.rules[1]).toBe('SRC-IP-CIDR,10.0.0.0/8,' + names[0] + ',no-resolve');
   });
 
   test('自定义规则：两种方案都生效，智能选择下也不会被 MATCH 吞掉', () => {

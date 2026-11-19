@@ -4,6 +4,34 @@ import { loadCore, loadFixtures } from '../helpers/load.mjs';
 const MH = loadCore();
 const fx = loadFixtures();
 
+describe('IP 规则：内网按来源、公网按目标', () => {
+  const mk = () => {
+    const eng = new MH.SplitEngine();
+    eng.proxies = [{ name: 'A', type: 'trojan', server: 'h.example.com', port: 443, password: 'p' }];
+    eng.secret = '123456'; eng.port = 9090; eng.default_node = 'A';
+    return eng;
+  };
+  const lineOf = (target) => {
+    const e = mk();
+    e.custom_rules = [{ target: target, action: 'A' }];
+    return (e.generate().split('\n').find((l) => /CIDR/.test(l)) || '').trim();
+  };
+
+  test('内网 IPv4 走 SRC-IP-CIDR', () => {
+    expect(lineOf('192.168.100.50')).toBe('- SRC-IP-CIDR,192.168.100.50/32,A,no-resolve');
+    expect(lineOf('10.0.0.0/8')).toBe('- SRC-IP-CIDR,10.0.0.0/8,A,no-resolve');
+  });
+
+  test('公网 IPv4 走 IP-CIDR', () => {
+    expect(lineOf('8.8.8.8')).toBe('- IP-CIDR,8.8.8.8/32,A,no-resolve');
+  });
+
+  test('内网 IPv6 走 SRC-IP-CIDR，公网 IPv6 走 IP-CIDR6', () => {
+    expect(lineOf('fd00::1')).toBe('- SRC-IP-CIDR,fd00::1/128,A,no-resolve');
+    expect(lineOf('2408:8000::1')).toBe('- IP-CIDR6,2408:8000::1/128,A,no-resolve');
+  });
+});
+
 describe('IP 段（a-b）展开成 CIDR', () => {
   test('classify 认得 IP 段', () => {
     expect(MH.classify('192.168.100.100-192.168.100.200')).toBe('ip');

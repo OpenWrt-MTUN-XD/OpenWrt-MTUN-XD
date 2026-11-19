@@ -265,7 +265,8 @@
             <button type="button" class="btn" id="rule-add">添加</button>
           </div>
           <div class="chips" id="rule-list"></div>
-          <p class="hint">域名生成 <code>DOMAIN</code> 规则，IP 生成 <code>IP-CIDR</code> / <code>IP-CIDR6</code> 规则。</p>
+          <p class="hint">域名生成 <code>DOMAIN</code>；公网 IP 生成 <code>IP-CIDR</code> / <code>IP-CIDR6</code>（按目标）；
+            内网 IP 自动生成 <code>SRC-IP-CIDR</code>（按来源，即这台设备怎么走）。</p>
           <p class="hint">选择单个节点时直接使用该节点；选择多个节点时自动创建负载均衡组。</p>
         </div>
         <div class="rules-common" id="rules-common">

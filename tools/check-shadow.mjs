@@ -41,7 +41,7 @@ function walk(dir) {
 roots.forEach(walk);
 
 // 声明语句：允许出现在行内（for (var i …)、if (x) { var y … }），后面接标识符
-const DECL = /(?:^|[;{}()\s])(?:var|let|const)\s+([A-Za-z_$][\w$]*)/g;
+const DECL = /(?:^|[;{}()\s])(?:var|let|const)\s+([A-Za-z_$][\w$]*)(?=\s*[=;,):])/g;
 
 function namesOf(line) {
   const out = [];

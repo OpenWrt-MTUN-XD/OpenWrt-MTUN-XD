@@ -80,7 +80,8 @@
         'background:#000;color:#0f0;font:11px/1.5 monospace;padding:6px 8px;border:1px solid #0f0';
       document.body.appendChild(el);
     }
-    el.textContent = 'matches=' + n +
+    el.textContent = 'local=' + (isLocalBackend() ? '1' : '0') + ' wp=' + String(_wp) +
+      ' matches=' + n +
       '  anchor=' + (r ? Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) : 'none') +
       '  dot=' + Math.round(d.left) + ',' + Math.round(d.top) +
       '  off=' + (r ? (Math.round(d.left - r.left) >= 0 ? '+' : '') + Math.round(d.left - r.left) + ',' + (Math.round(d.top - r.top) >= 0 ? '+' : '') + Math.round(d.top - r.top) : '-') +
@@ -120,6 +121,8 @@
     if (revealed) return;
     revealed = true;
     a.style.opacity = '1';
+    a.style.pointerEvents = 'auto';   // 显形了才接点击
+    a.setAttribute('tabindex', '0');  // 显形前也不该被 Tab 停到
   }
 
   // 盯住按钮外面那个容器 —— 侧边栏伸缩时它宽度变，我们每帧都能收到通知
@@ -167,8 +170,27 @@
   //    那种机器（面板由内核发，uhttpd 那个口没露出去）。
   //    判据跟 apply.js 的 findCgi 同一套：① 本页 origin 的 /cgi-bin/mihomo-apply 回 405；
   //    ② 兜底同主机的协议默认口（http → 80，https 不试 443）。
+  //    ⚠️ 这段逻辑是刻意复制的，不能直接调 apply.js 的 probeCgi：绿点跑在面板页面里，
+  //       那里根本没有加载 apply.js（两套 bundle 完全独立）。改判据时**两边一起改**。
   //    ⚠️ 只探一次（`_wp` 记着），探完之前不亮 —— 最坏等 2.5 秒。
   var _wp = null;   // null=没探完 / true / false
+  var _wpTimer = null;
+
+  /** 探失败先缓存 3 秒再重试：写盘口可能只是那一刻忙 / 隧道刚起，不能整页生命周期都不再亮。 */
+  function rememberWritePort(ok) {
+    _wp = ok;
+    if (_wpTimer) { clearTimeout(_wpTimer); _wpTimer = null; }
+    if (!ok) {
+      _wpTimer = setTimeout(function () {
+        _wpTimer = null;
+        if (_wp === false) {
+          _wp = null;
+          var el = document.getElementById(ID);
+          if (el) place(el);
+        }
+      }, 3000);
+    }
+  }
 
   // 探一次写盘口（只认 405）。⚠️ 每次探测都要有自己的 AbortController / 计时器：共用第一个的话，
   // 第一条很快回 404 时计时器已被清掉，第二条石沉大海（端口被过滤）就永远不返回，绿点一直不亮。
@@ -187,17 +209,22 @@
     fetch(url, opt).then(function (r) { fin(r.status === 405); }, function () { fin(false); });
   }
 
+  var _wpProbing = false;
+
   function writePortOk(cb) {
     if (_wp !== null) { cb(_wp); return; }
-    if (!window.fetch) { _wp = false; cb(false); return; }   // 老浏览器：生成器那边也不干活，就一起不显示
+    if (_wpProbing) return;          // 已有一次在飞，别叠加
+    _wpProbing = true;
+    var done = function (ok) { _wpProbing = false; rememberWritePort(ok); cb(ok); };
+    if (!window.fetch) { _wpProbing = false; rememberWritePort(false); cb(false); return; }   // 老浏览器：生成器那边也不干活，就一起不显示
     var origin = (location.protocol || 'http:') + '//' + location.host;
     probeWritePort(origin + '/cgi-bin/mihomo-apply', function (ok) {
-      if (ok) { _wp = true; cb(true); return; }
-      if (location.protocol === 'https:') { _wp = false; cb(false); return; }
+      if (ok) { done(true); return; }
+      if (location.protocol === 'https:') { done(false); return; }
       // ② 同主机的默认口（http → 80）：给「面板直开 9090、写盘 CGI 在 uhttpd 80」那种兜底。
       //    ⚠️ 同样只认 405（uhttpd 在、CGI 没装时回 404），跟 apply.js 那边同一套判据。
       probeWritePort((location.protocol || 'http:') + '//' + location.hostname + '/cgi-bin/mihomo-apply',
-        function (ok2) { _wp = ok2; cb(ok2); });
+        function (ok2) { done(ok2); });
     });
   }
 
@@ -206,7 +233,13 @@
     //    轮询就把点写回去、读数也变回原值，等于白拖。frozen 一置上就冻在那儿，直到刷新页面。
     if (dragging || frozen) return;
 
-    // ⚠️ 写盘口够不着（或者还没探完）→ 一颗点都不亮
+    // ⚠️ 还没探完（或失败后重置）→ 先藏起来并发起一次探测；探测回调会再调 place
+    if (_wp === null) {
+      a.style.display = 'none';
+      writePortOk(function () { var el = document.getElementById(ID); if (el) place(el); });
+      return;
+    }
+    // ⚠️ 写盘口够不着 → 一颗点都不亮
     if (_wp !== true) { a.style.display = 'none'; return; }
     // ⚠️ 连的不是本机 → 一颗点都不亮（连锚点都不去找）
     if (!isLocalBackend()) { a.style.display = 'none'; return; }
@@ -229,10 +262,10 @@
       if (L !== appliedL || T !== appliedT) {
         a.style.left = L;
         a.style.top = T;
+        a.style.bottom = 'auto';   // 跟 left/top 一起写，别每帧都写（会白触发样式重算）
         appliedL = L;
         appliedT = T;
       }
-      a.style.bottom = 'auto';
       a.style.display = 'block';
       watch(t);
       dbg(a);
@@ -280,15 +313,17 @@
       // 不设 title —— 不要悬停提示。
       // role/tabindex/aria-label 是给键盘和屏幕阅读器的，都不会显示出来。
       a.setAttribute('role', 'link');
-      a.setAttribute('tabindex', '0');
+      a.setAttribute('tabindex', '-1');   // 显形时（reveal）才置 0
       a.setAttribute('aria-label', '配置生成器');
       a.style.cssText = [
         'position:fixed', 'z-index:2147483000', 'cursor:pointer',
         'width:' + BOX + 'px', 'height:' + BOX + 'px', 'border-radius:50%',
         'display:flex', 'align-items:center', 'justify-content:center',
         'text-decoration:none', '-webkit-tap-highlight-color:transparent',
-        // 先藏着，等位置稳了再亮（见 place）
-        'opacity:0',
+        // 先藏着，等位置稳了再亮（见 place）。
+        // ⚠️ 同时关掉命中：显形之前它虽然看不见，但 28×28 的点击区仍然压在那个版本按钮上，
+        //    点「版本信息」会误跳生成器。reveal 时才放开。
+        'opacity:0', 'pointer-events:none',
         // ⚠️ 只给 opacity 过渡，**left/top 不要过渡** —— 上面每帧都会跟着按钮走，
         //    再叠一个过渡就成了「慢半拍地追过去」，正是用户说的那个「找位置的动作」。
         'transition:opacity .15s ease'

@@ -106,7 +106,9 @@ return baseclass.extend({
 	// 以前直接读 /etc/mihomo/config.yaml —— 那会把节点密码、订阅地址一整套暴露给 ACL，
 	// 现在只取这四个字段（用户 2026-11-17 采纳审查建议）。
 	readPanel: function () {
-		var fallback = { host: '127.0.0.1', port: '9090', secret: '', ui: '' };
+		// failed 用来区分「panelinfo 没跑成」和「config.yaml 没写 external-ui」：
+		// 两者在界面上是两条完全不同的提示，混在一起会说「你没装」。
+		var fallback = { host: '127.0.0.1', port: '9090', secret: '', ui: '', failed: true };
 		return fs.exec(SCRIPT, ['panelinfo']).then(function (res) {
 			var out = String((res && res.stdout) || '').trim();
 			if (!out) return fallback;
@@ -116,7 +118,8 @@ return baseclass.extend({
 					host: o.host || fallback.host,
 					port: o.port || fallback.port,
 					secret: o.secret || '',
-					ui: o.ui || ''
+					ui: o.ui || '',
+					failed: false
 				};
 			} catch (e) { return fallback; }
 		}).catch(function () { return fallback; });
@@ -188,7 +191,7 @@ return baseclass.extend({
 
 	// 监听地址是不是"只有本机能访问"（127.0.0.1 / ::1 / localhost）
 	loopbackOnly: function (host) {
-		return /^(127\.|::1$|\[::1\]$|localhost$)/i.test(String(host || ''));
+		return /^(127\.|::1(?::\d+)?$|\[::1\](?::\d+)?$|localhost(?::\d+)?$)/i.test(String(host || ''));
 	},
 
 	// ── 嵌进来的 iframe 缩放（默认不缩，三个调用点都传 0）────────────────────

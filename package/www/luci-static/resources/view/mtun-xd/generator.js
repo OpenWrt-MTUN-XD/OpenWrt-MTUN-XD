@@ -59,9 +59,14 @@ return view.extend({
 				var baseSc = C.scaleOf(0);
 
 				// 跟控制面板一个道理，三种"打不开"分开说：没开面板 / 绑回环 / 真没装
-				var noUi = !panel.ui;
+				var readErr = !!panel.failed;          // panelinfo 没跑成（超时 / 权限 / 正忙）
+				var noUi = !readErr && !panel.ui;      // 真没写 external-ui 才算「没启用」
 				var isLoop = C.loopbackOnly(panel.host);
-				var hint = E('div', { style: 'display:none; padding:28px 32px; line-height:1.9;' }, noUi ? [
+				var hint = E('div', { style: 'display:none; padding:28px 32px; line-height:1.9;' }, readErr ? [
+					E('h3', { style: 'margin:0 0 6px;' }, '读不到套件信息'),
+					E('div', {}, ['执行 ', E('code', {}, '/usr/sbin/mtun-xd panelinfo'), ' 失败（超时 / 权限 / 内核正忙）—— 稍后刷新本页。']),
+					E('div', { style: 'color:var(--mh-muted);' }, '连不上就 ', E('code', {}, '/usr/sbin/mtun-xd status'), ' 看状态。')
+				] : noUi ? [
 					E('h3', { style: 'margin:0 0 6px;' }, '配置工具未启用'),
 					E('div', {}, ['config.yaml 里加一行 ', E('code', {}, 'external-ui: ui'), '，再重启内核。'])
 				] : viaHttp ? [
@@ -79,8 +84,12 @@ return view.extend({
 				// 同源那条读得到状态码，内核没起来时 uhttpd 回 502/504，no-cors 会当成"通"。
 				var probe = function () {
 					if (viaHttp) {
-						return fetch(base, { cache: 'no-store' }).then(function (r) { return r.ok; },
-							function () { return false; });
+						// 同源也要有超时：内核半死（uhttpd 等后端）时这一页会一直挂着，连提示都不出
+						return Promise.race([
+							fetch(base, { cache: 'no-store' }).then(function (r) { return r.ok; },
+								function () { return false; }),
+							new Promise(function (r) { setTimeout(function () { r(false); }, 2500); }),
+						]);
 					}
 					return Promise.race([
 						fetch(base + 'index.html', { mode: 'no-cors', cache: 'no-store' })
@@ -90,7 +99,7 @@ return view.extend({
 				};
 				// 注意：`external-ui` 没写 = 内核压根不发这个静态站，一定打不开 —— 连框都不建
 				// （没插进文档的 iframe 不会加载 src，等于没请求）。
-				if (noUi) {
+				if (readErr || noUi) {
 					hint.style.display = '';
 				} else {
 					probe().then(function (ok) {
@@ -105,12 +114,14 @@ return view.extend({
 					});
 				}
 
-				// 没挂上 ⇒ 后台自己补一次（补成了整页重载）
-				if (!viaHttp) C.selfHeal();
+				// 没挂上 ⇒ 后台自己补一次（补成了整页重载）。
+				// ⚠️ noUi / readErr 时不补：前者是 config.yaml 没写 external-ui（expose ensure 治不了），
+				//    后者是 CLI 没跑成（再调一次同样会失败），白跑还会重启 uhttpd。
+				if (!viaHttp && !noUi && !readErr) C.selfHeal();
 
 				var body = E('div', {
 					style: 'flex:1 1 auto; min-height:0; display:flex; flex-direction:column; margin:-15px 0 0 0;'
-				}, noUi ? [hint] : [frame, hint]);
+				}, (readErr || noUi) ? [hint] : [frame, hint]);
 
 				C.scaleFrame(frame, body, baseSc);
 

@@ -1073,7 +1073,10 @@ upgrade_console() {
 # config.yaml 的读权限开给 ACL 等于把节点密码、订阅地址一起交出去。这里只吐这三个字段。
 # 输出是一行 JSON，前端 JSON.parse 直接用。
 # JSON 字符串转义（secret 里可能真有引号/反斜杠）
-json_esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+json_esc() {
+    # 去 CR/LF（secret 里出现换行会让 panelinfo 输出非法 JSON，前端 JSON.parse 直接抛）
+    printf '%s' "$1" | tr -d '\r\n' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
 
 panelinfo() {
     local host port ui sec ctrl

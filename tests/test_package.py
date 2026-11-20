@@ -280,7 +280,7 @@ def main():
           '读版本失败用固定中文文案，不贴 rpcd 英文原文')
 
     # 风险提示只放「运行日志」标题右侧，不冒充日志条目；正则只认基础码点
-    check('核心升级会断网几秒，失败自动回滚' in upg, '风险提示常驻在日志标题右侧')
+    check('（升级会断网几秒，失败自动回滚）' in upg, '风险提示以括号形式常驻在核心行状态下方')
     check('withPrefix' not in upg and '_prefix' not in upg,
           '日志首行不再注入页面自造的提示（前缀机制已移除）')
     check('/^⚠/' in upg and '/^⚠️/' not in upg,

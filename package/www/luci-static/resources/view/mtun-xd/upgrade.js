@@ -220,7 +220,12 @@ return view.extend({
 					E('div', { style: 'line-height:1.6; font-size:13px;' }, card.desc),
 					statusEls[card.kind]
 				]),
-				E('div', { style: 'justify-self:center; padding:0 22px;' }, [pillBox]),
+				E('div', { style: 'justify-self:center; padding:0 22px; text-align:center;' }, [
+					pillBox,
+					card.hint ? E('div', {
+						style: 'margin-top:4px; font-size:11.5px; line-height:1.5; color:' + P.muted + '; white-space:nowrap;'
+					}, '（升级会断网几秒，失败自动回滚）') : null
+				].filter(Boolean)),
 				E('div', { style: 'justify-self:end;' }, btn)
 			]);
 		});
@@ -241,12 +246,7 @@ return view.extend({
 				E('div', { style: 'padding-top:16px;' }, [
 					E('div', { style: CARDBOX }, rows)
 				]),
-				E('div', { style: 'display:flex; align-items:baseline; justify-content:space-between; gap:12px; ' +
-					'padding:14px 0 8px; color:' + P.muted + '; font-size:12.5px; font-weight:600;' }, [
-					E('span', {}, '运行日志'),
-					E('span', { style: 'font-weight:400; opacity:.85; text-align:right;' },
-						'核心升级会断网几秒，失败自动回滚')
-				]),
+				E('div', { style: 'padding:14px 0 8px; color:' + P.muted + '; font-size:12.5px; font-weight:600;' }, '运行日志'),
 				E('div', { style: 'flex:1 1 auto; min-height:0; display:flex; padding-bottom:16px;' }, [out])
 			])
 		]);

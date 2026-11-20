@@ -69,6 +69,22 @@ var LINE_COLORS = [
 	{ re: /(更新中|升级中|获取新版本|下载|正在|→|▶)/, c: 'var(--mh-warn)' },
 	{ re: /(✔|运行中|完成|已就位|已是|已装)/, c: 'var(--mh-ok)' }
 ];
+// 把 rpcd / ubus 的错误压成一行可读原因，用于「✘ …（原因）」；空则返回空串。
+function errText(e) {
+	var s = (e && (e.message || e.msg)) ? String(e.message || e.msg) : (e == null ? '' : String(e));
+	s = s.replace(/\s+/g, ' ').trim();
+	return s ? '（' + s.slice(0, 160) + '）' : '';
+}
+// 解析 `mtun-xd status` 的一行值：没装 / 装了但版本读不出 / 正常（带运行态）。
+// 三种情况分开，内核不再只看「未运行」两个字（N-12 的根因就在这）。
+function parseSt(raw) {
+	raw = String(raw || '');
+	var miss = /没装|未装/.test(raw);
+	var nover = !miss && /读不出/.test(raw);
+	var ver = raw.replace(/（运行中）|（未运行）|（配置工具没装）/g, '').trim();
+	var alive = /（运行中）/.test(raw) ? true : (/（未运行）/.test(raw) ? false : null);
+	return { miss: miss, nover: nover, ver: ver, alive: alive };
+}
 function lineColor(line) {
 	for (var i = 0; i < LINE_COLORS.length; i++) {
 		if (LINE_COLORS[i].re.test(line)) return LINE_COLORS[i].c;
@@ -150,6 +166,7 @@ return view.extend({
 			starting: { fg: 'var(--mh-busy)', bg: 'var(--mh-busy-bg)', dot: 'var(--mh-busy)', text: '启动中…' },
 			stopping: { fg: 'var(--mh-busy)', bg: 'var(--mh-busy-bg)', dot: 'var(--mh-busy)', text: '停止中…' },
 			updating: { fg: 'var(--mh-warn)', bg: 'var(--mh-warn-bg)', dot: 'var(--mh-warn)', text: '更新中…' },
+			unknown:  { fg: 'var(--mh-warn)', bg: 'var(--mh-warn-bg)', dot: 'var(--mh-warn)', text: '版本读不出' },
 			error:    { fg: 'var(--mh-err)',  bg: 'var(--mh-err-bg)',  dot: 'var(--mh-err)',  text: '异常' }
 		};
 		var makePill = function () {
@@ -202,6 +219,7 @@ return view.extend({
 			setPill(card.kind, 'stopped', '读取中…');
 
 			var btn = E('button', {
+				class: 'mh-btn',
 				style: BTN,
 				click: function () { self.start(card, btns, out, statusEls); }
 			}, card.btn);
@@ -255,7 +273,6 @@ return view.extend({
 			var running = state === 'running';
 			btnStart.disabled = running;
 			btnStop.disabled = !running;
-			setPill('core', running ? 'running' : 'stopped', running ? '运行中' : '已停止');
 		};
 		var coreRefresh = function () {
 			fs.exec(C.SCRIPT, ['core-state']).then(function (r) {
@@ -287,7 +304,10 @@ return view.extend({
 				fs.exec(C.SCRIPT, ['core-state']).then(function (r) {
 					var st = ((r && r.stdout) || '').trim();
 					if (st === 'running') {
-						coreSet(st); coreLog('✔ 服务已启动'); setBusy(self._upBtns || [], false);
+						coreSet(st);
+						setPill('core', 'running', '运行中');
+						coreLog('✔ 服务已启动');
+						setBusy(self._upBtns || [], false);
 						self.refreshStatus(statusEls); return;
 					}
 					// 注意：开机 5 分钟内启动会先等 40 秒（init 脚本里的开机延迟）→ 等满 90 秒再判超时
@@ -309,6 +329,7 @@ return view.extend({
 				var st = ((r && r.stdout) || '').trim();
 				if (cmd === 'core-start') { waitRun(0); return; }
 				coreSet(st);
+				setPill('core', st === 'stopped' ? 'stopped' : 'running', st === 'stopped' ? '已停止' : '运行中');
 				coreLog(st === 'stopped' ? '✔ 服务已停止' : ('✔ 当前状态：' + st));
 				setBusy(self._upBtns || [], false);   // ⚠️ 停止这条分支也必须解锁
 				self.refreshStatus(statusEls);
@@ -316,14 +337,14 @@ return view.extend({
 				// ⚠️ 把真实原因带出来：以前只写「看套件日志」，失败时根本不知道是超时、
 				//    被锁、还是 rpcd 拒了 —— 排查全靠猜。
 				setPill('core', 'error', '异常');
-				coreLog('✘ 执行失败');
+				coreLog('✘ 执行失败' + errText(e));
 				coreLog('  日志：tail -50 ' + C.LOG);
 				setBusy(self._upBtns || [], false);
 				if (self._coreRefresh) self._coreRefresh();
 			});
 		};
 		// 禁用态必须自己画：按钮的背景是内联样式，浏览器的 button[disabled] 默认灰会被盖住
-		var MH_CSS = E('style', { id: 'mh-upgrade-css' }, '.mh-core-btn[disabled]{background:var(--mh-idle)!important;' +
+		var MH_CSS = E('style', { id: 'mh-upgrade-css' }, '.mh-btn[disabled]{background:var(--mh-idle)!important;' +
 			'opacity:.55;cursor:default;box-shadow:none!important;}' +
 			'.mh-loghead{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;}' +
 			'.mh-loghead .mh-hint{font-size:11.5px;font-weight:400;opacity:.85;text-align:center;}' +
@@ -334,7 +355,7 @@ return view.extend({
 		var coreBtn = function (label, bg, cmd) {
 			return E('button', {
 				type: 'button',
-				class: 'mh-core-btn',
+				class: 'mh-btn',
 				style: 'height:30px; min-width:92px; padding:0 12px; border-radius:6px; border:0; color:#fff; ' +
 					'background:' + bg + '; font-size:13px; font-weight:600; letter-spacing:.2px; cursor:pointer; ' +
 					'box-shadow:0 1px 3px rgba(0,0,0,.12);',
@@ -405,17 +426,24 @@ return view.extend({
 				if (!m) return;
 				var el = els[map[m[1]]];
 				if (!el) return;
-				// 版本行只写版本；状态由胶囊表达。两种卡片两种语义，不许混：
-				//   内核 = 运行态（运行中 / 已停止）；面板 / 控制台 = 安装态（已安装 / 未安装）
-				var raw = m[2];
-				var gone = /没装|未装|读不出/.test(raw);
-				var ver = raw.replace(/（未?运行中?）/g, '').replace(/（配置工具没装）/, '').trim();
-				el.textContent = '当前：' + (gone ? '未安装' : ver);
-				if (m[1] === '内核') {
-					var running = raw.indexOf('未运行') === -1;
-					setP('core', running ? 'running' : 'stopped', running ? '运行中' : '已停止');
+				// 版本行只写版本；状态由胶囊表达。三种情况先分开，再决定文案与颜色：
+				//   没装 → 灰「未安装」；装了但版本读不出 → 橙「版本读不出」；正常 → 版本 + 运行态/安装态
+				var st = parseSt(m[2]);
+				if (st.miss) {
+					el.textContent = '当前：未安装';
+					setP(map[m[1]], 'stopped', '未安装');
+				} else if (st.nover) {
+					el.textContent = '当前：已安装（版本读不出）';
+					setP(map[m[1]], 'unknown', '版本读不出');
 				} else {
-					setP(map[m[1]], gone ? 'stopped' : 'running', gone ? '未安装' : '已安装');
+					el.textContent = '当前：' + st.ver;
+					if (m[1] === '内核') {
+						// alive=false / null 都按已停止处理（null = 输出里没有运行态标记）
+						var live = st.alive === true;
+						setP('core', live ? 'running' : 'stopped', live ? '运行中' : '已停止');
+					} else {
+						setP(map[m[1]], 'running', '已安装');
+					}
 				}
 			});
 		}).catch(function () {
@@ -444,21 +472,23 @@ return view.extend({
 		}).catch(function (e) {
 			// 注意：rpcd 有可能先超时（它要等管道 EOF 才算命令结束），但后台任务其实已经在跑了
 			return new Promise(function (r) { setTimeout(r, 1500); }).then(function () {
-				var why = '✘ 启动失败（看日志：tail -50 ' + C.LOG + '）';
+				var why = function () {
+					return '✘ 启动失败' + errText(e) + '（看日志：tail -50 ' + C.LOG + '）';
+				};
 				return fs.read(C.LOG).then(function (txt) {
 					if (txt && txt.length) {
 						out._raw = String(txt).replace(/\s+$/, '');
 						renderOut(out, out._raw);
 						return self.poll(btns, out, statusEls, 0, card.kind);
 					}
-					out._raw = why;
+					out._raw = why();
 					renderOut(out, out._raw);
 					self._setPill(card.kind, 'error', '异常');
 					statusEls[card.kind].textContent = '读取失败（看日志）';
 					setBusy(btns, false);
 					if (self._coreRefresh) self._coreRefresh();
 				}, function () {
-					out._raw = why;
+					out._raw = why();
 					renderOut(out, out._raw);
 					self._setPill(card.kind, 'error', '异常');
 					statusEls[card.kind].textContent = '读取失败（看日志）';

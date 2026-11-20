@@ -173,6 +173,16 @@ def main():
                 or '/tests/' in n or n.startswith('tests/')]
         check(not junk, '包里没有开发文件', ','.join(junk[:3]))
 
+    # N-12/N-13/N-17/N-18：状态三分支、失败原因、禁用态类名
+    ui_src = open(os.path.join(ROOT, 'package/www/luci-static/resources/view/mtun-xd/upgrade.js'),
+                  encoding='utf-8').read()
+    check("raw.indexOf('未运行') === -1" not in ui_src, '内核不再用「未运行」单条判据（N-12 根因已删）')
+    check(ui_src.count('版本读不出') >= 2 and 'unknown:' in ui_src,
+          '「装了但版本读不出」有独立文案与橙色胶囊')
+    check(ui_src.count('errText(') >= 3, '失败原因经过 errText() 带出（coreAct + 两个启动失败出口）')
+    check('.mh-btn[disabled]' in ui_src and 'mh-core-btn' not in ui_src,
+          '禁用态类名统一为 .mh-btn（升级按钮与启停按钮一致）')
+
     # 视图文件自愈：menu.d 引用带戳文件名、view 里 require 带戳模块，缺了都会整页 404
     post = open(os.path.join(ROOT, 'control/postinst'), encoding='utf-8').read()
     check('视图文件自愈' in post and '模块自愈' in post, 'postinst 同时自愈 view 与 require 的模块')

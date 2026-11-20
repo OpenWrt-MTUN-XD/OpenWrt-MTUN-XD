@@ -182,20 +182,6 @@ core_healthy() {
     return 1
 }
 
-# 列出一份配置里 rule-providers.<name>.path（每行一个）。
-# 用途：换配置后把新配置不再引用的规则文件清掉（如取消广告拦截后留下的 rules/adblock.mrs）。
-provider_paths() {
-  awk '
-    /^[[:space:]]*rule-providers:[[:space:]]*$/ { inb = 1; next }
-    inb && /^[^[:space:]#]/        { inb = 0 }
-    inb && /^[[:space:]]+path:[[:space:]]*/ {
-      sub(/^[[:space:]]+path:[[:space:]]*/, "")
-      gsub(/["'\'']/, "")
-      print
-    }
-  ' "$1"
-}
-
 reload_mihomo() {
   local used
   if used=$(api_try); then
@@ -317,10 +303,6 @@ fi
 
 # 同目录备份；替换后热载 / 重启失败就原样恢复，避免"文件换了、内核没吃上"。
 # ⚠️ cp -p：保留 owner/权限。config.yaml 里有 secret 和节点凭据，不能因为备份变成权限更宽的文件。
-# 旧配置引用了哪些规则文件（换配置后要清掉新配置不再引用的那份）
-old_paths=''
-[ -f "$CONFIG" ] && old_paths=$(provider_paths "$CONFIG")
-
 old_mode=''
 if [ -f "$CONFIG" ]; then
     old_mode=$(stat -c %a "$CONFIG" 2>/dev/null)
@@ -340,26 +322,7 @@ CFG_TMP=''
 [ -n "$CFG_BAK" ] && CFG_KEEP_BAK=1
 
 # ── 让它生效 ────────────────────────────────────────────────────
-# 新配置引用集合；旧的有、新的没有 = 需要清理的规则文件。
-new_paths=$(provider_paths "$CONFIG")
-removed=''
-if [ -n "$old_paths" ]; then
-  removed=$(printf '%s\n' "$old_paths" | while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    printf '%s\n' "$new_paths" | grep -Fqx "$p" || printf '%s\n' "$p"
-  done)
-fi
-if [ -n "$removed" ]; then
-  # ⚠️ 热载只换内存里的 provider 集合，磁盘上的旧文件还在；先重启内核（让它彻底不再引用），
-  #    重启成功后再删文件 —— 反过来会先删文件、内核还没换，可能触发重新下载或报错。
-  if core_restart && core_healthy; then
-    reload='restart'
-  else
-    reload='none'
-  fi
-else
-  reload=$(reload_mihomo)
-fi
+reload=$(reload_mihomo)
 if [ "$reload" = 'none' ]; then
     if [ -n "$CFG_BAK" ]; then
         if ! mv -f "$CFG_BAK" "$CONFIG"; then
@@ -373,30 +336,6 @@ if [ "$reload" = 'none' ]; then
     rm -f "$CONFIG"
     fail '502 Bad Gateway' 'new config did not take effect; removed it because there was no previous config'
 fi
-# 生效了 → 清理新配置不再引用的规则文件（只允许 $BASE 内的路径）
-clean_note=''
-if [ -n "$removed" ]; then
-  cleaned=''
-  while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    case "$p" in
-      ./*) f="$BASE/${p#./}" ;;
-      /*)  f="$p" ;;
-      *)   f="$BASE/$p" ;;
-    esac
-    case "$f" in
-      "$BASE"/*)
-        if [ -f "$f" ] && rm -f "$f"; then
-          cleaned="${cleaned:+$cleaned, }${f#$BASE/}"
-        fi
-        ;;
-    esac
-  done <<REMOVED_EOF
-$removed
-REMOVED_EOF
-  [ -n "$cleaned" ] && clean_note=", removed: $cleaned"
-fi
-
 # 生效了 → 备份可以丢了（前面为了防中断一直是"留着"的）
 CFG_KEEP_BAK=0
 rm -f "$CFG_BAK"
@@ -421,4 +360,4 @@ esac
 printf 'Content-Type: text/plain; charset=utf-8\r\n'
 cors
 printf '\r\n'
-printf 'ok %s bytes (reload: %s)%s%s\n' "$size" "$reload" "$test_note" "$clean_note"
+printf 'ok %s bytes (reload: %s)%s\n' "$size" "$reload" "$test_note"

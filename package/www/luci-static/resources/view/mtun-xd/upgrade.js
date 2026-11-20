@@ -122,10 +122,6 @@ function renderOut(out, text) {
 	}
 	if (nearBottom(out)) out.scrollTop = out.scrollHeight;
 }
-function withPrefix(out, txt) {
-	if (!out._prefix) return txt;
-	return out._prefix + (txt ? '\n' + txt : '');
-}
 function logLine(out, msg) {
 	if (!out) return;
 	var d = new Date();
@@ -245,7 +241,12 @@ return view.extend({
 				E('div', { style: 'padding-top:16px;' }, [
 					E('div', { style: CARDBOX }, rows)
 				]),
-				E('div', { style: 'padding:14px 0 8px; color:' + P.muted + '; font-size:12.5px; font-weight:600;' }, '运行日志'),
+				E('div', { style: 'display:flex; align-items:baseline; justify-content:space-between; gap:12px; ' +
+					'padding:14px 0 8px; color:' + P.muted + '; font-size:12.5px; font-weight:600;' }, [
+					E('span', {}, '运行日志'),
+					E('span', { style: 'font-weight:400; opacity:.85; text-align:right;' },
+						'核心升级会断网几秒，失败自动回滚')
+				]),
 				E('div', { style: 'flex:1 1 auto; min-height:0; display:flex; padding-bottom:16px;' }, [out])
 			])
 		]);
@@ -277,7 +278,6 @@ return view.extend({
 			//    否则上次的风险提示会挂到这次「停止服务」头上。
 			out.textContent = '';
 			out._raw = '';
-			out._prefix = '';
 			btnStart.disabled = true;
 			btnStop.disabled = true;
 			setBusy(self._upBtns || [], true);   // 启停期间也别让升级按钮能点（互斥）
@@ -432,11 +432,6 @@ return view.extend({
 		// 这种自己的话（两套文体混在一起最难看）；"跑起来了"由下面那行状态文字表示。
 		out.textContent = '';
 		out._raw = '';
-		out._prefix = '';
-		if (card.kind === 'core') {
-			logLine(out, '⚠️ 核心升级：过程中代理会断几秒，失败自动回滚');
-			out._prefix = out._raw;      // 这一行固定留在最上面
-		}
 		self._setPill(card.kind, 'updating', '更新中…');
 
 		fs.exec(C.SCRIPT, [card.kind, '--bg']).then(function () {
@@ -447,18 +442,18 @@ return view.extend({
 				var why = '✘ 启动失败（看日志：tail -50 ' + C.LOG + '）';
 				return fs.read(C.LOG).then(function (txt) {
 					if (txt && txt.length) {
-						out._raw = withPrefix(out, String(txt).replace(/\s+$/, ''));
+						out._raw = String(txt).replace(/\s+$/, '');
 						renderOut(out, out._raw);
 						return self.poll(btns, out, statusEls, 0, card.kind);
 					}
-					out._raw = withPrefix(out, why);
+					out._raw = why;
 					renderOut(out, out._raw);
 					self._setPill(card.kind, 'error', '异常');
 					statusEls[card.kind].textContent = '读取失败（看日志）';
 					setBusy(btns, false);
 					if (self._coreRefresh) self._coreRefresh();
 				}, function () {
-					out._raw = withPrefix(out, why);
+					out._raw = why;
 					renderOut(out, out._raw);
 					self._setPill(card.kind, 'error', '异常');
 					statusEls[card.kind].textContent = '读取失败（看日志）';
@@ -474,10 +469,9 @@ return view.extend({
 
 		fs.read(C.LOG).then(function (txt) {
 			txt = String(txt || '').replace(/\s+$/, '');   // 去掉 CLI 收尾的连续换行
-			var full = withPrefix(out, txt);
-			if (full && full !== out._raw) {
-				out._raw = full;
-				renderOut(out, full);
+			if (txt && txt !== out._raw) {
+				out._raw = txt;
+				renderOut(out, txt);
 			}
 		}).catch(function () { /* 还没写出来，正常 */ });
 

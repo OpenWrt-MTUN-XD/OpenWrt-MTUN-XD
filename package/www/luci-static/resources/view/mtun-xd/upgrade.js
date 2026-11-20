@@ -41,7 +41,8 @@ var BTN = 'display:inline-flex; align-items:center; justify-content:center; ' +
 var CARDS = [
 	{
 		kind: 'core', title: '核心升级', btn: '更新核心',
-		desc: 'Mihomo · 升级时代理会断几秒，失败自动回滚'
+		desc: 'Mihomo · 升级断网几秒',
+		hint: '升级过程中代理会断几秒，失败自动回滚'
 	},
 	{
 		kind: 'ui', title: '面板升级', btn: '更新面板',
@@ -198,6 +199,7 @@ return view.extend({
 
 			var btn = E('button', {
 				style: BTN,
+				title: card.hint || '',
 				click: function () { self.start(card, btns, out, statusEls); }
 			}, card.btn);
 			btns.push(btn);

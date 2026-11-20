@@ -248,8 +248,8 @@ return view.extend({
 			return E('button', {
 				type: 'button',
 				class: 'mh-core-btn',
-				style: 'height:32px; min-width:112px; padding:0 16px; border-radius:7px; border:0; color:#fff; ' +
-					'background:' + bg + '; font-size:13.5px; font-weight:600; letter-spacing:.3px; cursor:pointer; ' +
+				style: 'height:30px; min-width:92px; padding:0 12px; border-radius:6px; border:0; color:#fff; ' +
+					'background:' + bg + '; font-size:13px; font-weight:600; letter-spacing:.2px; cursor:pointer; ' +
 					'box-shadow:0 1px 3px rgba(0,0,0,.12);',
 				click: function () { coreAct(cmd); }
 			}, label);

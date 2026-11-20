@@ -249,6 +249,36 @@ def main():
     check("addText(st[1], '')" in upgrade and "addText(st[2], lineColor(st[2]))" in upgrade,
           '日志只给「状态：」后面的值着色')
 
+    # UI 规范（AGENTS.md）静态闸门：作用域、按钮尺寸、日志字号/着色、状态语义、文案
+    upg = open(os.path.join(ROOT, 'package/www/luci-static/resources/view/mtun-xd/upgrade.js'),
+               encoding='utf-8').read()
+    st_i, po_i = upg.find('start: function'), upg.find('poll: function')
+    rs_i, rs_end = upg.find('refreshStatus: function'), upg.find('start: function')
+    for name, a, b in (('start', st_i, po_i), ('poll', po_i, upg.find('handleSaveApply')),
+                       ('refreshStatus', rs_i, rs_end)):
+        body = upg[a:b] if a != -1 and b > a else ''
+        check(bool(body), 'upgrade.js 能定位 %s() 函数体' % name)
+        for fn in ('coreRefresh', 'btnStart', 'btnStop'):
+            bare = re.search(r'(?<![\w._])' + fn + r'\s*\(', body)
+            check(bare is None, '%s() 里不裸引用 render 闭包的 %s' % (name, fn))
+    btn_block = upg[upg.find('var BTN'):upg.find('var CARDS')]
+    check('border-radius:6px' in btn_block and 'font-size:13px' in btn_block
+          and 'min-width:92px' in btn_block,
+          '升级按钮与启停按钮同一套尺寸（radius 6 / 13px / 92px）')
+    check('font-size:15px' not in upg, '日志正文不再用 15px（不得盖过卡片标题权重）')
+    check('font-size:13px; line-height:1.7' in upg, '日志正文 13px / 行高 1.7')
+    lc = upg[upg.find('var LINE_COLORS'):upg.find('];', upg.find('var LINE_COLORS'))]
+    check('▶' in lc and '→' in lc, 'LINE_COLORS 覆盖 ▶ 与 →')
+    check("m[1] === '内核'" in upg and '已安装' in upg,
+          '面板/控制台走安装态语义（未安装/已安装），不冒充运行中')
+    ll = upg[upg.find('function logLine'):upg.find('return view.extend')]
+    check('.replace(/\s+$/' in ll, 'logLine 追加前 trimEnd，杜绝连续空行')
+    check("coreLog('状态：" not in upg, '状态快照不写进日志（胶囊的职责）')
+    check("coreLog('OK" not in upg and "coreLog('FAIL" not in upg,
+          '页面日志不用 ASCII OK/FAIL（统一 ✔/✘）')
+    check("'读不出版本：'" not in upg and "'读不出版本：' +" not in upg,
+          '读版本失败用固定中文文案，不贴 rpcd 英文原文')
+
     # 写盘 CGI 路径在 apply.js / btn.js 里是**刻意复制**的两份（两套 bundle 各自独立）：
     # 断言两边的字面量集合一致，改一处漏另一处会立刻红，比注释里的「两边一起改」可靠。
     cgi = {}

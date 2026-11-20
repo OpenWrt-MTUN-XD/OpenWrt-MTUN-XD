@@ -28,19 +28,20 @@ var INNER = 'width:100%; max-width:1120px; margin:0 auto; padding:0 16px; ' +
 	'font-family:' + FONT + '; ' +
 	'display:flex; flex-direction:column; flex:1 1 auto; min-height:0;';
 
-var ROW = 'display:flex; align-items:flex-end; padding:15px 18px; background:' + P.card + '; ' +
+var ROW = 'padding:15px 18px; background:' + P.card + '; ' +
 	'border-bottom:1px solid ' + P.border + ';';
 // 三行合成一张圆角卡（跟生成器那边一摞卡片的观感一致），别做成一整条通栏
 var CARDBOX = 'border:1px solid ' + P.border + '; border-radius:10px; overflow:hidden;';
 // 按钮：高 30px、跟行底对齐
+// 按钮只允许这一套尺寸（升级 / 启停共用）：30 高、radius 6、13/600、白字、语义色底
 var BTN = 'display:inline-flex; align-items:center; justify-content:center; ' +
-	'height:30px; background:' + P.accent + '; color:#fff; border:0; padding:0 12px; border-radius:5px; ' +
-	'font-size:12px; font-family:inherit; line-height:1; cursor:pointer;';
+	'height:30px; min-width:92px; background:' + P.accent + '; color:#fff; border:0; padding:0 12px; ' +
+	'border-radius:6px; font-size:13px; font-weight:600; font-family:inherit; line-height:1; cursor:pointer;';
 
 var CARDS = [
 	{
 		kind: 'core', title: '核心升级', btn: '更新核心',
-		desc: 'Mihomo'
+		desc: 'Mihomo · 升级时代理会断几秒，失败自动回滚'
 	},
 	{
 		kind: 'ui', title: '面板升级', btn: '更新面板',
@@ -60,7 +61,7 @@ var LINE_COLORS = [
 	{ re: /(FAIL|✘|失败|异常|超时|错误|没起来|不支持)/, c: 'var(--mh-err)' },
 	{ re: /(已停止|停止服务)/, c: 'var(--mh-idle)' },
 	{ re: /(启动中|停止中)/, c: 'var(--mh-busy)' },
-	{ re: /(更新中|升级中|获取新版本|下载|正在|→)/, c: 'var(--mh-warn)' },
+	{ re: /(更新中|升级中|获取新版本|下载|正在|→|▶)/, c: 'var(--mh-warn)' },
 	{ re: /(✔|运行中|完成|已就位|已是|已装)/, c: 'var(--mh-ok)' }
 ];
 function lineColor(line) {
@@ -72,7 +73,21 @@ function lineColor(line) {
 // 一行拆成几段：时间戳前缀 / 字段名 / 值 —— **只给值上色**，前缀保持正文色。
 //   [12:36:00] 状态：运行中   →   "[12:36:00] 状态：" 原色 + "运行中" 绿
 //   ✔ 核心：已是1.19.34       →   整行绿（没有时间戳前缀）
+function nearBottom(el) {
+	return el.scrollHeight - el.scrollTop - el.clientHeight <= 24;
+}
+function hasSelectionIn(el) {
+	var s = window.getSelection();
+	if (!s || !s.rangeCount || s.isCollapsed) return false;
+	var n = s.anchorNode;
+	return !!(n && el.contains(n.nodeType === 1 ? n : n.parentNode));
+}
 function renderOut(out, text) {
+	// ⚠️ 用户正在选中文字或已经上翻看历史时，不重建 DOM、不拽回底部；
+	//    把最新内容暂存，等回到底部再渲染（否则流式日志每 1.5 秒清一次选区）。
+	if (hasSelectionIn(out) || !nearBottom(out)) { out._pending = text; return; }
+	out._pending = null;
+	out.style.color = '';
 	out.textContent = '';
 	var lines = String(text || '').split('\n');
 	while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
@@ -99,7 +114,7 @@ function renderOut(out, text) {
 		}
 		if (i < lines.length - 1) out.appendChild(document.createTextNode('\n'));
 	}
-	out.scrollTop = out.scrollHeight;
+	if (nearBottom(out)) out.scrollTop = out.scrollHeight;
 }
 function logLine(out, msg) {
 	if (!out) return;
@@ -128,6 +143,7 @@ return view.extend({
 			running:  { fg: 'var(--mh-ok)',   bg: 'var(--mh-ok-bg)',   dot: 'var(--mh-ok)',   text: '运行中' },
 			stopped:  { fg: 'var(--mh-idle)', bg: 'var(--mh-idle-bg)', dot: 'var(--mh-idle)', text: '已停止' },
 			starting: { fg: 'var(--mh-busy)', bg: 'var(--mh-busy-bg)', dot: 'var(--mh-busy)', text: '启动中…' },
+			stopping: { fg: 'var(--mh-busy)', bg: 'var(--mh-busy-bg)', dot: 'var(--mh-busy)', text: '停止中…' },
 			updating: { fg: 'var(--mh-warn)', bg: 'var(--mh-warn-bg)', dot: 'var(--mh-warn)', text: '更新中…' },
 			error:    { fg: 'var(--mh-err)',  bg: 'var(--mh-err-bg)',  dot: 'var(--mh-err)',  text: '异常' }
 		};
@@ -160,9 +176,18 @@ return view.extend({
 			style: 'margin:0; padding:12px 10px; background:' + P.preBg + '; color:' + P.preFg + '; ' +
 				'border:1px solid ' + P.border + '; border-radius:10px; ' +
 				'font-family:ui-monospace, Consolas, Menlo, monospace; ' +
-				'font-size:15px; line-height:1.8; white-space:pre-wrap; word-break:break-all; ' +
+				'font-size:13px; line-height:1.7; white-space:pre-wrap; ' +
+				'overflow-wrap:anywhere; word-break:normal; ' +
 				'flex:1 1 auto; min-height:120px; overflow:auto;'
-		}, '');
+		}, '尚无操作记录');
+		out.style.color = P.muted;
+		out.addEventListener('scroll', function () {
+			if (nearBottom(out) && out._pending) {
+				var t = out._pending;
+				out._pending = null;
+				renderOut(out, t);
+			}
+		});
 
 		var rows = CARDS.map(function (card, i) {
 			statusEls[card.kind] = E('div', {
@@ -225,8 +250,7 @@ return view.extend({
 			fs.exec(C.SCRIPT, ['core-state']).then(function (r) {
 				var st = ((r && r.stdout) || '').trim();
 				coreSet(st);
-				coreLog('状态：' + (st === 'running' ? '运行中' : '已停止'));
-			}).catch(function () { btnStart.disabled = false; btnStop.disabled = false; });
+			}).catch(function () { /* 查不到就保持原状，别把按钮误解锁 */ });
 		};
 		// ⚠️ poll() 是 view 的方法、不在 render 闭包里 —— 里面要用 coreRefresh 必须挂 self
 		self._coreRefresh = coreRefresh;
@@ -234,35 +258,46 @@ return view.extend({
 			btnStart.disabled = true;
 			btnStop.disabled = true;
 			setBusy(self._upBtns || [], true);   // 启停期间也别让升级按钮能点（互斥）
-			setPill('core', cmd === 'core-start' ? 'starting' : 'updating',
+			setPill('core', cmd === 'core-start' ? 'starting' : 'stopping',
 				cmd === 'core-start' ? '启动中…' : '停止中…');
 			coreLog(cmd === 'core-start' ? '启动服务 …' : '停止服务 …');
 			var waitRun = function (n) {
 				fs.exec(C.SCRIPT, ['core-state']).then(function (r) {
 					var st = ((r && r.stdout) || '').trim();
 					if (st === 'running') {
-						coreSet(st); coreLog('OK 服务已启动'); setBusy(self._upBtns || [], false);
+						coreSet(st); coreLog('✔ 服务已启动'); setBusy(self._upBtns || [], false);
 						self.refreshStatus(statusEls); return;
 					}
 					// 注意：开机 5 分钟内启动会先等 40 秒（init 脚本里的开机延迟）→ 等满 90 秒再判超时
-					if (n > 90) { coreSet(st); coreLog('FAIL 启动超时（90 秒）'); setBusy(self._upBtns || [], false); return; }
+					if (n > 90) {
+						coreSet(st); setPill('core', 'error', '异常');
+						coreLog('✘ 启动超时（90 秒）');
+						coreLog('  日志：tail -50 ' + C.LOG);
+						setBusy(self._upBtns || [], false); return;
+					}
 					setTimeout(function () { waitRun(n + 1); }, 1000);
-				}).catch(function () { coreLog('FAIL 查询状态失败'); setBusy(self._upBtns || [], false); coreRefresh(); });
+				}).catch(function () {
+					setPill('core', 'error', '异常');
+					coreLog('✘ 查询状态失败');
+					setBusy(self._upBtns || [], false);
+					if (self._coreRefresh) self._coreRefresh();
+				});
 			};
 			fs.exec(C.SCRIPT, [cmd]).then(function (r) {
 				var st = ((r && r.stdout) || '').trim();
 				if (cmd === 'core-start') { waitRun(0); return; }
 				coreSet(st);
-				coreLog(st === 'stopped' ? 'OK 服务已停止' : ('OK 当前状态：' + st));
+				coreLog(st === 'stopped' ? '✔ 服务已停止' : ('✔ 当前状态：' + st));
 				setBusy(self._upBtns || [], false);   // ⚠️ 停止这条分支也必须解锁
 				self.refreshStatus(statusEls);
 			}).catch(function (e) {
 				// ⚠️ 把真实原因带出来：以前只写「看套件日志」，失败时根本不知道是超时、
 				//    被锁、还是 rpcd 拒了 —— 排查全靠猜。
-				var why = (e && (e.message || e.toString())) || '未知错误';
-				coreLog('FAIL 执行失败：' + why);
+				setPill('core', 'error', '异常');
+				coreLog('✘ 执行失败');
+				coreLog('  日志：tail -50 ' + C.LOG);
 				setBusy(self._upBtns || [], false);
-				coreRefresh();
+				if (self._coreRefresh) self._coreRefresh();
 			});
 		};
 		// 禁用态必须自己画：按钮的背景是内联样式，浏览器的 button[disabled] 默认灰会被盖住
@@ -342,15 +377,22 @@ return view.extend({
 				if (!m) return;
 				var el = els[map[m[1]]];
 				if (!el) return;
-				// 版本行只写版本；运行态统一由旁边的状态胶囊表达（绿色运行中 / 灰色已停止）
-				var ver = m[2].replace(/（未?运行中?）/g, '').trim();
-				el.textContent = '当前：' + ver;
-				var running = m[1] !== '内核' || m[2].indexOf('未运行') === -1;
-				setP(map[m[1]], running ? 'running' : 'stopped', running ? '运行中' : '已停止');
+				// 版本行只写版本；状态由胶囊表达。两种卡片两种语义，不许混：
+				//   内核 = 运行态（运行中 / 已停止）；面板 / 控制台 = 安装态（已安装 / 未安装）
+				var raw = m[2];
+				var gone = /没装|未装|读不出/.test(raw);
+				var ver = raw.replace(/（未?运行中?）/g, '').replace(/（配置工具没装）/, '').trim();
+				el.textContent = '当前：' + (gone ? '未安装' : ver);
+				if (m[1] === '内核') {
+					var running = raw.indexOf('未运行') === -1;
+					setP('core', running ? 'running' : 'stopped', running ? '运行中' : '已停止');
+				} else {
+					setP(map[m[1]], gone ? 'stopped' : 'running', gone ? '未安装' : '已安装');
+				}
 			});
-		}).catch(function (e) {
+		}).catch(function () {
 			Object.keys(els).forEach(function (k) {
-				els[k].textContent = '读不出版本：' + ((e && e.message) ? e.message : e);
+				els[k].textContent = '读取失败（看日志：tail -50 ' + C.LOG + '）';
 				setP(k, 'error', '异常');
 			});
 		});
@@ -358,10 +400,6 @@ return view.extend({
 
 	start: function (card, btns, out, statusEls) {
 		var self = this;
-		if (card.kind === 'core') {
-			logLine(out, '更新核心：过程中代理会断几秒，失败自动回滚');
-		}
-
 		setBusy(btns, true);
 		// ⚠️ 升级和启停互斥：升级跑着的时候点「停止服务」会让健康检查判失败、触发回滚
 		if (self._btnStart) self._btnStart.disabled = true;
@@ -378,21 +416,26 @@ return view.extend({
 		}).catch(function (e) {
 			// 注意：rpcd 有可能先超时（它要等管道 EOF 才算命令结束），但后台任务其实已经在跑了
 			return new Promise(function (r) { setTimeout(r, 1500); }).then(function () {
+				var why = '✘ 启动失败（看日志：tail -50 ' + C.LOG + '）';
 				return fs.read(C.LOG).then(function (txt) {
 					if (txt && txt.length) {
-						out.textContent = txt;
+						out._raw = String(txt).replace(/\s+$/, '');
+						renderOut(out, out._raw);
 						return self.poll(btns, out, statusEls, 0, card.kind);
 					}
-					out._raw = '✘ 启动失败：' + ((e && e.message) ? e.message : e) + '\n';
+					out._raw = why;
 					renderOut(out, out._raw);
 					self._setPill(card.kind, 'error', '异常');
+					statusEls[card.kind].textContent = '读取失败（看日志）';
 					setBusy(btns, false);
-					coreRefresh();
+					if (self._coreRefresh) self._coreRefresh();
 				}, function () {
-					out.textContent = '✘ 启动失败：' + ((e && e.message) ? e.message : e) + '\n';
-					statusEls[card.kind].textContent = '✘ 没起来（看输出）';
+					out._raw = why;
+					renderOut(out, out._raw);
+					self._setPill(card.kind, 'error', '异常');
+					statusEls[card.kind].textContent = '读取失败（看日志）';
 					setBusy(btns, false);
-					coreRefresh();
+					if (self._coreRefresh) self._coreRefresh();
 				});
 			});
 		});
@@ -413,7 +456,6 @@ return view.extend({
 			var ok = String(code).trim() === '0';
 			// 注意：这里**不加「✔ 完成。」**—— 脚本最后一行已经是结果行（✔ 面板：1.274.0 …），
 			// 再来一句就是把同一件事说两遍；跑完的信号放进状态行，失败才说话。
-			out.scrollTop = out.scrollHeight;
 			setBusy(btns, false);
 			if (self._coreRefresh) self._coreRefresh();   // 升级期间锁掉的启停按钮，按真实状态恢复
 			return self.refreshStatus(statusEls).then(function () {
@@ -421,8 +463,8 @@ return view.extend({
 			});
 		}).catch(function () {
 			if (n > 600) {
-				out._raw = (out._raw || out.textContent) + '\n（等太久了，不看了。完整日志在路由器 ' + C.LOG + '）\n';
-			renderOut(out, out._raw);
+				out._raw = (out._raw || '') + '\n（超时，日志：tail -50 ' + C.LOG + '）';
+				renderOut(out, out._raw);
 				setBusy(btns, false);
 				self._setPill(kind, 'error', '超时');
 				if (self._coreRefresh) self._coreRefresh();

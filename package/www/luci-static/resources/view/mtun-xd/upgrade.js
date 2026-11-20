@@ -129,14 +129,18 @@ return view.extend({
 			btns.push(btn);
 
 			// 最后一行不要下边框（那由外面那张卡的边框来收）
-			return E('div', { style: ROW + 'align-items:center;' + (i === CARDS.length - 1 ? 'border-bottom:0;' : '') }, [
-				E('div', { style: 'flex:1 1 auto; min-width:0; color:' + P.text + ';' }, [
+			// 三列：左信息 / 中间状态胶囊 / 右按钮 —— 胶囊在两列 1fr 的正中间
+			return E('div', {
+				style: ROW + 'display:grid; grid-template-columns:1fr auto 1fr; align-items:center;' +
+					(i === CARDS.length - 1 ? 'border-bottom:0;' : '')
+			}, [
+				E('div', { style: 'min-width:0; color:' + P.text + ';' }, [
 					E('div', { style: 'font-size:16px; font-weight:700; margin-bottom:2px;' }, card.title),
 					E('div', { style: 'line-height:1.6; font-size:13px;' }, card.desc),
 					statusEls[card.kind]
 				]),
-				E('div', { style: 'flex:0 0 auto; margin:0 22px;' }, [pillBox]),
-				E('div', { style: 'flex:0 0 auto;' }, btn)
+				E('div', { style: 'justify-self:center; padding:0 22px;' }, [pillBox]),
+				E('div', { style: 'justify-self:end;' }, btn)
 			]);
 		});
 

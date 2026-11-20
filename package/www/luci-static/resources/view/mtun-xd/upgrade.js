@@ -57,7 +57,8 @@ var CARDS = [
 // 运行日志：统一格式 [HH:MM:SS] 消息（页面和升级流程共用）
 //
 // 颜色口径跟状态胶囊一致：运行中=绿、已停止=灰、启动中=蓝、异常=红、更新中=橙。
-// 判定顺序有讲究 —— 先判红（失败关键字最具体），再灰 / 蓝 / 橙，最后才是绿的「✔ / 运行中」。
+// 判定顺序：先看行首符号（✔ 成功 / ⚠ 提醒），再判红（失败关键字最具体），
+// 然后灰 / 蓝 / 橙，最后才是泛绿的「运行中 / 完成」。顺序即优先级，改规则时一起改这段。
 var LINE_COLORS = [
 	// 行首符号优先：✔ 是「办成了」，哪怕内容是「已停止」也走绿
 	{ re: /^✔/, c: 'var(--mh-ok)' },
@@ -260,7 +261,14 @@ return view.extend({
 			fs.exec(C.SCRIPT, ['core-state']).then(function (r) {
 				var st = ((r && r.stdout) || '').trim();
 				coreSet(st);
-			}).catch(function () { /* 查不到就保持原状，别把按钮误解锁 */ });
+			}).catch(function () {
+				// ⚠️ N-16：升级结束 / 服务正在重启时 core-state 可能查不到。
+				//    升级期间两个按钮是被禁用的，保持原状会把它们永久焊死（只能刷新页面）。
+				//    这里放开两边让用户自己试，胶囊标异常。
+				btnStart.disabled = false;
+				btnStop.disabled = false;
+				setPill('core', 'error', '异常');
+			});
 		};
 		// ⚠️ poll() 是 view 的方法、不在 render 闭包里 —— 里面要用 coreRefresh 必须挂 self
 		self._coreRefresh = coreRefresh;

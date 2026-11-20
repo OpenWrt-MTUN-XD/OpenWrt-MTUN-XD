@@ -212,6 +212,19 @@ def main():
         wsrc = open(os.path.join(ROOT, '.github', 'workflows', wf), encoding='utf-8').read()
         check('sh tools/check-shell.sh' in wsrc,
               '%s 走统一的 shell 检查（覆盖 deploy/ 等全部脚本）' % wf)
+    # 维护中心：start() 是 view 的方法、不在 render 闭包里 —— 里面只能碰 self._btnStart /
+    # self._btnStop；直接写 btnStart 会抛 ReferenceError（点更新没反应、按钮还灰着）。
+    upg = open(os.path.join(ROOT, 'package/www/luci-static/resources/view/mtun-xd/upgrade.js'),
+               encoding='utf-8').read()
+    sm = upg.find('start: function')
+    se = upg.find('poll: function')
+    body = upg[sm:se] if sm != -1 and se > sm else ''
+    check(bool(body), 'upgrade.js 能定位 start() 函数体')
+    check('btnStart.' not in body and 'btnStop.' not in body,
+          'start() 里不直接引用 render 闭包里的 btnStart/btnStop（必须 self._btnStart）')
+    check('self._btnStart' in body and 'self._btnStop' in body,
+          'start() 通过 self._btnStart / self._btnStop 锁启停按钮')
+
     # 写盘 CGI 路径在 apply.js / btn.js 里是**刻意复制**的两份（两套 bundle 各自独立）：
     # 断言两边的字面量集合一致，改一处漏另一处会立刻红，比注释里的「两边一起改」可靠。
     cgi = {}

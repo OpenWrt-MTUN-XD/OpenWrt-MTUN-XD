@@ -173,6 +173,10 @@ return view.extend({
 		};
 		var btnStart = coreBtn('启动服务', 'cbi-button-apply', 'core-start');
 		var btnStop = coreBtn('停止服务', 'cbi-button-reset', 'core-stop');
+		// ⚠️ start() 是 view 的方法、不在 render 的闭包里 —— 按钮必须挂到 self 上，
+		//    否则在 start 里直接写 btnStart 会抛 ReferenceError（点了没反应，按钮还灰着）。
+		self._btnStart = btnStart;
+		self._btnStop = btnStop;
 
 		var corebar = E('div', {
 			style: 'flex:0 0 auto; display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:22px; padding:12px 0 4px;'
@@ -246,8 +250,8 @@ return view.extend({
 
 		setBusy(btns, true);
 		// ⚠️ 升级和启停互斥：升级跑着的时候点「停止服务」会让健康检查判失败、触发回滚
-		btnStart.disabled = true;
-		btnStop.disabled = true;
+		if (self._btnStart) self._btnStart.disabled = true;
+		if (self._btnStop) self._btnStop.disabled = true;
 		self._upBtns = btns;
 		// 输出框里**只放脚本自己那几行**（→ / ✔ / ✘），页面别再往里塞「【面板更新】启动中…」
 		// 这种自己的话（两套文体混在一起最难看）；"跑起来了"由下面那行状态文字表示。

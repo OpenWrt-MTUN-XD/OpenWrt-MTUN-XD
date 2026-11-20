@@ -280,7 +280,9 @@ def main():
           '读版本失败用固定中文文案，不贴 rpcd 英文原文')
 
     # ⚠️ 首行固定提示：失败分支也必须 through withPrefix；正则只认基础码点
-    check(upg.count('withPrefix(') >= 4, '日志前缀在成功 / 失败出口都保留')
+    check(upg.count('out._raw = withPrefix(out,') >= 3,
+          '三条失败/成功出口都经 withPrefix 保留 ⚠️ 首行')
+    check('var full = withPrefix(out, txt)' in upg, 'poll 出口也保留 ⚠️ 首行')
     check('/^⚠/' in upg and '/^⚠️/' not in upg,
           '⚠️ 规则只认基础码点（不依赖 U+FE0F 变体选择符）')
 

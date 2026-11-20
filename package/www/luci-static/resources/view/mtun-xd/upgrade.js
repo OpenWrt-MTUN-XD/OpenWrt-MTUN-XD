@@ -59,6 +59,8 @@ var CARDS = [
 // 颜色口径跟状态胶囊一致：运行中=绿、已停止=灰、启动中=蓝、异常=红、更新中=橙。
 // 判定顺序有讲究 —— 先判红（失败关键字最具体），再灰 / 蓝 / 橙，最后才是绿的「✔ / 运行中」。
 var LINE_COLORS = [
+	// 行首符号优先：✔ 是「办成了」，哪怕内容是「已停止」也走绿
+	{ re: /^✔/, c: 'var(--mh-ok)' },
 	// ⚠️ 开头的提示行优先按「提醒」处理（橙），不因为句子里有「失败」就被染红
 	{ re: /^⚠/, c: 'var(--mh-warn)' },
 	{ re: /(FAIL|✘|失败|异常|超时|错误|没起来|不支持)/, c: 'var(--mh-err)' },
@@ -128,7 +130,7 @@ function logLine(out, msg) {
 	var d = new Date();
 	var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
 	var ts = p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
-	var t = (out._raw || out.textContent || '').replace(/\s+$/, '');
+	var t = (out._raw || '').replace(/\s+$/, '');
 	var next = t + (t ? '\n' : '') + '[' + ts + '] ' + msg;
 	out._raw = next;
 	renderOut(out, next);

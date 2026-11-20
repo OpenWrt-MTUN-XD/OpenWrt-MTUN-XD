@@ -183,6 +183,39 @@ def main():
     check('.mh-btn[disabled]' in ui_src and 'mh-core-btn' not in ui_src,
           '禁用态类名统一为 .mh-btn（升级按钮与启停按钮一致）')
 
+    # 换配置后的规则文件清理：旧配置引用、新配置不再引用的 provider 文件要删掉；
+    # 顺序必须是「先重启内核（彻底卸载旧 provider）→ 再删文件」。
+    apply = open(os.path.join(ROOT, 'generator/deploy/mihomo-apply'), encoding='utf-8').read()
+    check('provider_paths()' in apply and "removed" in apply and 'clean_note' in apply,
+          '载入配置时计算并清理被移除的 rule-provider 文件')
+    check('if core_restart && core_healthy' in apply,
+          '有清理项时强制重启内核（热载不会卸载旧 provider）')
+    check('"$BASE"/*)' in apply, '只删除 $BASE 内的路径')
+    sh2 = ('C:/Program Files/Git/usr/bin/sh.exe' if os.path.exists('C:/Program Files/Git/usr/bin/sh.exe')
+           else shutil.which('sh'))
+    if sh2:
+        import subprocess as _sp, tempfile as _tf
+        a_start = apply.find('provider_paths() {')
+        a_end = apply.find('\n}\n', a_start)
+        fn = apply[a_start:a_end + 3] if a_start != -1 and a_end > a_start else ''
+        check(bool(fn), '能取出 provider_paths 函数')
+        with _tf.TemporaryDirectory() as td:
+            sample = os.path.join(td, 'with.yaml')
+            with open(sample, 'w', encoding='utf-8') as f:
+                f.write('mode: rule\nrule-providers:\n  adblock:\n    type: http\n'
+                        '    behavior: domain\n    path: ./rules/adblock.mrs\n    interval: 86400\n'
+                        'rules:\n  - MATCH,DIRECT\n')
+            clean = os.path.join(td, 'clean.yaml')
+            with open(clean, 'w', encoding='utf-8') as f:
+                f.write('mode: rule\nrules:\n  - MATCH,DIRECT\n')
+            env = dict(os.environ, PATH=os.path.dirname(sh2) + os.pathsep + os.environ.get('PATH', ''))
+            r1 = _sp.run([sh2, '-c', fn + '\nprovider_paths "$1"', 'sh', sample],
+                                env=env, capture_output=True, encoding='utf-8', errors='replace')
+            r2 = _sp.run([sh2, '-c', fn + '\nprovider_paths "$1"', 'sh', clean],
+                                env=env, capture_output=True, encoding='utf-8', errors='replace')
+        check((r1.stdout or '').strip() == './rules/adblock.mrs', '能从旧配置读出 adblock 的文件路径')
+        check((r2.stdout or '').strip() == '', '干净配置不产生清理项')
+
     # 视图文件自愈：menu.d 引用带戳文件名、view 里 require 带戳模块，缺了都会整页 404
     post = open(os.path.join(ROOT, 'control/postinst'), encoding='utf-8').read()
     check('视图文件自愈' in post and '模块自愈' in post, 'postinst 同时自愈 view 与 require 的模块')

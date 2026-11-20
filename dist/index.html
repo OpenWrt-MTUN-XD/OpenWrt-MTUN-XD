@@ -3,41 +3,117 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MTUN-XD 文件</title>
+<meta name="color-scheme" content="dark">
+<title>MTUN-XD · 墨枢云境</title>
 <style>
-  body { margin:0 auto; max-width:760px; padding:36px 20px; line-height:1.9;
-         font:15px/1.9 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; color:#222; }
-  h1 { font-size:20px; margin:0 0 4px; }
-  p { color:#666; margin:0 0 20px; }
-  code { background:#f4f4f5; padding:2px 6px; border-radius:4px; font-size:14px; }
-  pre { background:#f4f4f5; padding:12px 14px; border-radius:6px; overflow:auto; }
-  a { color:#0a7d3f; }
-  ul { padding-left:20px; }
+  :root { --bg:#0b1220; --card:#121a2b; --line:#233046; --text:#e6edf3; --muted:#8b949e; --accent:#3fb950; --blue:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:radial-gradient(1200px 600px at 50% -10%, #17233a 0%, var(--bg) 55%);
+         color:var(--text); font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+         min-height:100vh; }
+  main { max-width:880px; margin:0 auto; padding:56px 22px 64px; }
+  .head { text-align:center; margin-bottom:34px; }
+  .badge { display:inline-block; padding:3px 10px; border:1px solid var(--line); border-radius:999px;
+           color:var(--muted); font-size:12.5px; letter-spacing:.3px; }
+  h1 { font-size:34px; letter-spacing:1px; margin:16px 0 6px; }
+  h1 small { display:block; font-size:15px; letter-spacing:6px; color:var(--muted); font-weight:400; margin-top:8px; }
+  .sub { color:var(--muted); margin:0 auto; max-width:640px; }
+  .cmd { display:flex; gap:10px; align-items:stretch; margin:28px 0 34px; }
+  .cmd pre { flex:1; margin:0; padding:13px 15px; background:#0d1524; border:1px solid var(--line);
+             border-radius:10px; color:#c9d1d9; font:13px/1.6 ui-monospace,Consolas,Menlo,monospace;
+             overflow:auto; white-space:pre; }
+  .cmd button { flex:0 0 auto; padding:0 18px; border:1px solid var(--line); border-radius:10px;
+                background:#182338; color:var(--text); font-size:13.5px; cursor:pointer; }
+  .cmd button:hover { border-color:#3d5170; }
+  h2 { font-size:13px; letter-spacing:2px; color:var(--muted); font-weight:600; margin:32px 0 12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; }
+  .card { display:block; padding:16px 18px; background:var(--card); border:1px solid var(--line);
+          border-radius:12px; color:var(--text); text-decoration:none; transition:border-color .15s, transform .15s; }
+  .card:hover { border-color:#3d5170; transform:translateY(-1px); }
+  .card b { display:block; font-size:15px; margin-bottom:4px; }
+  .card span { display:block; color:var(--muted); font-size:12.5px; word-break:break-all; }
+  .card .tag { display:inline-block; margin-top:8px; padding:2px 8px; border-radius:6px;
+               background:#16233a; color:var(--blue); font-size:11.5px; font-style:normal; }
+  .prev { margin:28px 0 0; color:var(--muted); font-size:13px; text-align:center; }
+  a { color:var(--blue); }
+  .foot { margin-top:44px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted);
+          font-size:12.5px; text-align:center; line-height:2; }
+  .foot a { color:var(--muted); }
+  @media (max-width:520px) { h1 { font-size:27px; } .cmd { flex-direction:column; } .cmd button { padding:10px; } }
 </style>
 </head>
 <body>
-<h1>MTUN-XD</h1>
-<p>面板 + 核心 + 配置工具，打成一个 LuCI 包。装的时候现拉核心/面板，所以包只有几十 KB。</p>
+<main>
+  <div class="head">
+    <div class="badge">LuCI 套件 · v2026.11.07</div>
+    <h1>MTUN-XD<small>墨 枢 云 境</small></h1>
+    <p class="sub">面板 + 核心 + 配置工具，打成一个 LuCI 包。<br>装的时候现拉核心 / 面板，所以包只有几十 KB。</p>
+  </div>
 
-<pre id="cmd">curl -fsSL ./install.sh -o /tmp/mtun-xd-install.sh && sh /tmp/mtun-xd-install.sh</pre>
+  <div class="cmd">
+    <pre id="cmd">curl -fsSL ./install.sh -o /tmp/mtun-xd-install.sh &amp;&amp; sh /tmp/mtun-xd-install.sh</pre>
+    <button id="copy" type="button">复制</button>
+  </div>
+
+  <h2>下载</h2>
+  <div class="grid">
+    <a class="card" href="./luci-app-mtun-xd-2026.11.07.apk">
+      <b>OpenWrt 25.x</b>
+      <span>luci-app-mtun-xd-2026.11.07.apk</span>
+      <i class="tag">apk</i>
+    </a>
+    <a class="card" href="./luci-app-mtun-xd_2026.11.07_all.ipk">
+      <b>OpenWrt 24.10 及以前</b>
+      <span>luci-app-mtun-xd_2026.11.07_all.ipk</span>
+      <i class="tag">opkg</i>
+    </a>
+  </div>
+
+  <h2>配置工具（生成器）</h2>
+  <div class="grid">
+    <a class="card" href="./generator.sh">
+      <b>generator.sh</b>
+      <span>一行部署到路由器</span>
+      <i class="tag">脚本</i>
+    </a>
+    <a class="card" href="./mihomo-deploy.zip">
+      <b>mihomo-deploy.zip</b>
+      <span>离线包（Windows / macOS）</span>
+      <i class="tag">zip</i>
+    </a>
+    <a class="card" href="./mihomo-deploy.tar.gz">
+      <b>mihomo-deploy.tar.gz</b>
+      <span>离线包（Linux / 路由器）</span>
+      <i class="tag">tar.gz</i>
+    </a>
+  </div>
+
+  <p class="prev">上一版（回滚用）：<a href="./luci-app-mtun-xd-2026.11.06.apk">2026.11.06 apk</a> · <a href="./luci-app-mtun-xd_2026.11.06_all.ipk">2026.11.06 ipk</a></p>
+
+  <div class="foot">
+    装完：路由器界面 → 服务 → <b>墨枢云境</b><br>
+    <a href="./latest.txt">latest.txt</a> · <a href="./SHA256SUMS">SHA256SUMS</a> ·
+    <a href="https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD">GitHub</a>
+  </div>
+</main>
+
 <script>
   // 安装命令按当前访问的域名现拼：页面里不写死托管域名，换域名或反代时同样可用。
-  document.getElementById('cmd').textContent =
-    'curl -fsSL ' + location.origin + '/install.sh -o /tmp/mtun-xd-install.sh && '
-      + 'sh /tmp/mtun-xd-install.sh';
+  var origin = location.origin; if (origin.slice(-1) === '/') origin = origin.slice(0, -1);
+  var cmd = 'curl -fsSL ' + origin + '/install.sh -o /tmp/mtun-xd-install.sh && sh /tmp/mtun-xd-install.sh';
+  document.getElementById('cmd').textContent = cmd;
+  document.getElementById('copy').addEventListener('click', function () {
+    var b = this, t = b.textContent;
+    var done = function () { b.textContent = '已复制'; setTimeout(function () { b.textContent = t; }, 1200); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cmd).then(done, done);
+    } else {
+      var r = document.createRange(); r.selectNodeContents(document.getElementById('cmd'));
+      var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      try { document.execCommand('copy'); } catch (e) {}
+      done();
+    }
+  });
 </script>
-
-<ul>
-  <li><a href="./install.sh">install.sh</a> —— 一行装（自己认 apk / opkg）</li>
-  <li><a href="./latest.txt">latest.txt</a> —— 当前版本号</li>
-  <li><a href="./luci-app-mtun-xd-2026.11.07.apk">luci-app-mtun-xd-2026.11.07.apk</a> —— OpenWrt 25.x（apk）</li>
-  <li><a href="./luci-app-mtun-xd_2026.11.07_all.ipk">luci-app-mtun-xd_2026.11.07_all.ipk</a> —— 24.10 及以前（opkg）</li>
-  <li><a href="./generator.sh">generator.sh</a> / <a href="./mihomo-deploy.zip">mihomo-deploy.zip</a> /
-      <a href="./mihomo-deploy.tar.gz">mihomo-deploy.tar.gz</a> —— 配置工具（生成器）的部署包</li>
-</ul>
-
-<p style="color:#888">上一版（回滚用）：<a href="./luci-app-mtun-xd-2026.11.06.apk">2026.11.06 apk</a> · <a href="./luci-app-mtun-xd_2026.11.06_all.ipk">2026.11.06 ipk</a></p>
-
-<p style="color:#888">装完：路由器界面 → 服务 → MTUN-XD。</p>
 </body>
 </html>

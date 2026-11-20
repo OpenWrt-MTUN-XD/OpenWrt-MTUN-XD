@@ -41,6 +41,7 @@ SELFCOPY="/tmp/mtun-xd.self.$$"
 LOG=/tmp/mtun-xd.log
 DONE=/tmp/mtun-xd.done
 RAW=/tmp/mtun-xd.raw
+RC=/tmp/mtun-xd.rc
 MIRRORS="https://github.com https://ghfast.top/https://github.com https://gh-proxy.com/https://github.com"
 # 生成器（配置工具）从独立的滚动 release 拉（OpenWrt-MTUN-XD/genkit，tag `genkit`），跟核心 /
 # 面板一样走上面那套镜像，不依赖生成器自己的网站（那只是它的线上本体）。
@@ -2206,6 +2207,10 @@ case "${1:-}" in
                 log_trim "$LOG"
                 : > "$LOG"
                 rm -f "$DONE"
+                # ⚠️ 边跑边洗：以前是先写 "$RAW"、跑完再 scrub_stream 进 "$LOG"，
+                #    页面上只能在结束时一次性看到日志。现在命令的 stdout 直接进管道，
+                #    scrub_stream 每行 fflush，前端 1.5 秒一轮就能逐行刷出来。
+                #    退出码走单独的文件（管道的 $? 是 awk 的，不是命令的）。
                 if [ "$1" = console ]; then
                     # 控制台升级会覆盖本脚本 ⇒ 从副本跑；这层子 shell 留着写 DONE
                     cp "$0" "$SELFCOPY" 2>/dev/null || {
@@ -2213,17 +2218,17 @@ case "${1:-}" in
                         echo 1 > "$DONE"
                         exit 1
                     }
-                    ( MTUN_XD_SELFCOPY=1 sh "$SELFCOPY" console --run >"$RAW" 2>&1 </dev/null
-                      rc=$?
-                      scrub_stream <"$RAW" >>"$LOG"
-                      rm -f "$RAW" "$SELFCOPY"
-                      echo $rc > "$DONE" ) >/dev/null 2>&1 </dev/null &
+                    ( { MTUN_XD_SELFCOPY=1 sh "$SELFCOPY" console --run 2>&1 </dev/null
+                        echo $? > "$RC"; } | scrub_stream >"$LOG"
+                      rc=$(cat "$RC" 2>/dev/null)
+                      rm -f "$RC" "$RAW" "$SELFCOPY"
+                      echo "${rc:-1}" > "$DONE" ) >/dev/null 2>&1 </dev/null &
                 else
-                    ( "$0" "$1" --run >"$RAW" 2>&1 </dev/null
-                      rc=$?
-                      scrub_stream <"$RAW" >>"$LOG"
-                      rm -f "$RAW"
-                      echo $rc > "$DONE" ) >/dev/null 2>&1 </dev/null &
+                    ( { "$0" "$1" --run 2>&1 </dev/null
+                        echo $? > "$RC"; } | scrub_stream >"$LOG"
+                      rc=$(cat "$RC" 2>/dev/null)
+                      rm -f "$RC" "$RAW"
+                      echo "${rc:-1}" > "$DONE" ) >/dev/null 2>&1 </dev/null &
                 fi
                 exit 0
                 ;;

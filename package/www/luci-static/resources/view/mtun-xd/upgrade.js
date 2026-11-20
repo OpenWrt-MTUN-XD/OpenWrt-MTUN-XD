@@ -247,7 +247,7 @@ return view.extend({
 					E('span', {
 						style: 'position:absolute; left:50%; transform:translateX(-50%); bottom:8px; ' +
 							'font-size:11.5px; font-weight:400; opacity:.85; white-space:nowrap;'
-					}, '（升级会断网几秒，失败自动回滚）')
+					}, '（升级核心会断网几秒，失败自动回滚）')
 				]),
 				E('div', { style: 'flex:1 1 auto; min-height:0; display:flex; padding-bottom:16px;' }, [out])
 			])

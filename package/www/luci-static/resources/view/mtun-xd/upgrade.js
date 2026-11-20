@@ -241,9 +241,13 @@ return view.extend({
 				self.refreshStatus(statusEls);
 			}).catch(function () { coreLog('FAIL 执行失败（看套件日志）'); setBusy(self._upBtns || [], false); coreRefresh(); });
 		};
+		// 禁用态必须自己画：按钮的背景是内联样式，浏览器的 button[disabled] 默认灰会被盖住
+		var CORE_BTN_CSS = E('style', {}, '.mh-core-btn[disabled]{background:var(--mh-idle)!important;' +
+			'opacity:.55;cursor:default;box-shadow:none!important;}');
 		var coreBtn = function (label, bg, cmd) {
 			return E('button', {
 				type: 'button',
+				class: 'mh-core-btn',
 				style: 'height:40px; min-width:150px; padding:0 26px; border-radius:10px; border:0; color:#fff; ' +
 					'background:' + bg + '; font-size:15px; font-weight:600; letter-spacing:.5px; cursor:pointer; ' +
 					'box-shadow:0 2px 8px rgba(0,0,0,.12);',
@@ -262,7 +266,7 @@ return view.extend({
 		}, [btnStart, btnStop]);
 		coreRefresh();
 
-		var root = E('div', {}, [corebar, inner]);
+		var root = E('div', {}, [CORE_BTN_CSS, corebar, inner]);
 
 		// 注意：缩放要跟着窗口宽度实时变（只在 render 里算一次，转屏后就一直是小字）；满幅的
 		// 负 margin 是视觉像素，zoom 会再缩它一次，要按 1/sc 放大，否则四周留一条 2px 的缝。

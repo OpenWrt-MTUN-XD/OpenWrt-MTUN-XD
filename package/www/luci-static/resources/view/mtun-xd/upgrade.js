@@ -140,7 +140,7 @@ return view.extend({
 
 		var out = E('pre', {
 			id: 'up-out',
-			style: 'margin:0; padding:14px 18px; background:' + P.preBg + '; color:' + P.preFg + '; ' +
+			style: 'margin:0; padding:12px 10px; background:' + P.preBg + '; color:' + P.preFg + '; ' +
 				'border:1px solid ' + P.border + '; border-radius:10px; ' +
 				'font-family:ui-monospace, Consolas, Menlo, monospace; ' +
 				'font-size:15px; line-height:1.8; white-space:pre-wrap; word-break:break-all; ' +
@@ -192,7 +192,7 @@ return view.extend({
 				E('div', { style: 'padding-top:16px;' }, [
 					E('div', { style: CARDBOX }, rows)
 				]),
-				E('div', { style: 'padding:14px 2px 8px; color:' + P.muted + '; font-size:12.5px; font-weight:600;' }, '运行日志'),
+				E('div', { style: 'padding:14px 0 8px; color:' + P.muted + '; font-size:12.5px; font-weight:600;' }, '运行日志'),
 				E('div', { style: 'flex:1 1 auto; min-height:0; display:flex; padding-bottom:16px;' }, [out])
 			])
 		]);

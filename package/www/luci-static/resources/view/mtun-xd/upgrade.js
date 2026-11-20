@@ -71,6 +71,40 @@ return view.extend({
 
 		var statusEls = {};
 		var btns = [];
+		var pills = {};
+
+		// 状态颜色统一口径（跟 common.js 的 --mh-* 变量一致）：
+		// 运行中=绿、已停止=灰、启动中=蓝、异常=红、更新中=橙
+		var PILL_DEF = {
+			running:  { fg: 'var(--mh-ok)',   bg: 'var(--mh-ok-bg)',   dot: 'var(--mh-ok)',   text: '运行中' },
+			stopped:  { fg: 'var(--mh-idle)', bg: 'var(--mh-idle-bg)', dot: 'var(--mh-idle)', text: '已停止' },
+			starting: { fg: 'var(--mh-busy)', bg: 'var(--mh-busy-bg)', dot: 'var(--mh-busy)', text: '启动中…' },
+			updating: { fg: 'var(--mh-warn)', bg: 'var(--mh-warn-bg)', dot: 'var(--mh-warn)', text: '更新中…' },
+			error:    { fg: 'var(--mh-err)',  bg: 'var(--mh-err-bg)',  dot: 'var(--mh-err)',  text: '异常' }
+		};
+		var makePill = function () {
+			var dot = E('span', { style: 'width:8px; height:8px; border-radius:50%; display:inline-block;' });
+			var txt = E('span', {}, '…');
+			return [E('span', {
+				style: 'display:inline-flex; align-items:center; gap:8px; padding:6px 14px; ' +
+					'border-radius:999px; font-size:13.5px; font-weight:600; white-space:nowrap;'
+			}, [dot, txt]), dot, txt];
+		};
+		var setPill = function (kind, state, label) {
+			var p = pills[kind]; if (!p) return;
+			var d = PILL_DEF[state] || PILL_DEF.stopped;
+			p.box.style.color = d.fg;
+			p.box.style.background = d.bg;
+			p.dot.style.background = d.dot;
+			p.txt.textContent = label || d.text;
+		};
+		var pillOf = function (kind) {
+			var box = makePill();
+			pills[kind] = { box: box[0], dot: box[1], txt: box[2] };
+			return box[0];
+		};
+		// ⚠️ refreshStatus 是 view 的方法、不在 render 闭包里 —— 状态胶囊必须挂 self
+		self._setPill = setPill;
 
 		var out = E('pre', {
 			id: 'up-out',
@@ -83,8 +117,10 @@ return view.extend({
 
 		var rows = CARDS.map(function (card, i) {
 			statusEls[card.kind] = E('div', {
-				style: 'margin-top:6px; font-size:12.5px; color:' + P.muted + ';'
+				style: 'margin-top:4px; font-size:12.5px; color:' + P.muted + ';'
 			}, '读当前版本…');
+			var pillBox = pillOf(card.kind);
+			setPill(card.kind, 'stopped', '读取中…');
 
 			var btn = E('button', {
 				style: BTN,
@@ -93,13 +129,14 @@ return view.extend({
 			btns.push(btn);
 
 			// 最后一行不要下边框（那由外面那张卡的边框来收）
-			return E('div', { style: ROW + (i === CARDS.length - 1 ? 'border-bottom:0;' : '') }, [
+			return E('div', { style: ROW + 'align-items:center;' + (i === CARDS.length - 1 ? 'border-bottom:0;' : '') }, [
 				E('div', { style: 'flex:1 1 auto; min-width:0; color:' + P.text + ';' }, [
-					E('div', { style: 'font-size:15.5px; font-weight:700; margin-bottom:3px;' }, card.title),
-					E('div', { style: 'line-height:1.65; font-size:12.5px;' }, card.desc),
+					E('div', { style: 'font-size:16px; font-weight:700; margin-bottom:2px;' }, card.title),
+					E('div', { style: 'line-height:1.6; font-size:13px;' }, card.desc),
 					statusEls[card.kind]
 				]),
-				E('div', { style: 'flex:0 0 auto; margin-left:14px;' }, btn)
+				E('div', { style: 'flex:0 0 auto; margin:0 22px;' }, [pillBox]),
+				E('div', { style: 'flex:0 0 auto;' }, btn)
 			]);
 		});
 
@@ -129,6 +166,7 @@ return view.extend({
 			var running = state === 'running';
 			btnStart.disabled = running;
 			btnStop.disabled = !running;
+			setPill('core', running ? 'running' : 'stopped', running ? '运行中' : '已停止');
 		};
 		var coreRefresh = function () {
 			fs.exec(C.SCRIPT, ['core-state']).then(function (r) {
@@ -143,6 +181,8 @@ return view.extend({
 			btnStart.disabled = true;
 			btnStop.disabled = true;
 			setBusy(self._upBtns || [], true);   // 启停期间也别让升级按钮能点（互斥）
+			setPill('core', cmd === 'core-start' ? 'starting' : 'updating',
+				cmd === 'core-start' ? '启动中…' : '停止中…');
 			coreLog(cmd === 'core-start' ? '启动服务 …' : '停止服务 …');
 			var waitRun = function (n) {
 				fs.exec(C.SCRIPT, ['core-state']).then(function (r) {
@@ -165,16 +205,17 @@ return view.extend({
 				self.refreshStatus(statusEls);
 			}).catch(function () { coreLog('FAIL 执行失败（看套件日志）'); setBusy(self._upBtns || [], false); coreRefresh(); });
 		};
-		var coreBtn = function (label, cls, cmd) {
+		var coreBtn = function (label, bg, cmd) {
 			return E('button', {
 				type: 'button',
-				class: 'cbi-button ' + cls,
-				style: 'height:32px; padding:0 18px; border-radius:8px; font-size:13.5px; font-weight:500; letter-spacing:.3px;',
+				style: 'height:40px; min-width:150px; padding:0 26px; border-radius:10px; border:0; color:#fff; ' +
+					'background:' + bg + '; font-size:15px; font-weight:600; letter-spacing:.5px; cursor:pointer; ' +
+					'box-shadow:0 2px 8px rgba(0,0,0,.12);',
 				click: function () { coreAct(cmd); }
 			}, label);
 		};
-		var btnStart = coreBtn('启动服务', 'cbi-button-apply', 'core-start');
-		var btnStop = coreBtn('停止服务', 'cbi-button-reset', 'core-stop');
+		var btnStart = coreBtn('▶  启动服务', 'var(--mh-busy)', 'core-start');
+		var btnStop = coreBtn('■  停止服务', 'var(--mh-err)', 'core-stop');
 		// ⚠️ start() 是 view 的方法、不在 render 的闭包里 —— 按钮必须挂到 self 上，
 		//    否则在 start 里直接写 btnStart 会抛 ReferenceError（点了没反应，按钮还灰着）。
 		self._btnStart = btnStart;
@@ -225,6 +266,10 @@ return view.extend({
 	// `mtun-xd status` 现在还会多一行「配置工具：」；这里只认内核 / 面板 / 控制台三行，
 	// 其余行（配置工具、监听…）一律忽略，别把它们误当成某张卡片的状态。
 	refreshStatus: function (els) {
+		var self = this;
+		var setP = function (kind, state, label) {
+			if (self._setPill) self._setPill(kind, state, label);
+		};
 		return fs.exec(C.SCRIPT, ['status']).then(function (res) {
 			var txt = ((res && res.stdout) || '').replace(/\s+$/, '');
 			var map = { '内核': 'core', '面板': 'ui', '控制台': 'console' };
@@ -233,13 +278,16 @@ return view.extend({
 				if (!m) return;
 				var el = els[map[m[1]]];
 				if (!el) return;
-				// 内核那行脚本已经带了「（运行中）/（未运行）」；面板 / 控制台补上同样的后缀，
-				// 三行保持一致的观感（以前就是这么显示的，别只改一处）
-				el.textContent = '当前：' + (m[1] === '内核' ? m[2] : m[2] + '（运行中）');
+				// 版本行只写版本；运行态统一由旁边的状态胶囊表达（绿色运行中 / 灰色已停止）
+				var ver = m[2].replace(/（未?运行中?）/g, '').trim();
+				el.textContent = '当前：' + ver;
+				var running = m[1] !== '内核' || m[2].indexOf('未运行') === -1;
+				setP(map[m[1]], running ? 'running' : 'stopped', running ? '运行中' : '已停止');
 			});
 		}).catch(function (e) {
 			Object.keys(els).forEach(function (k) {
 				els[k].textContent = '读不出版本：' + ((e && e.message) ? e.message : e);
+				setP(k, 'error', '异常');
 			});
 		});
 	},
@@ -258,7 +306,7 @@ return view.extend({
 		// 输出框里**只放脚本自己那几行**（→ / ✔ / ✘），页面别再往里塞「【面板更新】启动中…」
 		// 这种自己的话（两套文体混在一起最难看）；"跑起来了"由下面那行状态文字表示。
 		out.textContent = '';
-		statusEls[card.kind].textContent = '升级中…';
+		self._setPill(card.kind, 'updating', '更新中…');
 
 		fs.exec(C.SCRIPT, [card.kind, '--bg']).then(function () {
 			return self.poll(btns, out, statusEls, 0, card.kind);
@@ -271,7 +319,7 @@ return view.extend({
 						return self.poll(btns, out, statusEls, 0, card.kind);
 					}
 					out.textContent = '✘ 启动失败：' + ((e && e.message) ? e.message : e) + '\n';
-					statusEls[card.kind].textContent = '✘ 没起来（看输出）';
+					self._setPill(card.kind, 'error', '异常');
 					setBusy(btns, false);
 					coreRefresh();
 				}, function () {
@@ -302,15 +350,13 @@ return view.extend({
 			setBusy(btns, false);
 			if (self._coreRefresh) self._coreRefresh();   // 升级期间锁掉的启停按钮，按真实状态恢复
 			return self.refreshStatus(statusEls).then(function () {
-				if (!ok && statusEls[kind]) {
-					statusEls[kind].textContent = '✘ 升级失败（原因见上面的输出）';
-				}
+				if (!ok) self._setPill(kind, 'error', '升级失败');
 			});
 		}).catch(function () {
 			if (n > 600) {
 				out.textContent += '\n（等太久了，不看了。完整日志在路由器 ' + C.LOG + '）\n';
 				setBusy(btns, false);
-				if (statusEls[kind]) statusEls[kind].textContent = '超时（日志：' + C.LOG + '）';
+				self._setPill(kind, 'error', '超时');
 				if (self._coreRefresh) self._coreRefresh();
 				return;
 			}

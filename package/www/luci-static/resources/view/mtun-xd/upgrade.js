@@ -75,6 +75,7 @@ function lineColor(line) {
 function renderOut(out, text) {
 	out.textContent = '';
 	var lines = String(text || '').split('\n');
+	while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
 	var addText = function (t, color) {
 		if (!t) return;
 		if (!color) { out.appendChild(document.createTextNode(t)); return; }
@@ -105,7 +106,7 @@ function logLine(out, msg) {
 	var d = new Date();
 	var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
 	var ts = p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
-	var t = out._raw || out.textContent || '';
+	var t = (out._raw || out.textContent || '').replace(/\s+$/, '');
 	var next = t + (t ? '\n' : '') + '[' + ts + '] ' + msg;
 	out._raw = next;
 	renderOut(out, next);
@@ -401,6 +402,7 @@ return view.extend({
 		var self = this;
 
 		fs.read(C.LOG).then(function (txt) {
+			txt = String(txt || '').replace(/\s+$/, '');   // 去掉 CLI 收尾的连续换行
 			if (txt && txt !== out._raw) {
 				out._raw = txt;
 				renderOut(out, txt);

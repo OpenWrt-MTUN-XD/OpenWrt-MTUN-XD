@@ -255,7 +255,14 @@ return view.extend({
 				coreLog(st === 'stopped' ? 'OK 服务已停止' : ('OK 当前状态：' + st));
 				setBusy(self._upBtns || [], false);   // ⚠️ 停止这条分支也必须解锁
 				self.refreshStatus(statusEls);
-			}).catch(function () { coreLog('FAIL 执行失败（看套件日志）'); setBusy(self._upBtns || [], false); coreRefresh(); });
+			}).catch(function (e) {
+				// ⚠️ 把真实原因带出来：以前只写「看套件日志」，失败时根本不知道是超时、
+				//    被锁、还是 rpcd 拒了 —— 排查全靠猜。
+				var why = (e && (e.message || e.toString())) || '未知错误';
+				coreLog('FAIL 执行失败：' + why);
+				setBusy(self._upBtns || [], false);
+				coreRefresh();
+			});
 		};
 		// 禁用态必须自己画：按钮的背景是内联样式，浏览器的 button[disabled] 默认灰会被盖住
 		var CORE_BTN_CSS = E('style', {}, '.mh-core-btn[disabled]{background:var(--mh-idle)!important;' +

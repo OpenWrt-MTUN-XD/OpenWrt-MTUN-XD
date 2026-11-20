@@ -220,7 +220,9 @@ def main():
     se = upg.find('poll: function')
     body = upg[sm:se] if sm != -1 and se > sm else ''
     check(bool(body), 'upgrade.js 能定位 start() 函数体')
-    check('btnStart.' not in body and 'btnStop.' not in body,
+    # 只看「没有 self._ 前缀」的裸引用；self._btnStart.disabled 里也含 btnStart.，不能用 in
+    bare = re.search(r'(?<![\w.])btn(Start|Stop)\.', body)
+    check(bare is None,
           'start() 里不直接引用 render 闭包里的 btnStart/btnStop（必须 self._btnStart）')
     check('self._btnStart' in body and 'self._btnStop' in body,
           'start() 通过 self._btnStart / self._btnStop 锁启停按钮')

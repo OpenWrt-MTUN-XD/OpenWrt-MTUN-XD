@@ -237,6 +237,18 @@ def main():
     check(bare_ref is None, 'poll() 里不直接引用 render 闭包里的 coreRefresh（必须 self._coreRefresh）')
     check('self._coreRefresh' in poll_body, 'poll() 通过 self._coreRefresh 恢复启停按钮')
 
+    # UI 规范（AGENTS.md「UI 视觉与交互规范」）：五种状态色在明暗两套主题里都必须定义；
+    # 日志只给状态值上色 —— 时间戳前缀与「状态：」必须保持正文色。
+    css = open(os.path.join(ROOT, 'package/www/luci-static/resources/mtun-xd/common.js'),
+               encoding='utf-8').read()
+    for var in ('--mh-ok', '--mh-idle', '--mh-busy', '--mh-warn', '--mh-err'):
+        check(css.count(var + ':') >= 2, '状态色 %s 在明暗两套主题里都有定义' % var)
+    upgrade = open(os.path.join(ROOT, 'package/www/luci-static/resources/view/mtun-xd/upgrade.js'),
+                   encoding='utf-8').read()
+    check("addText(prefix, '')" in upgrade, '日志时间戳前缀不着色')
+    check("addText(st[1], '')" in upgrade and "addText(st[2], lineColor(st[2]))" in upgrade,
+          '日志只给「状态：」后面的值着色')
+
     # 写盘 CGI 路径在 apply.js / btn.js 里是**刻意复制**的两份（两套 bundle 各自独立）：
     # 断言两边的字面量集合一致，改一处漏另一处会立刻红，比注释里的「两边一起改」可靠。
     cgi = {}

@@ -33,8 +33,9 @@ bun run build        → 产出 dist/（纯静态，扔哪都能托管）
 ## 界面
 
 - **勾选框只有方块本身可点**：点文字或整行不会误勾（2026-10-26 定的）
-- **「广告拦截」出厂默认勾选**：生成 `rule-providers.adblock`（Loyalsoldier reject，约 19 万条、`+.` 形式，
-  `proxy: DIRECT`）+ 规则最前面的 `- RULE-SET,adblock,REJECT`；不要就取消勾选
+- **「广告拦截」出厂默认不勾**（2026.11.05 起）：勾上才生成 `rule-providers.adblock`
+  （217heidai 合并清单，约 24 万条，8 小时一更）+ 一条 `- RULE-SET,adblock,REJECT`；
+  不勾时配置里既没有这个 provider，也不会去下载清单
 - **主题**：嵌在 LuCI 里时跟路由器（Argon 的亮色 / 暗色 / 跟随系统）；单独打开时跟系统。
   预览窗和底部状态条都跟着主题走。页面上**没有**明暗切换按钮（2026-10-29 删的，
   套件里由宿主负责）

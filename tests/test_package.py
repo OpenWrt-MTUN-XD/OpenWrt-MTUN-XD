@@ -209,14 +209,17 @@ def main():
                 'rc': r.returncode, 'out': r.stdout or '',
                 'view': os.path.exists(stamped),
                 'module': os.path.exists(os.path.join(cdir, 'common_20261110_ABCDEF.js')),
+                'modules': sorted(os.listdir(cdir)),
                 'stamped': open(stamped, encoding='utf-8').read() if os.path.exists(stamped) else None,
             }
 
         a = run_selfheal(['mtun-xd/upgrade_20261110_ABCDEF'],
-                         {'upgrade.js': 'var C = require mtun-xd.common_20261110_ABCDEF as C;\n'},
-                         {'common.js': '// common\n'})
+                         {'upgrade.js': ('var C = require mtun-xd.common_20261110_ABCDEF as C;\n'
+                                         'var U = require mtun-xd.util_20261110_ABCDEF;\n')},
+                         {'common.js': '// common\n', 'util.js': '// util\n'})
         check(a['view'], '带戳 view 被补出（含大写十六进制）')
-        check(a['module'], '带戳 require 模块被补出')
+        check(a['module'], '带戳 require 模块被补出（带 as 别名）')
+        check('util_20261110_ABCDEF.js' in a['modules'], '无 as 别名的 require 也能补出')
         check('视图文件自愈' in a['out'] and '模块自愈' in a['out'], '两类自愈都有可见提示')
         check(a['rc'] == 0, '自愈成功时 postinst 片段返回 0')
 

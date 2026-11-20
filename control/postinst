@@ -40,7 +40,7 @@ if [ -f "$VSUITE_MENU" ] && [ -d "$VSUITE_VDIR" ]; then
     if [ -d "$VSUITE_CDIR" ]; then
         for f in "$VSUITE_VDIR"/*.js; do
             [ -f "$f" ] || continue
-            for mod in $(sed -n 's/.*require[[:space:]][[:space:]]*mtun-xd\.\([A-Za-z0-9_.-]*\)[[:space:]][[:space:]]*as.*/\1/p' "$f"); do
+            for mod in $(sed -n 's/.*require[[:space:]][[:space:]]*mtun-xd\.\([A-Za-z0-9_.-]*\).*/\1/p' "$f"); do
                 [ -f "$VSUITE_CDIR/$mod.js" ] && continue
                 mbase=$(strip_stamp "$mod")
                 if [ -f "$VSUITE_CDIR/$mbase.js" ]; then

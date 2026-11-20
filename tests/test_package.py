@@ -173,38 +173,61 @@ def main():
                 or '/tests/' in n or n.startswith('tests/')]
         check(not junk, '包里没有开发文件', ','.join(junk[:3]))
 
-    # 视图文件自愈：menu.d 引用带戳文件名，缺文件会整页 404；postinst 要能补出来
+    # 视图文件自愈：menu.d 引用带戳文件名、view 里 require 带戳模块，缺了都会整页 404
     post = open(os.path.join(ROOT, 'control/postinst'), encoding='utf-8').read()
-    check('视图文件自愈' in post and 'cp -f "$VSUITE_VDIR/$base.js"' in post,
-          'postinst 会按 menu.d 的带戳名补出缺失视图文件')
-    check('luci-indexcache' in post and 'luci-modulecache' in post,
-          '自愈之后清 LuCI 缓存')
+    check('视图文件自愈' in post and '模块自愈' in post, 'postinst 同时自愈 view 与 require 的模块')
+    check('0-9a-fA-F' in post, '剥戳正则同时兼容大小写十六进制')
+    check('if [ "$fixed" = 1 ]; then' in post, '无需修补时整段不返回非零')
     sh_bin = ('C:/Program Files/Git/usr/bin/sh.exe' if os.path.exists('C:/Program Files/Git/usr/bin/sh.exe')
               else shutil.which('sh'))
     if sh_bin:
-        import subprocess, tempfile
-        start = post.find('# ── 0.5) 视图文件自愈')
-        end = post.find('# ── 开机自检')
-        snippet = post[start:end] if start != -1 and end > start else ''
+        import tempfile
+        start_i = post.find('# ── 0.5) 视图文件自愈')
+        end_i = post.find('# ── 开机自检')
+        snippet = post[start_i:end_i] if start_i != -1 and end_i > start_i else ''
         check(bool(snippet), '能取出 postinst 的自愈片段')
-        with tempfile.TemporaryDirectory() as td:
-            vdir = os.path.join(td, 'view')
-            os.makedirs(vdir)
-            with open(os.path.join(vdir, 'upgrade.js'), 'w', encoding='utf-8') as f:
-                f.write('// plain\n')
+
+        def run_selfheal(menu_paths, views, mods, pre_views=None):
+            td = tempfile.mkdtemp(prefix='mtun-selfheal-')
+            vdir = os.path.join(td, 'view'); os.makedirs(vdir)
+            cdir = os.path.join(td, 'common'); os.makedirs(cdir)
+            for name, body in views.items():
+                open(os.path.join(vdir, name), 'w', encoding='utf-8').write(body)
+            for name, body in mods.items():
+                open(os.path.join(cdir, name), 'w', encoding='utf-8').write(body)
+            for name, body in (pre_views or {}).items():
+                open(os.path.join(vdir, name), 'w', encoding='utf-8').write(body)
             menu = os.path.join(td, 'menu.json')
             with open(menu, 'w', encoding='utf-8') as f:
-                f.write('{ "path": "mtun-xd/upgrade_20261110_abcdef" }\n')
-            git_usr = os.path.dirname(sh_bin)
-            env = dict(os.environ, VSUITE_MENU=menu, VSUITE_VDIR=vdir,
-                       PATH=(git_usr + ':' if git_usr else '') + os.environ.get('PATH', ''))
+                json.dump([{'action': {'path': p}} for p in menu_paths], f)
+            env = dict(os.environ, VSUITE_MENU=menu, VSUITE_VDIR=vdir, VSUITE_CDIR=cdir,
+                       PATH=os.path.dirname(sh_bin) + os.pathsep + os.environ.get('PATH', ''))
             r = subprocess.run([sh_bin, '-c', snippet], env=env, capture_output=True,
                                encoding='utf-8', errors='replace')
-            healed = os.path.join(vdir, 'upgrade_20261110_abcdef.js')
-            check(os.path.exists(healed), '自愈后带戳文件存在')
-            check(os.path.exists(healed) and open(healed, encoding='utf-8').read() == '// plain\n',
-                  '自愈内容来自不带戳的同名文件')
-            check('视图文件自愈' in (r.stdout or ''), '自愈时有可见提示')
+            stamped = os.path.join(vdir, 'upgrade_20261110_ABCDEF.js')
+            return {
+                'rc': r.returncode, 'out': r.stdout or '',
+                'view': os.path.exists(stamped),
+                'module': os.path.exists(os.path.join(cdir, 'common_20261110_ABCDEF.js')),
+                'stamped': open(stamped, encoding='utf-8').read() if os.path.exists(stamped) else None,
+            }
+
+        a = run_selfheal(['mtun-xd/upgrade_20261110_ABCDEF'],
+                         {'upgrade.js': 'var C = require mtun-xd.common_20261110_ABCDEF as C;\n'},
+                         {'common.js': '// common\n'})
+        check(a['view'], '带戳 view 被补出（含大写十六进制）')
+        check(a['module'], '带戳 require 模块被补出')
+        check('视图文件自愈' in a['out'] and '模块自愈' in a['out'], '两类自愈都有可见提示')
+        check(a['rc'] == 0, '自愈成功时 postinst 片段返回 0')
+
+        b = run_selfheal(['mtun-xd/upgrade_20261110_ABCDEF'], {}, {},
+                         pre_views={'upgrade_20261110_ABCDEF.js': '// keep\n'})
+        check('自愈' not in b['out'], '文件已在时不重复复制')
+        check(b['stamped'] == '// keep\n', '已存在文件内容不被覆盖')
+
+        c = run_selfheal(['mtun-xd/upgrade_20261110_ABCDEF'], {}, {})
+        check('视图文件缺失' in c['out'], '没有不带戳源文件时给出告警')
+        check(c['rc'] == 0, '告警不把 postinst 判成失败')
 
     # ── install.sh：不再写死版本号 ─────────────────────────────────────────
     sh = open(os.path.join(ROOT, 'install.sh'), encoding='utf-8').read()

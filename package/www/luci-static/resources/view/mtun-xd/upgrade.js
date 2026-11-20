@@ -42,7 +42,6 @@ var CARDS = [
 	{
 		kind: 'core', title: '核心升级', btn: '更新核心',
 		desc: 'Mihomo',
-		hint: '升级核心会断网几秒，失败自动回滚'
 	},
 	{
 		kind: 'ui', title: '面板升级', btn: '更新面板',
@@ -204,7 +203,6 @@ return view.extend({
 
 			var btn = E('button', {
 				style: BTN,
-				title: card.hint || '',
 				click: function () { self.start(card, btns, out, statusEls); }
 			}, card.btn);
 			btns.push(btn);
@@ -325,11 +323,12 @@ return view.extend({
 			});
 		};
 		// 禁用态必须自己画：按钮的背景是内联样式，浏览器的 button[disabled] 默认灰会被盖住
-		var CORE_BTN_CSS = E('style', {}, '.mh-core-btn[disabled]{background:var(--mh-idle)!important;' +
+		var MH_CSS = E('style', { id: 'mh-upgrade-css' }, '.mh-core-btn[disabled]{background:var(--mh-idle)!important;' +
 			'opacity:.55;cursor:default;box-shadow:none!important;}' +
 			'.mh-loghead{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;}' +
 			'.mh-loghead .mh-hint{font-size:11.5px;font-weight:400;opacity:.85;text-align:center;}' +
 			'@media (max-width:520px){.mh-loghead,.mh-row{grid-template-columns:1fr!important;row-gap:10px;}' +
+			'.mh-loghead>span:empty{display:none;}' +
 			'.mh-loghead .mh-hint{text-align:left;margin-top:4px;}' +
 			'.mh-row > div{justify-self:start!important;padding-left:0!important;padding-right:0!important;}}');
 		var coreBtn = function (label, bg, cmd) {
@@ -354,7 +353,7 @@ return view.extend({
 		}, [btnStart, btnStop]);
 		coreRefresh();
 
-		var root = E('div', {}, [CORE_BTN_CSS, corebar, inner]);
+		var root = E('div', {}, [MH_CSS, corebar, inner]);
 
 		// 注意：缩放要跟着窗口宽度实时变（只在 render 里算一次，转屏后就一直是小字）；满幅的
 		// 负 margin 是视觉像素，zoom 会再缩它一次，要按 1/sc 放大，否则四周留一条 2px 的缝。

@@ -42,7 +42,7 @@ var CARDS = [
 	{
 		kind: 'core', title: '核心升级', btn: '更新核心',
 		desc: 'Mihomo',
-		hint: '升级过程中代理会断几秒，失败自动回滚'
+		hint: '升级核心会断网几秒，失败自动回滚'
 	},
 	{
 		kind: 'ui', title: '面板升级', btn: '更新面板',
@@ -212,6 +212,7 @@ return view.extend({
 			// 最后一行不要下边框（那由外面那张卡的边框来收）
 			// 三列：左信息 / 中间状态胶囊 / 右按钮 —— 胶囊在两列 1fr 的正中间
 			return E('div', {
+				class: 'mh-row',
 				style: ROW + 'display:grid; grid-template-columns:1fr auto 1fr; align-items:center;' +
 					(i === CARDS.length - 1 ? 'border-bottom:0;' : '')
 			}, [
@@ -241,13 +242,11 @@ return view.extend({
 				E('div', { style: 'padding-top:16px;' }, [
 					E('div', { style: CARDBOX }, rows)
 				]),
-				E('div', { style: 'position:relative; padding:14px 0 8px; color:' + P.muted + '; ' +
+				E('div', { class: 'mh-loghead', style: 'padding:14px 0 8px; color:' + P.muted + '; ' +
 					'font-size:12.5px; font-weight:600;' }, [
 					E('span', {}, '运行日志'),
-					E('span', {
-						style: 'position:absolute; left:50%; transform:translateX(-50%); bottom:8px; ' +
-							'font-size:11.5px; font-weight:400; opacity:.85; white-space:nowrap;'
-					}, '（升级核心会断网几秒，失败自动回滚）')
+					E('span', { class: 'mh-hint' }, '（升级核心会断网几秒，失败自动回滚）'),
+					E('span', {})
 				]),
 				E('div', { style: 'flex:1 1 auto; min-height:0; display:flex; padding-bottom:16px;' }, [out])
 			])
@@ -327,7 +326,12 @@ return view.extend({
 		};
 		// 禁用态必须自己画：按钮的背景是内联样式，浏览器的 button[disabled] 默认灰会被盖住
 		var CORE_BTN_CSS = E('style', {}, '.mh-core-btn[disabled]{background:var(--mh-idle)!important;' +
-			'opacity:.55;cursor:default;box-shadow:none!important;}');
+			'opacity:.55;cursor:default;box-shadow:none!important;}' +
+			'.mh-loghead{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;}' +
+			'.mh-loghead .mh-hint{font-size:11.5px;font-weight:400;opacity:.85;text-align:center;}' +
+			'@media (max-width:520px){.mh-loghead,.mh-row{grid-template-columns:1fr!important;row-gap:10px;}' +
+			'.mh-loghead .mh-hint{text-align:left;margin-top:4px;}' +
+			'.mh-row > div{justify-self:start!important;padding-left:0!important;padding-right:0!important;}}');
 		var coreBtn = function (label, bg, cmd) {
 			return E('button', {
 				type: 'button',

@@ -403,7 +403,7 @@
     this.direct_domains = [];
     this.direct_ips = [];
     this.webrtc_protect = true;
-    // 广告拦截（引擎这边默认关；界面出厂默认由 state.defaultState() 设成开，构建时会显式赋值）
+    // 广告拦截（引擎与界面出厂默认都是关；勾选后由 ui.js 显式赋 true 才会输出 provider 与规则）
     this.ad_block = false;
     this.ipv6_enabled = true;
     this.global_mode = false;

@@ -60,7 +60,7 @@ var CARDS = [
 // 判定顺序有讲究 —— 先判红（失败关键字最具体），再灰 / 蓝 / 橙，最后才是绿的「✔ / 运行中」。
 var LINE_COLORS = [
 	// ⚠️ 开头的提示行优先按「提醒」处理（橙），不因为句子里有「失败」就被染红
-	{ re: /^⚠️/, c: 'var(--mh-warn)' },
+	{ re: /^⚠/, c: 'var(--mh-warn)' },
 	{ re: /(FAIL|✘|失败|异常|超时|错误|没起来|不支持)/, c: 'var(--mh-err)' },
 	{ re: /(已停止|停止服务)/, c: 'var(--mh-idle)' },
 	{ re: /(启动中|停止中)/, c: 'var(--mh-busy)' },
@@ -107,7 +107,7 @@ function renderOut(out, text) {
 		var m = /^(\[\d{2}:\d{2}:\d{2}\]\s*)(.*)$/.exec(ln);
 		var prefix = m ? m[1] : '';
 		var rest = m ? m[2] : ln;
-		addText(prefix, '');
+		addText(prefix, P.muted);
 		var st = /^(状态：)(.*)$/.exec(rest);
 		if (st) {
 			addText(st[1], '');
@@ -118,6 +118,10 @@ function renderOut(out, text) {
 		if (i < lines.length - 1) out.appendChild(document.createTextNode('\n'));
 	}
 	if (nearBottom(out)) out.scrollTop = out.scrollHeight;
+}
+function withPrefix(out, txt) {
+	if (!out._prefix) return txt;
+	return out._prefix + (txt ? '\n' + txt : '');
 }
 function logLine(out, msg) {
 	if (!out) return;
@@ -179,9 +183,9 @@ return view.extend({
 			style: 'margin:0; padding:12px 10px; background:' + P.preBg + '; color:' + P.preFg + '; ' +
 				'border:1px solid ' + P.border + '; border-radius:10px; ' +
 				'font-family:ui-monospace, Consolas, Menlo, monospace; ' +
-				'font-size:13px; line-height:1.7; white-space:pre-wrap; ' +
+				'font-size:14px; line-height:1.65; white-space:pre-wrap; ' +
 				'overflow-wrap:anywhere; word-break:normal; ' +
-				'flex:1 1 auto; min-height:120px; overflow:auto;'
+				'flex:1 1 auto; min-height:132px; overflow:auto;'
 		}, '尚无操作记录');
 		out.style.color = P.muted;
 		out.addEventListener('scroll', function () {
@@ -259,6 +263,11 @@ return view.extend({
 		// ⚠️ poll() 是 view 的方法、不在 render 闭包里 —— 里面要用 coreRefresh 必须挂 self
 		self._coreRefresh = coreRefresh;
 		var coreAct = function (cmd) {
+			// ⚠️ 启停是独立动作：先清掉上一轮升级的日志与 ⚠️ 前缀，
+			//    否则上次的风险提示会挂到这次「停止服务」头上。
+			out.textContent = '';
+			out._raw = '';
+			out._prefix = '';
 			btnStart.disabled = true;
 			btnStop.disabled = true;
 			setBusy(self._upBtns || [], true);   // 启停期间也别让升级按钮能点（互斥）
@@ -428,18 +437,18 @@ return view.extend({
 				var why = '✘ 启动失败（看日志：tail -50 ' + C.LOG + '）';
 				return fs.read(C.LOG).then(function (txt) {
 					if (txt && txt.length) {
-						out._raw = String(txt).replace(/\s+$/, '');
+						out._raw = withPrefix(out, String(txt).replace(/\s+$/, ''));
 						renderOut(out, out._raw);
 						return self.poll(btns, out, statusEls, 0, card.kind);
 					}
-					out._raw = why;
+					out._raw = withPrefix(out, why);
 					renderOut(out, out._raw);
 					self._setPill(card.kind, 'error', '异常');
 					statusEls[card.kind].textContent = '读取失败（看日志）';
 					setBusy(btns, false);
 					if (self._coreRefresh) self._coreRefresh();
 				}, function () {
-					out._raw = why;
+					out._raw = withPrefix(out, why);
 					renderOut(out, out._raw);
 					self._setPill(card.kind, 'error', '异常');
 					statusEls[card.kind].textContent = '读取失败（看日志）';
@@ -455,7 +464,7 @@ return view.extend({
 
 		fs.read(C.LOG).then(function (txt) {
 			txt = String(txt || '').replace(/\s+$/, '');   // 去掉 CLI 收尾的连续换行
-			var full = (out._prefix ? out._prefix + (txt ? '\n' : '') : '') + txt;
+			var full = withPrefix(out, txt);
 			if (full && full !== out._raw) {
 				out._raw = full;
 				renderOut(out, full);

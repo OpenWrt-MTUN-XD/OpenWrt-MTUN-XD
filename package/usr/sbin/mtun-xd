@@ -929,9 +929,6 @@ upgrade_ui() {
 
 # ── 配置工具（**另一个项目**的东西，这里只调它的安装脚本）─────────────────
 install_tool() {
-    # 广告拦截的 rule-provider 缓存写到 ./rules/（相对 -d /etc/mihomo）；目录不在时
-    # 内核只会静默拉不下来，这里先建好，省得用户勾了「屏蔽广告」却一直是 ruleCount=0。
-    mkdir -p "$BASE/rules" 2>/dev/null || true
     say "→ 配置工具：更新"
     need_kb "$TMP" 8000 "配置工具" || return 1
     # ⚠️ 没有 unzip（iStoreOS / Kwrt 的 busybox 常态）就下 tar.gz —— 给 zip 的话生成器的安装

@@ -69,17 +69,33 @@ function lineColor(line) {
 	}
 	return '';
 }
+// 一行拆成几段：时间戳前缀 / 字段名 / 值 —— **只给值上色**，前缀保持正文色。
+//   [12:36:00] 状态：运行中   →   "[12:36:00] 状态：" 原色 + "运行中" 绿
+//   ✔ 核心：已是1.19.34       →   整行绿（没有时间戳前缀）
 function renderOut(out, text) {
 	out.textContent = '';
 	var lines = String(text || '').split('\n');
+	var addText = function (t, color) {
+		if (!t) return;
+		if (!color) { out.appendChild(document.createTextNode(t)); return; }
+		var sp = document.createElement('span');
+		sp.style.color = color;
+		sp.textContent = t;
+		out.appendChild(sp);
+	};
 	for (var i = 0; i < lines.length; i++) {
 		var ln = lines[i];
-		var c = lineColor(ln);
-		if (!c) { out.appendChild(document.createTextNode(ln + (i < lines.length - 1 ? '\n' : ''))); continue; }
-		var sp = document.createElement('span');
-		sp.style.color = c;
-		sp.textContent = ln;
-		out.appendChild(sp);
+		var m = /^(\[\d{2}:\d{2}:\d{2}\]\s*)(.*)$/.exec(ln);
+		var prefix = m ? m[1] : '';
+		var rest = m ? m[2] : ln;
+		addText(prefix, '');
+		var st = /^(状态：)(.*)$/.exec(rest);
+		if (st) {
+			addText(st[1], '');
+			addText(st[2], lineColor(st[2]));
+		} else {
+			addText(rest, lineColor(rest));
+		}
 		if (i < lines.length - 1) out.appendChild(document.createTextNode('\n'));
 	}
 	out.scrollTop = out.scrollHeight;

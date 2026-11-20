@@ -527,6 +527,8 @@ INDEX_HTML = '''<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark">
 <title>MTUN-XD · 墨枢云境</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMwYjEyMjAiLz48cGF0aCBkPSJNOCA0OCBMMjYgMjAgTDM2IDM1IEw0MyAyNiBMNTYgNDggWiIgZmlsbD0iIzU4YTZmZiIvPjxjaXJjbGUgY3g9IjQ4IiBjeT0iMTYiIHI9IjUiIGZpbGw9IiMzZmI5NTAiLz48L3N2Zz4=">
+<meta name="theme-color" content="#0b1220">
 <style>
   :root { --bg:#0b1220; --card:#121a2b; --line:#233046; --text:#e6edf3; --muted:#8b949e; --accent:#3fb950; --blue:#58a6ff; }
   * { box-sizing:border-box; }
@@ -541,7 +543,7 @@ INDEX_HTML = '''<!DOCTYPE html>
   h1 small { display:block; font-size:15px; letter-spacing:6px; color:var(--muted); font-weight:400; margin-top:8px; }
   .sub { color:var(--muted); margin:0 auto; max-width:640px; }
   .cmd { display:flex; gap:10px; align-items:stretch; margin:28px 0 34px; }
-  .cmd pre { flex:1; margin:0; padding:13px 15px; background:#0d1524; border:1px solid var(--line);
+  .cmd pre { flex:1; min-width:0; margin:0; padding:13px 15px; background:#0d1524; border:1px solid var(--line);
              border-radius:10px; color:#c9d1d9; font:13px/1.6 ui-monospace,Consolas,Menlo,monospace;
              overflow:auto; white-space:pre; }
   .cmd button { flex:0 0 auto; padding:0 18px; border:1px solid var(--line); border-radius:10px;

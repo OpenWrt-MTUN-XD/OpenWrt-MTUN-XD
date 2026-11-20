@@ -53,14 +53,46 @@ var CARDS = [
 ];
 
 // 运行日志：统一格式 [HH:MM:SS] 消息（页面和升级流程共用）
+//
+// 颜色口径跟状态胶囊一致：运行中=绿、已停止=灰、启动中=蓝、异常=红、更新中=橙。
+// 判定顺序有讲究 —— 先判红（失败关键字最具体），再灰 / 蓝 / 橙，最后才是绿的「✔ / 运行中」。
+var LINE_COLORS = [
+	{ re: /(FAIL|✘|失败|异常|超时|错误|没起来|不支持)/, c: 'var(--mh-err)' },
+	{ re: /(已停止|停止服务)/, c: 'var(--mh-idle)' },
+	{ re: /(启动中|停止中)/, c: 'var(--mh-busy)' },
+	{ re: /(更新中|升级中|获取新版本|下载|正在|→)/, c: 'var(--mh-warn)' },
+	{ re: /(✔|运行中|完成|已就位|已是|已装)/, c: 'var(--mh-ok)' }
+];
+function lineColor(line) {
+	for (var i = 0; i < LINE_COLORS.length; i++) {
+		if (LINE_COLORS[i].re.test(line)) return LINE_COLORS[i].c;
+	}
+	return '';
+}
+function renderOut(out, text) {
+	out.textContent = '';
+	var lines = String(text || '').split('\n');
+	for (var i = 0; i < lines.length; i++) {
+		var ln = lines[i];
+		var c = lineColor(ln);
+		if (!c) { out.appendChild(document.createTextNode(ln + (i < lines.length - 1 ? '\n' : ''))); continue; }
+		var sp = document.createElement('span');
+		sp.style.color = c;
+		sp.textContent = ln;
+		out.appendChild(sp);
+		if (i < lines.length - 1) out.appendChild(document.createTextNode('\n'));
+	}
+	out.scrollTop = out.scrollHeight;
+}
 function logLine(out, msg) {
 	if (!out) return;
 	var d = new Date();
 	var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
 	var ts = p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
-	var t = out.textContent || '';
-	out.textContent = t + (t ? '\n' : '') + '[' + ts + '] ' + msg;
-	out.scrollTop = out.scrollHeight;
+	var t = out._raw || out.textContent || '';
+	var next = t + (t ? '\n' : '') + '[' + ts + '] ' + msg;
+	out._raw = next;
+	renderOut(out, next);
 }
 
 return view.extend({
@@ -310,6 +342,7 @@ return view.extend({
 		// 输出框里**只放脚本自己那几行**（→ / ✔ / ✘），页面别再往里塞「【面板更新】启动中…」
 		// 这种自己的话（两套文体混在一起最难看）；"跑起来了"由下面那行状态文字表示。
 		out.textContent = '';
+		out._raw = '';
 		self._setPill(card.kind, 'updating', '更新中…');
 
 		fs.exec(C.SCRIPT, [card.kind, '--bg']).then(function () {
@@ -322,7 +355,8 @@ return view.extend({
 						out.textContent = txt;
 						return self.poll(btns, out, statusEls, 0, card.kind);
 					}
-					out.textContent = '✘ 启动失败：' + ((e && e.message) ? e.message : e) + '\n';
+					out._raw = '✘ 启动失败：' + ((e && e.message) ? e.message : e) + '\n';
+					renderOut(out, out._raw);
 					self._setPill(card.kind, 'error', '异常');
 					setBusy(btns, false);
 					coreRefresh();
@@ -340,9 +374,9 @@ return view.extend({
 		var self = this;
 
 		fs.read(C.LOG).then(function (txt) {
-			if (txt && txt !== out.textContent) {
-				out.textContent = txt;
-				out.scrollTop = out.scrollHeight;
+			if (txt && txt !== out._raw) {
+				out._raw = txt;
+				renderOut(out, txt);
 			}
 		}).catch(function () { /* 还没写出来，正常 */ });
 
@@ -358,7 +392,8 @@ return view.extend({
 			});
 		}).catch(function () {
 			if (n > 600) {
-				out.textContent += '\n（等太久了，不看了。完整日志在路由器 ' + C.LOG + '）\n';
+				out._raw = (out._raw || out.textContent) + '\n（等太久了，不看了。完整日志在路由器 ' + C.LOG + '）\n';
+			renderOut(out, out._raw);
 				setBusy(btns, false);
 				self._setPill(kind, 'error', '超时');
 				if (self._coreRefresh) self._coreRefresh();

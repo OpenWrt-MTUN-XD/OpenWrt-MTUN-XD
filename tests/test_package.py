@@ -227,6 +227,16 @@ def main():
     check('self._btnStart' in body and 'self._btnStop' in body,
           'start() 通过 self._btnStart / self._btnStop 锁启停按钮')
 
+    # poll() 同样是 view 方法：里面只能调 self._coreRefresh，裸的 coreRefresh 会抛
+    # ReferenceError，被 poll 的 catch 当成「DONE 还没好」→ 状态行永远停在「升级中…」。
+    pm = upg.find('poll: function')
+    pe = upg.find('handleSaveApply', pm) if pm != -1 else -1
+    poll_body = upg[pm:pe] if pm != -1 and pe > pm else ''
+    check(bool(poll_body), 'upgrade.js 能定位 poll() 函数体')
+    bare_ref = re.search(r'(?<![\w._])coreRefresh\(', poll_body)
+    check(bare_ref is None, 'poll() 里不直接引用 render 闭包里的 coreRefresh（必须 self._coreRefresh）')
+    check('self._coreRefresh' in poll_body, 'poll() 通过 self._coreRefresh 恢复启停按钮')
+
     # 写盘 CGI 路径在 apply.js / btn.js 里是**刻意复制**的两份（两套 bundle 各自独立）：
     # 断言两边的字面量集合一致，改一处漏另一处会立刻红，比注释里的「两边一起改」可靠。
     cgi = {}

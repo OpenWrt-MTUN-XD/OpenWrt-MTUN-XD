@@ -137,6 +137,8 @@ return view.extend({
 				coreLog('状态：' + (st === 'running' ? '运行中' : '已停止'));
 			}).catch(function () { btnStart.disabled = false; btnStop.disabled = false; });
 		};
+		// ⚠️ poll() 是 view 的方法、不在 render 闭包里 —— 里面要用 coreRefresh 必须挂 self
+		self._coreRefresh = coreRefresh;
 		var coreAct = function (cmd) {
 			btnStart.disabled = true;
 			btnStop.disabled = true;
@@ -298,7 +300,7 @@ return view.extend({
 			// 再来一句就是把同一件事说两遍；跑完的信号放进状态行，失败才说话。
 			out.scrollTop = out.scrollHeight;
 			setBusy(btns, false);
-			coreRefresh();          // 升级期间锁掉的启停按钮，按真实状态恢复
+			if (self._coreRefresh) self._coreRefresh();   // 升级期间锁掉的启停按钮，按真实状态恢复
 			return self.refreshStatus(statusEls).then(function () {
 				if (!ok && statusEls[kind]) {
 					statusEls[kind].textContent = '✘ 升级失败（原因见上面的输出）';
@@ -309,7 +311,7 @@ return view.extend({
 				out.textContent += '\n（等太久了，不看了。完整日志在路由器 ' + C.LOG + '）\n';
 				setBusy(btns, false);
 				if (statusEls[kind]) statusEls[kind].textContent = '超时（日志：' + C.LOG + '）';
-				coreRefresh();
+				if (self._coreRefresh) self._coreRefresh();
 				return;
 			}
 			return new Promise(function (r) {

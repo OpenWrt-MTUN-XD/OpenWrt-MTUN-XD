@@ -9,6 +9,30 @@
 #    不然下面那句 -x 判断直接跳过，整套都不会装。
 chmod +x /usr/sbin/mtun-xd /etc/init.d/mihomo /etc/init.d/mtun-xd-selfcheck 2>/dev/null
 
+# ── 0.5) 视图文件自愈：menu.d 里是**带戳**文件名，缺了会整页 404 ─────────────
+# 症状：点菜单空白 / 「更新」按钮没反应 —— 其实是 view 模块取不到。
+# 任何途径（回滚、手工覆盖、kit 覆盖）造成「菜单里的戳 ↔ 磁盘文件」对不上时，
+# 用同目录不带戳的 <name>.js 复制出缺失的那份，再清 LuCI 缓存。
+# 路径允许用环境变量覆盖：tests/test_package.py 用临时目录实跑这段逻辑
+VSUITE_MENU=${VSUITE_MENU:-/usr/share/luci/menu.d/luci-app-mtun-xd.json}
+VSUITE_VDIR=${VSUITE_VDIR:-/www/luci-static/resources/view/mtun-xd}
+if [ -f "$VSUITE_MENU" ] && [ -d "$VSUITE_VDIR" ]; then
+    fixed=0
+    for n in $(sed -n 's/.*"path"[[:space:]]*:[[:space:]]*"mtun-xd\/\([^"]*\)".*/\1/p' "$VSUITE_MENU"); do
+        [ -f "$VSUITE_VDIR/$n.js" ] && continue
+        base=$(printf '%s' "$n" | sed 's/_[0-9][0-9]*_[0-9a-f][0-9a-f]*$//')
+        if [ -f "$VSUITE_VDIR/$base.js" ]; then
+            if cp -f "$VSUITE_VDIR/$base.js" "$VSUITE_VDIR/$n.js"; then
+                fixed=1
+                echo "→ 视图文件自愈：$n.js"
+            fi
+        else
+            echo "⚠️ 视图文件缺失：$VSUITE_VDIR/$n.js（菜单可能 404）"
+        fi
+    done
+    [ "$fixed" = 1 ] && rm -rf /tmp/luci-indexcache /tmp/luci-modulecache 2>/dev/null
+fi
+
 # ── 开机自检：固件升级/重启后自动补齐 ──────────────────────────────────────
 # 固件升级常把包的登记刷掉（文件还在、数据库里没了）⇒ 版本读不出、菜单 404。
 # 这个 init 脚本开机后补一次；正常机器上什么都不做、不留日志。

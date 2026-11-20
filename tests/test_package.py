@@ -173,6 +173,39 @@ def main():
                 or '/tests/' in n or n.startswith('tests/')]
         check(not junk, '包里没有开发文件', ','.join(junk[:3]))
 
+    # 视图文件自愈：menu.d 引用带戳文件名，缺文件会整页 404；postinst 要能补出来
+    post = open(os.path.join(ROOT, 'control/postinst'), encoding='utf-8').read()
+    check('视图文件自愈' in post and 'cp -f "$VSUITE_VDIR/$base.js"' in post,
+          'postinst 会按 menu.d 的带戳名补出缺失视图文件')
+    check('luci-indexcache' in post and 'luci-modulecache' in post,
+          '自愈之后清 LuCI 缓存')
+    sh_bin = ('C:/Program Files/Git/usr/bin/sh.exe' if os.path.exists('C:/Program Files/Git/usr/bin/sh.exe')
+              else shutil.which('sh'))
+    if sh_bin:
+        import subprocess, tempfile
+        start = post.find('# ── 0.5) 视图文件自愈')
+        end = post.find('# ── 开机自检')
+        snippet = post[start:end] if start != -1 and end > start else ''
+        check(bool(snippet), '能取出 postinst 的自愈片段')
+        with tempfile.TemporaryDirectory() as td:
+            vdir = os.path.join(td, 'view')
+            os.makedirs(vdir)
+            with open(os.path.join(vdir, 'upgrade.js'), 'w', encoding='utf-8') as f:
+                f.write('// plain\n')
+            menu = os.path.join(td, 'menu.json')
+            with open(menu, 'w', encoding='utf-8') as f:
+                f.write('{ "path": "mtun-xd/upgrade_20261110_abcdef" }\n')
+            git_usr = os.path.dirname(sh_bin)
+            env = dict(os.environ, VSUITE_MENU=menu, VSUITE_VDIR=vdir,
+                       PATH=(git_usr + ':' if git_usr else '') + os.environ.get('PATH', ''))
+            r = subprocess.run([sh_bin, '-c', snippet], env=env, capture_output=True,
+                               encoding='utf-8', errors='replace')
+            healed = os.path.join(vdir, 'upgrade_20261110_abcdef.js')
+            check(os.path.exists(healed), '自愈后带戳文件存在')
+            check(os.path.exists(healed) and open(healed, encoding='utf-8').read() == '// plain\n',
+                  '自愈内容来自不带戳的同名文件')
+            check('视图文件自愈' in (r.stdout or ''), '自愈时有可见提示')
+
     # ── install.sh：不再写死版本号 ─────────────────────────────────────────
     sh = open(os.path.join(ROOT, 'install.sh'), encoding='utf-8').read()
     check('VER_PKG' not in sh, 'install.sh 里没有写死的 VER_PKG')

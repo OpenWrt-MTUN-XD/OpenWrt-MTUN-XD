@@ -41,7 +41,7 @@ var BTN = 'display:inline-flex; align-items:center; justify-content:center; ' +
 var CARDS = [
 	{
 		kind: 'core', title: '核心升级', btn: '更新核心',
-		desc: 'Mihomo · 升级断网几秒',
+		desc: 'Mihomo',
 		hint: '升级过程中代理会断几秒，失败自动回滚'
 	},
 	{
@@ -59,6 +59,8 @@ var CARDS = [
 // 颜色口径跟状态胶囊一致：运行中=绿、已停止=灰、启动中=蓝、异常=红、更新中=橙。
 // 判定顺序有讲究 —— 先判红（失败关键字最具体），再灰 / 蓝 / 橙，最后才是绿的「✔ / 运行中」。
 var LINE_COLORS = [
+	// ⚠️ 开头的提示行优先按「提醒」处理（橙），不因为句子里有「失败」就被染红
+	{ re: /^⚠️/, c: 'var(--mh-warn)' },
 	{ re: /(FAIL|✘|失败|异常|超时|错误|没起来|不支持)/, c: 'var(--mh-err)' },
 	{ re: /(已停止|停止服务)/, c: 'var(--mh-idle)' },
 	{ re: /(启动中|停止中)/, c: 'var(--mh-busy)' },
@@ -411,6 +413,11 @@ return view.extend({
 		// 这种自己的话（两套文体混在一起最难看）；"跑起来了"由下面那行状态文字表示。
 		out.textContent = '';
 		out._raw = '';
+		out._prefix = '';
+		if (card.kind === 'core') {
+			logLine(out, '⚠️ 核心升级：过程中代理会断几秒，失败自动回滚');
+			out._prefix = out._raw;      // 这一行固定留在最上面
+		}
 		self._setPill(card.kind, 'updating', '更新中…');
 
 		fs.exec(C.SCRIPT, [card.kind, '--bg']).then(function () {
@@ -448,9 +455,10 @@ return view.extend({
 
 		fs.read(C.LOG).then(function (txt) {
 			txt = String(txt || '').replace(/\s+$/, '');   // 去掉 CLI 收尾的连续换行
-			if (txt && txt !== out._raw) {
-				out._raw = txt;
-				renderOut(out, txt);
+			var full = (out._prefix ? out._prefix + (txt ? '\n' : '') : '') + txt;
+			if (full && full !== out._raw) {
+				out._raw = full;
+				renderOut(out, full);
 			}
 		}).catch(function () { /* 还没写出来，正常 */ });
 

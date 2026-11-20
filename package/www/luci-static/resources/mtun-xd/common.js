@@ -263,7 +263,7 @@ return baseclass.extend({
 				'--mh-iframe-bg:#0d1014;}' +
 				':root[data-mh-theme="light"]{--mh-bg:#f4f6f9;--mh-card:#ffffff;--mh-border:#e5eaf0;' +
 				'--mh-text:#1f2937;--mh-muted:#6b7280;--mh-accent:#16a34a;--mh-pre-bg:#f7f8fa;' +
-				'--mh-ok:#15803d;--mh-ok-bg:#e6f6ec;' +
+				'--mh-ok:#16a34a;--mh-ok-bg:#e7f8ee;' +
 				'--mh-idle:#6b7280;--mh-idle-bg:#eef1f4;' +
 				'--mh-busy:#1d4ed8;--mh-busy-bg:#e6efff;' +
 				'--mh-err:#dc2626;--mh-err-bg:#fdebeb;' +

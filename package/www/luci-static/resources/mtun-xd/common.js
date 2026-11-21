@@ -20,6 +20,22 @@ return baseclass.extend({
 
 	// 把这一页撑满到「页脚上方」：页脚（Powered by LuCI …）就始终落在底边。
 	// 主题那层还有自己的 margin/padding，撑完要按超出量缩回来（不然多 16px 撑出滚动条）。
+	// 三个页面共用的版式：标签条/页脚 margin、内容顶部偏移、撑满页脚上方
+	layout: function (root) {
+		var st = document.getElementById('mh-layout-css');
+		if (!st) {
+			st = document.createElement('style');
+			st.id = 'mh-layout-css';
+			document.head.appendChild(st);
+		}
+		st.textContent = 'body[data-page^="admin-services-mtun-xd"] #tabmenu{margin-top:-7px} ' +
+			'body[data-page^="admin-services-mtun-xd"] footer{margin-top:-17px} ' +
+			'body[data-page^="admin-services-mtun-xd"] #maincontent .container{padding:0}';
+		root.style.marginTop = '-13px';
+		this.fill(root);
+		return root;
+	},
+
 	fill: function (node) {
 
 		var apply = function () {
@@ -27,11 +43,11 @@ return baseclass.extend({
 			var fh = f ? f.getBoundingClientRect().height : 0;
 			// 注意：夹到 0 —— 页面滚下去之后 top 是负的，不夹的话每 resize 一次高度就多长一截。
 			var top = Math.max(0, node.getBoundingClientRect().top);
-			var h = Math.max(200, window.innerHeight - top - fh);
+			var h = Math.max(200, Math.floor(window.innerHeight - top - fh));
 			node.style.minHeight = h + 'px';
 			var sc = document.querySelector('.main');
 			var over = sc ? (sc.scrollHeight - sc.clientHeight) : 0;
-			if (over > 0) node.style.minHeight = (h - over) + 'px';
+			if (over > 0) node.style.minHeight = Math.max(200, Math.floor(h - over)) + 'px';
 		};
 		node.style.display = 'flex';
 		node.style.flexDirection = 'column';

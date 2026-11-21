@@ -366,30 +366,15 @@ return view.extend({
 		self._btnStop = btnStop;
 
 		var corebar = E('div', {
-			style: 'flex:0 0 auto; display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:22px; padding:12px 0 4px;'
+			style: 'flex:0 0 auto; display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:22px; padding:32px 0 4px;'
 		}, [btnStart, btnStop]);
 		coreRefresh();
 
 		var root = E('div', {}, [MH_CSS, corebar, inner]);
 
-		// Argon 容器：#tabmenu / footer —— 一条 CSS 搞定，不用逐个 set style
-		(function () {
-			var st = document.getElementById('mh-layout-css');
-			if (!st) {
-				st = document.createElement('style');
-				st.id = 'mh-layout-css';
-				document.head.appendChild(st);
-			}
-			st.textContent = 'body[data-page^="admin-services-mtun-xd"] #tabmenu{margin-top:-7px} ' +
-				'body[data-page^="admin-services-mtun-xd"] footer{margin-top:-17px} ' +
-				'body[data-page^="admin-services-mtun-xd"] #maincontent .container{padding:0}';
-				// 内容区的 16px padding 由我们接管，视图里就不用再写 -16px 负边距
-				// 选择器用 body[data-page] 限定：切到别的页面时这段样式自动失效（Argon 每页都会写 data-page）
-		})();
 
 
-		root.style.marginTop = '-3px';
-		C.fill(root);
+		C.layout(root);
 		return root;
 	},
 

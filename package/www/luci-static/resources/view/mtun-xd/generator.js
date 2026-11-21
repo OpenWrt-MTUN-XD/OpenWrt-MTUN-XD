@@ -117,28 +117,13 @@ return view.extend({
 				if (!viaHttp && !noUi && !readErr) C.selfHeal();
 
 				var body = E('div', {
-					style: 'flex:1 1 auto; min-height:0; display:flex; flex-direction:column; margin:-15px 0 0 0;'
+					style: 'flex:1 1 auto; min-height:0; display:flex; flex-direction:column;'
 				}, (readErr || noUi) ? [hint] : [frame, hint]);
 
 				var root = E('div', {}, [body]);
-				// Argon 的容器是 #tabmenu / footer：版式微调直接写一条 CSS，
-			// 比逐个元素 set style 好维护，也不必在 hashchange 里还原。
-			(function () {
-				var st = document.getElementById('mh-layout-css');
-				if (!st) {
-					st = document.createElement('style');
-					st.id = 'mh-layout-css';
-					document.head.appendChild(st);
-				}
-				st.textContent = 'body[data-page^="admin-services-mtun-xd"] #tabmenu{margin-top:-5px} ' +
-				'body[data-page^="admin-services-mtun-xd"] footer{margin-top:-17px} ' +
-				'body[data-page^="admin-services-mtun-xd"] #maincontent .container{padding:0}';
-				// 内容区的 16px padding 由我们接管，视图里就不用再写 -16px 负边距
-				// 选择器用 body[data-page] 限定：切到别的页面时这段样式自动失效（Argon 每页都会写 data-page）
-			})();
 
 
-			C.fill(root);
+			C.layout(root);
 				return root;
 			});
 		});

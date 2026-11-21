@@ -6,6 +6,10 @@
   OpenWrt / iStoreOS 的 Mihomo 管理套件
 </p>
 
+<p align="center">
+  <a href="https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/actions/workflows/ci.yml"><img src="https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
+
 ---
 
 ## 项目介绍
@@ -16,7 +20,7 @@
 
 MTUN-XD 不以功能堆叠为目标，而是优先保证稳定性、可控性与行为可预期。
 
-- **节点稳定**：不集成机场订阅，不以节点数量作为产品目标。
+- **节点自主**：不提供机场订阅托管与自动拉取，节点来源由用户掌控。
 - **配置可审计**：固定键序，支持 Diff，便于审查与回滚。
 - **部署可靠**：GEO 数据本地预置，降低首次启动对外网的依赖。
 - **边界清晰**：不擅自重启内核或删除文件，保留用户控制权。
@@ -24,6 +28,16 @@ MTUN-XD 不以功能堆叠为目标，而是优先保证稳定性、可控性与
 - **质量可验证**：176 项自检与 Golden 基线，确保变更经过验证。
 
 > 不追求功能堆叠，专注稳定运行；不隐藏行为，确保每项变更可审计、可验证、可追溯。
+
+### 质量验证
+
+```sh
+python tests/test_package.py      # 176 项打包自检（含视图自愈、脚本约定）
+bun test generator/tests/unit     # 306 项单元测试（含 Golden 基线逐字节比对）
+sh tools/check-shell.sh           # shell 语法检查
+```
+
+CI 结果：[Actions](https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/actions/workflows/ci.yml) · 发布验收：[RELEASE-CHECKLIST](docs/RELEASE-CHECKLIST.md)
 
 ### 界面预览
 

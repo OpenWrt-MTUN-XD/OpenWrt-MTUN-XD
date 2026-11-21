@@ -18,6 +18,22 @@
 
 ---
 
+## 提交信息
+
+提交信息用英文，遵循 Conventional Commits：
+
+```
+fix(upgrade): keep running state when core version is unreadable
+docs: add offline installation steps
+ci(release): notify Telegram after publishing
+```
+
+- 祈使句，首字母小写，不超过 72 字符；
+- 一个提交只做一件事；
+- `CHANGELOG.md`、README 和界面文案保持中文，提交信息与 PR 标题用英文。
+
+---
+
 ## 环境准备
 
 ```sh

@@ -87,6 +87,7 @@ git diff --check
 
 ## 修改纪律
 
+- **提交信息用英文**（Conventional Commits：`type(scope): summary`），祈使句、不超过 72 字符；需要时正文也用英文。面向用户的 `CHANGELOG.md`、README、界面文案保持中文；PR / Issue 标题用英文。
 - `package/`、`install.sh`、`control/`、`deploy/` 或 `generator/` 有**功能或行为**变化时，发布前必须更新 `APP_VERSION` 和 `CHANGELOG.md`。
 - **纯排版 / 文案 / 注释 / 样式改动不 bump 版本号**，随下一个功能版本一起发；避免为一个空格或一行对齐单独发版。
 - **改脚本 / 样式 / 文档可以直接推**：推送本身不触发发版 —— release 工作流只有在 `APP_VERSION` 变化时才会真正发布（版本没变时 `prepare` 判 `release=false` 直接跳过）。

@@ -21,56 +21,6 @@ return baseclass.extend({
 	// 把这一页撑满到「页脚上方」：页脚（Powered by LuCI …）就始终落在底边。
 	// 主题那层还有自己的 margin/padding，撑完要按超出量缩回来（不然多 16px 撑出滚动条）。
 	fill: function (node) {
-		// 版本标记只放版本号（包名那截太长、还跟左上角菜单同名，纯噪音），问不到就整枚不显示；
-		// 位置按 #tabmenu 自己算 —— 注意：不能给父容器用 top:50%，Argon 里那个父容器比标签条高得多。
-		var BADGE_ID = 'mtun-xd-ver';
-		var badge = null, badgeAbs = null;   // 全页**只有一枚** badge（abs=贴在标签条上 / 不然贴内容顶上）
-		var makeBadge = function (abs) {
-			// fill() 每次调用都是新闭包 —— 上一枚还在（同一个 document 里重渲染）就先摘掉，别出现两个同 id 的
-			var prev = document.getElementById(BADGE_ID);
-			if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
-			var b = E('div', {
-				id: BADGE_ID,
-				style: (abs ? 'position:absolute; right:12px; z-index:1; ' : 'text-align:right; padding:0 2px 8px; ') +
-					'font-size:12.5px; color:var(--mh-muted); white-space:nowrap; pointer-events:none; ' +
-					'font-family:ui-monospace, Consolas, Menlo, monospace;'
-			}, '');
-			fs.exec(SCRIPT, ['version']).then(function (res) {
-				if (!b.parentNode) return;   // 已被新的徽标替换掉
-				var v = ((res && res.stdout) || '').replace(/\s+$/, '');
-				if (v) b.textContent = 'v' + v;
-				else b.style.display = 'none';
-			}).catch(function () { if (b.parentNode) b.style.display = 'none'; });
-			return b;
-		};
-		// 注意：只能有**一枚**。fill() 跑时节点还没插进文档，#tabmenu 往往还不存在 ⇒ 先退回"贴内容顶上"；
-		// 等 apply() 再跑时标签条又出现了，再建一枚就会重复 —— 所以两种形态互斥、共用同一个变量。
-		var placeBadge = function () {
-			var tab = document.getElementById('tabmenu');
-			var host = tab && tab.parentNode;
-			if (!host) {
-				// 这页没有标签条（理论上遇不到）：退回贴内容顶上
-				if (!badge || badgeAbs) {
-					if (badge) badge.remove();
-					badge = makeBadge(false);
-					badgeAbs = false;
-					node.insertBefore(badge, node.firstChild);
-				}
-				return false;
-			}
-			if (window.getComputedStyle(host).position === 'static') host.style.position = 'relative';
-			if (!badge || !badgeAbs) {
-				if (badge) badge.remove();
-				badge = makeBadge(true);
-				badgeAbs = true;
-				host.appendChild(badge);
-			}
-			var hr = host.getBoundingClientRect(), tr = tab.getBoundingClientRect();
-			badge.style.top = Math.round(tr.top - hr.top + tr.height / 2) + 'px';
-			badge.style.transform = 'translateY(-50%)';
-			return true;
-		};
-		placeBadge();
 
 		var apply = function () {
 			var f = document.querySelector('#maincontent footer');
@@ -86,7 +36,6 @@ return baseclass.extend({
 			var sc = document.querySelector('.main');
 			var over = sc ? (sc.scrollHeight - sc.clientHeight) : 0;
 			if (over > 0) node.style.minHeight = Math.round((h - over) / z) + 'px';
-			placeBadge();
 		};
 		node.style.display = 'flex';
 		node.style.flexDirection = 'column';

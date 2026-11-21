@@ -55,9 +55,6 @@ return view.extend({
 				// 它那颗月亮/太阳按钮还在，但只影响生成器内部，下次进这一页又按我们的来。
 				C.frameTheme(frame);
 
-				// 默认不缩放（跟控制面板同一套口径，实现在 common.js，三页一律 100%）
-				var baseSc = C.scaleOf(0);
-
 				// 跟控制面板一个道理，三种"打不开"分开说：没开面板 / 绑回环 / 真没装
 				var readErr = !!panel.failed;          // panelinfo 没跑成（超时 / 权限 / 正忙）
 				var noUi = !readErr && !panel.ui;      // 真没写 external-ui 才算「没启用」
@@ -122,8 +119,6 @@ return view.extend({
 				var body = E('div', {
 					style: 'flex:1 1 auto; min-height:0; display:flex; flex-direction:column; margin:-15px 0 0 0;'
 				}, (readErr || noUi) ? [hint] : [frame, hint]);
-
-				C.scaleFrame(frame, body, baseSc);
 
 				var root = E('div', {}, [body]);
 				// Argon 的容器是 #tabmenu / footer：版式微调直接写一条 CSS，

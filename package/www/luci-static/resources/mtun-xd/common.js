@@ -28,14 +28,10 @@ return baseclass.extend({
 			// 注意：夹到 0 —— 页面滚下去之后 top 是负的，不夹的话每 resize 一次高度就多长一截。
 			var top = Math.max(0, node.getBoundingClientRect().top);
 			var h = Math.max(200, window.innerHeight - top - fh);
-			// 注意：根节点可能带 zoom（?scale= 临时缩）—— 上面量到的 h 是视觉像素，直接写进
-			// minHeight 会被 zoom 再缩一次（高度不足、页脚上浮），要换算回 zoom 内部的长度。
-			var z = 1;
-			try { z = parseFloat(window.getComputedStyle(node).zoom) || 1; } catch (e) { /* 老浏览器没有 zoom */ }
-			node.style.minHeight = Math.round(h / z) + 'px';
+			node.style.minHeight = h + 'px';
 			var sc = document.querySelector('.main');
 			var over = sc ? (sc.scrollHeight - sc.clientHeight) : 0;
-			if (over > 0) node.style.minHeight = Math.round((h - over) / z) + 'px';
+			if (over > 0) node.style.minHeight = (h - over) + 'px';
 		};
 		node.style.display = 'flex';
 		node.style.flexDirection = 'column';
@@ -141,51 +137,6 @@ return baseclass.extend({
 	// 监听地址是不是"只有本机能访问"（127.0.0.1 / ::1 / localhost）
 	loopbackOnly: function (host) {
 		return /^(127\.|::1(?::\d+)?$|\[::1\](?::\d+)?$|localhost(?::\d+)?$)/i.test(String(host || ''));
-	},
-
-	// ── 嵌进来的 iframe 缩放（默认不缩，三个调用点都传 0）────────────────────
-	// 留着这套是为了还能用 ?scale=0.9 临时缩：视口撑到 1/sc 再 transform:scale(sc)，视觉尺寸不变。
-
-	// 从 ?scale= 取覆盖值；无效就 0（=不缩）
-	scaleOf: function (def) {
-		var m = window.location.search.match(/[?&]scale=([0-9.]+)/);
-		var sc = m ? parseFloat(m[1]) : def;
-		return (sc > 0.35 && sc < 1) ? sc : 0;
-	},
-
-	// frame = 要缩的 iframe，box = 包着它的定位容器
-	scaleFrame: function (frame, box, baseSc) {
-		var apply = function () {
-			var sc = (window.innerWidth < 1000) ? 0 : baseSc;
-			if (sc) {
-				frame.style.position = 'absolute';
-				frame.style.top = '0';
-				frame.style.left = '0';
-				frame.style.minHeight = '0';
-				frame.style.width = 'calc(100% / ' + sc + ')';
-				frame.style.height = 'calc(100% / ' + sc + ')';
-				frame.style.transform = 'scale(' + sc + ')';
-				frame.style.transformOrigin = '0 0';
-				box.style.position = 'relative';
-				box.style.overflow = 'hidden';
-			} else {
-				frame.style.position = '';
-				frame.style.top = '';
-				frame.style.left = '';
-				frame.style.minHeight = '320px';
-				frame.style.width = '100%';
-				frame.style.height = '';
-				frame.style.transform = '';
-				frame.style.transformOrigin = '';
-				box.style.position = '';
-				box.style.overflow = '';
-			}
-		};
-		apply();
-		// 同一页重渲染会再进一次 —— 先摘掉上一轮的监听，否则每次进页都多一个（还抓着旧的 iframe）
-		if (window.__mhScaleApply) window.removeEventListener('resize', window.__mhScaleApply);
-		window.__mhScaleApply = apply;
-		window.addEventListener('resize', apply);
 	},
 
 	// ── 主题：三页只跟路由器 ────────────────────────────────────────────────

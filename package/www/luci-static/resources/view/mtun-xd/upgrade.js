@@ -245,12 +245,8 @@ return view.extend({
 		self._upBtns = btns;   // ⚠️ 在这里记，不能等 start()：首次升级前 coreAct 拿不到 []
 		this.refreshStatus(statusEls);
 
-		// 默认不缩放（三页统一 100%）。这页不是 iframe，真要缩只能用 zoom
-		// （transform 会让高度/滚动对不上）；baseSc=0 时下面 applyScale 走不缩那条分支。
-		var baseSc = C.scaleOf(0);      // 0 = 不缩
-
 		var inner = E('div', {
-			style: 'flex:1 1 auto; min-height:0; display:flex; flex-direction:column; ' +
+			style: 'flex:1 1 auto; min-height:0; display:flex; flex-direction:column; margin:0 -16px -16px -16px; ' +
 				'background:' + P.bg + ';'
 		}, [
 			// 内层这一列居中限宽 —— 别让内容铺到屏幕两边（跟配置工具那页一个观感）
@@ -375,20 +371,6 @@ return view.extend({
 		coreRefresh();
 
 		var root = E('div', {}, [MH_CSS, corebar, inner]);
-
-		// 注意：缩放要跟着窗口宽度实时变（只在 render 里算一次，转屏后就一直是小字）；满幅的
-		// 负 margin 是视觉像素，zoom 会再缩它一次，要按 1/sc 放大，否则四周留一条 2px 的缝。
-		var applyScale = function () {
-			var sc = (window.innerWidth < 1000) ? 0 : baseSc;
-			root.style.zoom = sc ? String(sc) : '';
-			var m = sc ? (-16 / sc) : -16;
-			inner.style.margin = '0 ' + m + 'px ' + m + 'px ' + m + 'px';
-		};
-		applyScale();
-		// LuCI 每次进页都是新实例，this._mhUpApply 摘不掉上一个实例的监听 —— 用 window 级单例
-		if (window.__mhUpApply) window.removeEventListener('resize', window.__mhUpApply);
-		window.__mhUpApply = applyScale;
-		window.addEventListener('resize', applyScale);
 
 		// Argon 容器：#tabmenu / footer —— 一条 CSS 搞定，不用逐个 set style
 		(function () {

@@ -38,10 +38,6 @@ return view.extend({
 				style: 'display:block; width:100%; flex:1 1 auto; min-height:320px; border:0; background:var(--mh-iframe-bg);',
 			});
 
-			// 默认**不缩放**（三页统一 100%）。transform 作用在 iframe **元素**上，跟内部跨不跨源
-			// 无关 ⇒ 只管这一页；?scale=0.9 仍可临时缩，?scale=1 等于不缩。
-			var baseSc = C.scaleOf(0);
-
 			// 三种"打不开"要分开说清楚：config.yaml 里没写 external-ui（面板压根没被发出来，9090
 			// 上只有 API）、内核绑在回环上（活着但浏览器够不着）、其它（才可能是内核没在跑）。
 			var readErr = !!panel.failed;          // panelinfo 没跑成（超时 / 权限 / 正忙）
@@ -130,8 +126,6 @@ return view.extend({
 				// 内容区的 16px padding 由我们接管，视图里就不用再写 -16px 负边距
 				// 选择器用 body[data-page] 限定：切到别的页面时这段样式自动失效（Argon 每页都会写 data-page）
 			})();
-
-			C.scaleFrame(frame, body, baseSc);
 
 			var root = E('div', {}, [body]);
 			C.fill(root);

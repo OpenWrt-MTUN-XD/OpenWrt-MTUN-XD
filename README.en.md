@@ -28,11 +28,11 @@ MTUN-XD is not built for feature count. It prioritises stability, control, and
 predictable behaviour.
 
 - **Auditable config** — deterministic key order and diff-friendly output, easy to review and roll back.
-- **Clear boundaries** — never restarts the core or deletes files on its own; control stays with the user.
+- **Clear boundaries** — does not restart the core or delete files without user approval; control stays with the user.
 - **Restrained defaults** — ad blocking is off by default; no unnecessary runtime variables.
-- **Reliable deployment** — GEO data is pre-installed, so the first start does not depend on the internet.
-- **Verifiable quality** — 176 self-checks and Golden baselines cover every change.
-- **User-owned nodes** — no subscription hosting or automatic fetching; the node source stays in your hands.
+- **Reliable deployment** — GEO data is pre-installed, reducing reliance on internet access during the first startup.
+- **Verifiable quality** — 176 self-checks and Golden baselines help verify changes.
+- **User-controlled node sources** — no subscription hosting or automatic fetching; the node source stays in your hands.
 
 > Predictable behaviour, auditable changes, dependable operation.
 
@@ -61,13 +61,13 @@ Release checklist: [RELEASE-CHECKLIST](docs/RELEASE-CHECKLIST.md)
 - **Validated apply** — configs are checked with `mihomo -t` before writing; failures roll back and keep a backup.
 - **Single entry point** — LuCI, dashboard and config tool all behind port 80.
 - **Maintenance centre** — update core, dashboard and suite independently, in the background, with logs.
-- **Routing and groups** — precise routing, per-device egress, multi-node load balancing.
+- **Routing and groups** — precise routing, per-device egress, automatic multi-node load balancing.
 - **Config generator** — import nodes (links / subscriptions / Clash YAML) and generate a working `config.yaml`.
 
 ### Requirements
 
 - root access; the installation needs network connectivity
-- enough disk space for the Mihomo core of your architecture
+- enough disk space for the Mihomo core for your device architecture
 - OpenWrt / iStoreOS with APK or OPKG
 
 ### Recommended environment
@@ -115,8 +115,8 @@ opkg install /tmp/luci-app-mtun-xd_*.ipk
 
 The first `mtun-xd setup` still needs network access for the core, dashboard and GEO data.
 For a fully offline setup, copy an existing `/etc/mihomo` directory from another working
-device and run `mtun-xd setup`; existing components are reused, missing ones still need
-network access. `config.yaml` is never overwritten.
+device and run `mtun-xd setup`; existing core, dashboard, and GEO data are reused; missing ones still
+need network access. `config.yaml` is never overwritten.
 
 ### Defaults
 
@@ -126,7 +126,7 @@ network access. `config.yaml` is never overwritten.
 | Dashboard password | `123456` |
 | External Controller | `127.0.0.1:9090` |
 
-> Change the default password right after the first login.
+> We recommend changing the default password immediately after your first login.
 
 Open the config tool, import nodes, generate a config, then click **Load config**.
 
@@ -150,7 +150,7 @@ The buttons in the maintenance centre map to these commands (core → dashboard 
 | --- | --- | --- |
 | Update core | `/usr/sbin/mtun-xd core` | core binary only |
 | Update dashboard | `/usr/sbin/mtun-xd ui` | dashboard static files only |
-| Update suite | `/usr/sbin/mtun-xd console` | reinstall the package and run deployment: align dashboard/config tool and GEO if missing; **never updates an existing core**, never touches `config.yaml` |
+| Update suite | `/usr/sbin/mtun-xd console` | reinstall the package and run deployment: update the dashboard and config tool when newer versions are available, and install GEO data if missing; **never updates an existing core**, never touches `config.yaml` |
 
 ### Uninstall
 
@@ -161,10 +161,10 @@ mtun-xd uninstall           # keep config.yaml, tool password and GEO data
 
 ## Project
 
-Other channels publishing "same" or "custom" builds are not related to this project.
+Other channels publishing "unofficial copies" or "custom builds" are not related to this project.
 Official releases are published only on GitHub (repository and Releases) and the CF mirror.
 
-The names `MTUN-XD`, `墨枢云境`, `墨樞雲境` and the logo are not licensed for third-party use.
+The names `MTUN-XD`, `墨枢云境`, `墨樞雲境` and the logo are not authorized for third-party use.
 **A code licence does not grant brand rights.**
 
 Install scripts verify checksums; suite packages come only from the channels above, while

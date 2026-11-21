@@ -181,6 +181,7 @@ jobs:
         env:
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           # 没配 secrets 就安静跳过（不刷红叉）
@@ -189,9 +190,21 @@ jobs:
           TAG="v${VERSION}"
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
 
-          MSG=$(printf '<b>墨枢云境 MTUN-XD %s 已发布</b>\n\n%s\n\n🔗 %s' \
+          # 取本版更新内容：优先 Release 正文里的「更新内容」段，退回 CHANGELOG
+          BODY=$(gh release view "$TAG" --json body -q .body 2>/dev/null || true)
+          CHANGES=$(printf '%s\n' "$BODY" | sed -n '/^## 📣 更新内容/,/^## 📦/p' | sed '1d;$d')
+          if [ -z "$CHANGES" ]; then
+            CHANGES=$(awk -v ver="$VERSION" '$0 ~ "^## "ver {f=1;next} /^## /{if(f)exit} f' CHANGELOG.md)
+          fi
+          # 纯文本化：去掉标题/列表符号，压掉空行，再转义 HTML
+          CHANGES=$(printf '%s\n' "$CHANGES" | sed -e 's/^###* //' -e 's/^- /• /' -e 's/`//g' -e '/^[[:space:]]*$/d')
+          CHANGES=$(printf '%s' "$CHANGES" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+          CHANGES=$(printf '%s' "$CHANGES" | head -c 2500)
+
+          MSG=$(printf '<b>墨枢云境 MTUN-XD %s 已发布</b>\n\n%s\n\n<b>更新内容</b>\n%s\n\n🔗 %s' \
             "$TAG" \
-            "OpenWrt / iStoreOS 的 Mihomo 管理套件：核心、面板、配置工具与 80 端口接入" \
+            "OpenWrt 和 iStoreOS 开发的管理套件，专注于稳定性、可靠性和操作控制" \
+            "$CHANGES" \
             "$URL")
 
           # Telegram 上限 4096，留余量

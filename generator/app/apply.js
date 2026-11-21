@@ -146,7 +146,13 @@
             toast('配置已写入，但没拿到内核重载结果 —— 到路由器上确认一下是否已生效', 'err');
             return;
           }
-          toast('已载入配置文件（' + root.location.hostname + '）', 'ok');
+          // 括号里给「什么时候 + 多大的配置」，比重复地址栏里的 hostname 有用
+          var lines = yaml.split('\n').length;
+          var bytes = root.TextEncoder ? new root.TextEncoder().encode(yaml).length : yaml.length;
+          var kb = bytes < 1024 ? (bytes + ' B')
+            : (bytes < 1048576 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1048576).toFixed(2) + ' MB');
+          var when = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+          toast('已载入配置文件（' + when + ' · ' + lines + ' 行 / ' + kb + '）', 'ok');
           // 只在**这份配置里真有 adblock 规则集**时才去盯它 —— 否则用户没勾广告拦截，30 秒后会
           // 莫名收到一条「广告清单还没拉下来（ruleCount = 0）」的红字。
           if (cfg.hasAdblock) checkAdblock(secret);

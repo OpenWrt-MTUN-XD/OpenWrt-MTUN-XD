@@ -132,7 +132,7 @@
         });
       }).then(function (res) {
         done();
-        // ⚠️ 提示里带上**写到哪台机器** —— 页面所在的那台，先把这事说清楚免得误伤。
+        // 成功就说成功：设备身份地址栏已经写着，不用在提示里重复。
         if (res.ok) {
           // CGI 回的是 `ok <字节数> (reload: api (地址) | restart | none)`，**none 是失败**：
           // 文件写进去了但内核一个字节都没吃上，这时不能说「已载入配置文件」。
@@ -146,7 +146,7 @@
             toast('配置已写入，但没拿到内核重载结果 —— 到路由器上确认一下是否已生效', 'err');
             return;
           }
-          toast('已载入配置文件（' + root.location.hostname + '）', 'ok');
+          toast('已成功载入配置文件', 'ok');
           // 只在**这份配置里真有 adblock 规则集**时才去盯它 —— 否则用户没勾广告拦截，30 秒后会
           // 莫名收到一条「广告清单还没拉下来（ruleCount = 0）」的红字。
           if (cfg.hasAdblock) checkAdblock(secret);

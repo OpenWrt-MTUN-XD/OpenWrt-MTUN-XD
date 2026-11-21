@@ -205,7 +205,7 @@ jobs:
 
           MSG=$(printf '<b>🚀 墨枢云境 MTUN-XD %s 正式发布</b>\n\n%s\n\n<b>📋 更新内容</b>\n\n%s\n\n<b>🔗 更新详情</b>\n%s' \
             "$TAG" \
-            "面向 OpenWrt / iStoreOS 的管理套件，专注于稳定性、可靠性与操作可控性。" \
+            "Mihomo 管理套件，专注于稳定性、可靠性与操作可控性。" \
             "$CHANGES" \
             "$URL")
 

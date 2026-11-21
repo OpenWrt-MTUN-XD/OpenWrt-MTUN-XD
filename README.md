@@ -7,6 +7,10 @@
 </p>
 
 <p align="center">
+  <strong>简体中文</strong> | <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/actions/workflows/ci.yml"><img src="https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 

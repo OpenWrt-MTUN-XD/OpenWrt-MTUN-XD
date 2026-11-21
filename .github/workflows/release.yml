@@ -196,14 +196,16 @@ jobs:
           if [ -z "$CHANGES" ]; then
             CHANGES=$(awk -v ver="$VERSION" '$0 ~ "^## "ver {f=1;next} /^## /{if(f)exit} f' CHANGELOG.md)
           fi
-          # 纯文本化：去掉标题/列表符号，压掉空行，再转义 HTML
-          CHANGES=$(printf '%s\n' "$CHANGES" | sed -e 's/^###* //' -e 's/^- /• /' -e 's/`//g' -e '/^[[:space:]]*$/d')
+          # 纯文本化 + HTML 转义：先转义，再把 ### 小标题换成加粗
+          CHANGES=$(printf '%s\n' "$CHANGES" | sed -e 's/^- /• /' -e 's/`//g' -e '/^[[:space:]]*$/d')
           CHANGES=$(printf '%s' "$CHANGES" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+          CHANGES=$(printf '%s\n' "$CHANGES" | sed -e 's/^###\{0,1\} \(.*\)$/__H__\1__/')
+          CHANGES=$(printf '%s' "$CHANGES" | sed -e 's/__H__\([^_]*\)__/<b>\1<\/b>/g')
           CHANGES=$(printf '%s' "$CHANGES" | head -c 2500)
 
-          MSG=$(printf '<b>墨枢云境 MTUN-XD %s 已发布</b>\n\n%s\n\n<b>更新内容</b>\n%s\n\n🔗 %s' \
+          MSG=$(printf '<b>🚀 墨枢云境 MTUN-XD %s 正式发布</b>\n\n%s\n\n<b>📋 更新内容</b>\n\n%s\n\n<b>🔗 更新详情</b>\n%s' \
             "$TAG" \
-            "OpenWrt 和 iStoreOS 开发的管理套件，专注于稳定性、可靠性和操作控制" \
+            "面向 OpenWrt / iStoreOS 的管理套件，专注于稳定性、可靠性与操作可控性。" \
             "$CHANGES" \
             "$URL")
 

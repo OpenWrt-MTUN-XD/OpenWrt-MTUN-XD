@@ -69,7 +69,7 @@ CI 结果：[Actions](https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/actions
 
 ## 安装与配置
 
-### 安装部署
+### 方式一：路由器直接安装（推荐）
 
 SSH 登录路由器，以 root 执行：
 
@@ -86,7 +86,24 @@ curl -fsSL https://mtun-xd.wxcircle.top/install.sh -o /tmp/mtun-xd-install.sh &&
 
 安装完成后进入 **LuCI → 服务 → MTUN-XD**（中文界面显示「墨枢云境」）。
 
-固件编译集成见 [openwrt/README.md](openwrt/README.md) —— 编进镜像时只在首次开机拉取核心与面板，与独立安装共用同一套实现。
+### 方式二：编进固件
+
+把套件作为软件包编进 OpenWrt / iStoreOS 镜像：首次开机联网后自动拉取核心与面板，与上面的独立安装共用同一套 `setup` 实现。
+
+步骤见 [openwrt/README.md](openwrt/README.md)。
+
+### 离线安装
+
+Release 里的 `.apk` / `.ipk` 可以离线装套件本体（不含核心与面板，约 73 KB）：
+
+```sh
+# APK 固件（OpenWrt 25.12 / iStoreOS 25.12）
+apk add --allow-untrusted /tmp/luci-app-mtun-xd-*.apk
+# OPKG 固件（OpenWrt 24.10 及更早）
+opkg install /tmp/luci-app-mtun-xd_*.ipk
+```
+
+注意：首次 `mtun-xd setup` 仍需联网拉取核心、面板与 GEO 数据；完全离线时，可把另一台已装好的 `/etc/mihomo` 整目录拷过来再执行 `mtun-xd setup`，已有的核心、面板与 GEO 会被复用，缺的部分仍需网络补齐。`config.yaml` 不会被覆盖。
 
 ### 初始配置
 

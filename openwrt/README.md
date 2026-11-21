@@ -77,10 +77,6 @@ make menuconfig
 make -j$(nproc)
 ```
 
-```sh
-make -j$(nproc)
-```
-
 ---
 
 ## 包信息
@@ -97,7 +93,7 @@ make -j$(nproc)
 
 ## 首次开机行为
 
-1. 网络就绪（能访问 github.com）后，后台执行 `mtun-xd setup`；
+1. 网络就绪（能访问 GitHub 及内置镜像）后，后台执行 `mtun-xd setup`；
 2. 拉核心、面板、配置工具，铺默认 `config.yaml`（**不覆盖已存在的配置**），起服务；
 3. 成功后写 `/etc/mtun-xd-firstboot.done`，之后开机不再执行。
 

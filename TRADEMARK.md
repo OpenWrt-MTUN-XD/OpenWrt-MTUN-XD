@@ -13,7 +13,7 @@
 | --- | --- |
 | GitHub 仓库 | `https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD` |
 | GitHub Releases | `https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/releases` |
-| GitHub Releases | `https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/releases` |
+| CF 镜像（官方） | `https://mtun-xd.wxcircle.top/` |
 
 项目安装脚本内置软件包摘要校验机制（针对套件安装包；核心与面板按各自上游渠道获取）：
 

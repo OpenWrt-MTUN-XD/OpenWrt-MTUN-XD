@@ -209,10 +209,11 @@ jobs:
           ')
           CHANGES=$(printf '%s' "$CHANGES" | head -c 2500)
 
-          MSG=$(printf '<b>🚀 墨枢云境 MTUN-XD %s 正式发布</b>\n\n%s\n\n<b>📋 更新内容</b>\n\n%s\n\n<b>🔗 更新详情</b>\n%s' \
+          MSG=$(printf '<b>🚀 墨枢云境 MTUN-XD %s 正式发布</b>\n\n%s\n\n<b>📋 更新内容</b>\n\n%s\n\n<b>💽 版本信息</b>\n版本号：%s\n\n<b>🔗 更新详情</b>\n%s' \
             "$TAG" \
             "Mihomo 管理套件，专注于稳定性、可靠性与操作可控性。" \
             "$CHANGES" \
+            "$VERSION" \
             "$URL")
 
           # Telegram 上限 4096，留余量

@@ -200,7 +200,7 @@ jobs:
           CHANGES=$(printf '%s\n' "$CHANGES" | sed -e 's/^- /• /' -e 's/`//g' -e '/^[[:space:]]*$/d')
           CHANGES=$(printf '%s' "$CHANGES" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
           CHANGES=$(printf '%s\n' "$CHANGES" | sed -e 's/^###\{0,1\} \(.*\)$/__H__\1__/')
-          CHANGES=$(printf '%s' "$CHANGES" | sed -e 's/__H__\([^_]*\)__/<b>\1<\/b>/g')
+          CHANGES=$(printf '%s' "$CHANGES" | sed -e 's/__H__\([^_]*\)__/\n<b>\1<\/b>/g' -e '1{/^$/d}')
           CHANGES=$(printf '%s' "$CHANGES" | head -c 2500)
 
           MSG=$(printf '<b>🚀 墨枢云境 MTUN-XD %s 正式发布</b>\n\n%s\n\n<b>📋 更新内容</b>\n\n%s\n\n<b>🔗 更新详情</b>\n%s' \

@@ -1,5 +1,15 @@
 # 变更记录
 
+## 2026.11.22
+
+### 修复
+
+- 补 11.21 漏发的配置工具包：11.20 / 11.21 的 `dist/` 里 kit 仍是 11.20 版；
+  本版重建 `mihomo-deploy.tar.gz` / `.zip`，包内 `config/state.js` 为 `v2026.11.22`
+- kit 同步加闸门：`make-router-kit` 只写 OUT，进 `dist/` 必须走 `python build.py kit <OUT>`；
+  CI 在提交 `dist/` 前用 `tools/check-kit-dist.py` 校验 dist kit 与源码拍平目录逐文件一致、
+  且 `config/state.js` 版本等于本次版本号
+
 ## 2026.11.21
 
 本版仅把安装器热修转正，包内容与 11.20 相同。

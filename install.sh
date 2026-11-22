@@ -79,7 +79,6 @@ mark_clear() {
     MARK_OWNED=0
 }
 
-
 # ── 并发锁（安装器自己的，不是套件那把）──────────────────────────────
 # 两条 install.sh 同时跑（SSH 一条 + 页面点控制台升级）会在 apk 数据库上撞锁：
 # 一个报「安装失败」、另一个其实装成功了。
@@ -374,7 +373,6 @@ if [ "$ONLY_PKG" = 1 ]; then
         : > "$MARK"
         MARK_OWNED=1
         pm opkg install "$TMP/$FILE" || { mark_clear; die "套件：安装失败"; }
-        mark_clear
     fi
     mark_clear
     # 版本为准（apk 的退出码可能是环境噪音，见上面那段注释）

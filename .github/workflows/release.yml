@@ -138,23 +138,27 @@ jobs:
           name: apk
           path: .
 
-      - name: 出配置工具 kit
+      - name: 出配置工具 kit（只做闸门对照，不进 dist）
         working-directory: generator
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # ⚠️ 必须 KIT_NO_PUBLISH=1：
-          #    - kit 的滚动包已经迁到独立仓库，CI token 写不了那边；
-          #    - 更要紧的是 tar.gz 的字节依赖 zlib 版本，CI 重新生成会得到不同字节，
-          #      而 genkit 上那份是本地生成的 ⇒ 套件的摘要校验会判「不一致」。
-          #    kit 由发版前在本地跑一次 make-router-kit 生成并提交 dist/（见 AGENTS.md）。
+          #    - kit 的滚动包在独立仓库，CI token 写不了那边；
+          #    - tar.gz 字节依赖 zlib 版本，CI 重新生成与本地不同，不能拿去发布/进 dist。
+          #    → 只把源码拍平成一份临时 kit，供下一步校验 dist 是否与源码同源。
           KIT_NO_PUBLISH: '1'
-        run: bun scripts/make-router-kit.mjs
+        run: bun scripts/make-router-kit.mjs /tmp/mihomo-deploy
 
       # ⚠️ 顺序：**先提交 dist、再建 Release**。
       #    反过来的话，Release 建好了、提交被拒（non-fast-forward / 临时网络）⇒
       #    线上还是旧包，而后面每次跑都判「发过」直接跳过（2026-10-26 审出来）。
       - name: 更新 dist / SHA256SUMS
         run: python3 build.py dist
+
+      - name: 校验 dist 配置工具包与源码同步
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: python3 tools/check-kit-dist.py /tmp/mihomo-deploy dist "v$VERSION"
 
       - name: 提交 dist 和 install.sh
         env:

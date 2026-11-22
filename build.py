@@ -662,12 +662,30 @@ def write_index(d):
         f.write(INDEX_HTML.replace('@@VER@@', VERSION).replace('@@PREV@@', extra))
 
 
+def publish_kit(src):
+    """把 make-router-kit 产出的 kit 复制进 dist/，并重算索引与 SHA256SUMS。
+
+    只认脚本产出的三件：mihomo-deploy.tar.gz / .zip / generator.sh。
+    禁止手工 cp —— 发版纪律要求 dist/ 只能由 build.py 写入。
+    """
+    d = os.path.join(HERE, 'dist')
+    os.makedirs(d, exist_ok=True)
+    for name in ('mihomo-deploy.tar.gz', 'mihomo-deploy.zip', 'generator.sh'):
+        p = os.path.join(src, name)
+        if not os.path.isfile(p):
+            raise SystemExit('✘ kit 产物缺失：%s' % p)
+        shutil.copy2(p, os.path.join(d, name))
+    write_index(d)
+    write_sums(d)
+    print('kit → %s（3 个文件，SHA256SUMS 已重算）' % d)
+
+
 def publish_dist(made):
     """把「路由器 / 别人要从网上拿的那几样」拷进 dist/ —— 随仓库一起发布的静态目录。
 
     注意：CF 连的就是这个仓库，所以路由器从 CF 域名下载跟仓库公不公开无关；
     之所以不走 Release 附件 + raw.githubusercontent，是因为那些要求仓库公开。
-    生成器的 kit（zip + generator.sh）不在这儿 —— 由 generator/scripts/make-router-kit.mjs 丢进来。
+    生成器的 kit 由 `build.py kit <make-router-kit 输出目录>` 复制进来。
     """
     d = os.path.join(HERE, 'dist')
     os.makedirs(d, exist_ok=True)
@@ -810,8 +828,8 @@ def main():
             pass
     which = sys.argv[1] if len(sys.argv) > 1 else 'both'
     # 注意：先验参数再动文件 —— 参数打错时不该去碰仓库里的东西
-    if which not in ('ipk', 'apk', 'both', 'publish', 'dist', 'release', 'version', 'sums'):
-        print('用法: python build.py [ipk|apk|both|publish|dist|release|version|sums]')
+    if which not in ('ipk', 'apk', 'both', 'publish', 'dist', 'kit', 'release', 'version', 'sums'):
+        print('用法: python build.py [ipk|apk|both|publish|dist|kit <dir>|release|version|sums]')
         sys.exit(2)
     if which == 'version':
         print(VERSION)
@@ -824,6 +842,12 @@ def main():
         return
     if which == 'dist':
         publish_dist(existing_pkgs())
+        return
+    if which == 'kit':
+        if len(sys.argv) < 3:
+            print('用法: python build.py kit <make-router-kit 输出目录>')
+            sys.exit(2)
+        publish_kit(sys.argv[2])
         return
     if which == 'release':
         if not publish_release(existing_pkgs()):

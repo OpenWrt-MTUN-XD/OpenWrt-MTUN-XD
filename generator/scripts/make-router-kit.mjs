@@ -406,24 +406,20 @@ async function publishKit(files) {
 }
 
 
-// 顺手把 kit 也丢进套件仓库的 dist/（Cloudflare 托管那份）：仓库转私有之后，路由器上的
-// 「工具升级」从这儿拉。⚠️ 找不到那个目录就算了，两个仓库没放在一起时不该拦着打包。
-const SUITE_DIST = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist');
+// ⑥′ 把 kit 产物写进 OUT（不直接动套件仓库的 dist/）。
+//    dist/ 由 `python build.py kit <OUT>` 复制并重算 SHA256SUMS —— 发版纪律要求
+//    「dist 只能由构造脚本写入」，make-router-kit 自己不再越权改 dist/。
 if (NO_PUBLISH) {
-  console.log('  KIT_NO_PUBLISH=1：不动 dist/（预览不改变发布产物）');
-} else if (existsSync(SUITE_DIST)) {
-  const kitFiles = [ZIP_NAME, TAR_NAME, 'generator.sh'];
-  writeFileSync(join(SUITE_DIST, ZIP_NAME), zipBuf);
-  writeFileSync(join(SUITE_DIST, TAR_NAME), tarBuf);
-  // ⚠️ 必须过一遍 lf()：GitHub 那份（publishKit）已经是 LF，而这里原样 cp 的话，
-  //    工作区一旦被洗成 CRLF，CF 托管那份就成了 `#!/bin/sh\r`（内核报 not found）。
-  writeFileSync(join(SUITE_DIST, 'generator.sh'),
-    lf(readFileSync(join(DEPLOY, 'generator.sh'), 'utf8')));
-  // ⚠️ 这三样换了，SHA256SUMS 必须跟着改 —— 否则单独跑这个脚本时发出去的校验和是旧的，
-  //    install.sh 会拒装。
-  updateSums(SUITE_DIST, kitFiles);
-  console.log(`  也放进套件仓库的 dist/（CF 托管那份）：${SUITE_DIST}`);
+  console.log('  KIT_NO_PUBLISH=1：只写本地 OUT，不进 dist/、不发 genkit');
 }
+const kitFiles = [ZIP_NAME, TAR_NAME, 'generator.sh'];
+writeFileSync(join(OUT, ZIP_NAME), zipBuf);
+writeFileSync(join(OUT, TAR_NAME), tarBuf);
+writeFileSync(join(OUT, 'generator.sh'),
+  lf(readFileSync(join(DEPLOY, 'generator.sh'), 'utf8')));
+console.log('  kit 产物：' + OUT);
+console.log('  进套件 dist/：python build.py kit ' + OUT);
+void kitFiles;
 
 let KIT_URL = '';
 if (NO_PUBLISH) {

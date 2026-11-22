@@ -174,13 +174,16 @@ git diff --check
 ## 配置工具包（kit）发布纪律
 
 - 配置工具包的滚动 release 在**独立仓库** `OpenWrt-MTUN-XD/genkit`（tag `genkit`），主仓库的 releases 只放正式版。
-- 预览用 `KIT_NO_PUBLISH=1 bun scripts/make-router-kit.mjs` —— 只生成到本地，**不上传 genkit、不动 `dist/`**。
-- 不加这个开关时，脚本会「顺手」发布到 genkit 并覆盖 `dist/`；随后若又 `git checkout -- dist`，两边就不同源，
-  套件的摘要校验会报「配置工具校验失败」（2026-11-18 事故）。
-- 改了生成器、需要正式发布 kit 时：跑一次**不带开关**的 `make-router-kit`，然后**把 `dist/` 一起提交**。
+- 预览用 `KIT_NO_PUBLISH=1 bun scripts/make-router-kit.mjs` —— 只生成到本地 OUT，**不上传 genkit、不动 `dist/`**。
+- `make-router-kit` 只写 OUT（桌面 `mihomo-deploy/`），**不再直接改 `dist/`**。正式发 kit 的路径只有一条：
+  不带开关跑脚本（发 genkit）→ `python build.py kit <OUT>`（复制进 `dist/` + 重算 `SHA256SUMS`）→ 提交 `dist/`。
+- **禁止手工 cp kit 进 `dist/`**。CI 在提交 `dist/` 前会跑
+  `python tools/check-kit-dist.py /tmp/mihomo-deploy dist v<版本>`：解 `dist/mihomo-deploy.tar.gz`
+  与当前源码拍平目录逐文件比对，并要求 `config/state.js` 的 `APP_VERSION` 等于本次版本号；不一致直接 fail。
 - 发布前或排查此类问题，跑 `sh tools/check-kit-sync.sh`（比对 `dist/`）或 `--remote`（比对 CDN）确认同源。
-- **只改配置工具（`generator/`）时不需要发版**：跑一次 `make-router-kit` 重发 kit 即可，
-  用户点「更新配置工具」（`mtun-xd tool`）或跑 `console` 就拿到。
+- **只改配置工具（`generator/`）时不需要发版**：跑 `make-router-kit` → `python build.py kit <OUT>`
+  重发 kit 即可，用户点「更新配置工具」（`mtun-xd tool`）或跑 `console` 就拿到。
+  但 `dist/` 变更仍按部署纪律走：推送即上线，必须明确授权。
   发版只用于 `package/`、`install.sh`、`control/`、`deploy/` 或套件脚本的改动。
 
 ## 下载与安全

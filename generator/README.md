@@ -91,7 +91,8 @@ bun run build        → 产出 dist/（纯静态，扔哪都能托管）
 ## 上路由器（部署包）
 
 ```shell
-bun scripts/make-router-kit.mjs     # 出桌面的 mihomo-deploy/（完整包）
+bun scripts/make-router-kit.mjs     # 出桌面的 mihomo-deploy/（完整包，不改 dist/）
+python build.py kit ~/Desktop/mihomo-deploy   # 发版时：复制进 dist/ + 重算 SHA256SUMS
 ```
 
 **现在不用了** —— 装套件（`MTUN-XD`）、或点它的「软件升级 → 控制台升级」，就把生成器

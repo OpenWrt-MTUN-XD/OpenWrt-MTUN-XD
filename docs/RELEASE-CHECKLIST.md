@@ -74,9 +74,11 @@ python3 build.py
 >
 > - **本次没有主动更新配置工具包（kit）**：确认 `dist/` 没有意外改动；若有，先查明来源，
 >   不要盲目 `git checkout -- dist` 把它revert 掉。
-> - **本次要更新 kit**：跑一次**不带** `KIT_NO_PUBLISH` 的 `bun scripts/make-router-kit.mjs`，
->   然后把 `dist/` 一起提交 —— 否则 CDN 与 genkit 会不同源，套件的摘要校验会报错。
-> - 推送前跑 `sh tools/check-kit-sync.sh`（本地）或 `sh tools/check-kit-sync.sh --remote`（CDN），确认一致。
+> - **本次要更新 kit**：不带 `KIT_NO_PUBLISH` 跑一次 `bun scripts/make-router-kit.mjs`（只写 OUT），
+>   再跑 `python build.py kit <OUT>` 把 kit 复制进 `dist/` 并重算 `SHA256SUMS`，然后把 `dist/` 一起提交。
+>   **禁止手工 cp kit 进 `dist/`。**
+> - 推送前跑 `sh tools/check-kit-sync.sh`（本地）或 `--remote`（CDN）确认与 genkit 同源；
+>   CI 还会用 `python tools/check-kit-dist.py /tmp/mihomo-deploy dist v<版本>` 卡一次源码同步。
 >
 > 预览（只推路由器看效果）必须用 `KIT_NO_PUBLISH=1`，它不会动 `dist/`、也不会发布 kit。
 

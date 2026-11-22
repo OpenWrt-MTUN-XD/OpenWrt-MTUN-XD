@@ -377,7 +377,7 @@ input[type="number"].field-input { max-width: 120px; }
 #strategy-field { display: flex; flex-direction: column; padding-top: 24px; }
 /* 精准分流：出口策略标题跟默认出口下拉框、节点框的上沿齐平 */
 #node-role-grid #strategy-field { padding-top: 22px; }
-#node-role-grid #strategy-field .group-title { margin: 0; padding-top: 0; border-top: none; }
+#node-role-grid #strategy-field .group-title { margin: 0 0 2px; padding-top: 0; border-top: none; line-height: 1.4; }
 /* 节点框跟左边两个勾选框的起始行对齐（框的第一行文字 = 第一个勾选框） */
 #auto-pool-field { padding-top: 18px; }
 #strategy-field .hint { margin-top: 7px; }
@@ -386,10 +386,11 @@ input[type="number"].field-input { max-width: 120px; }
   grid-template-columns: max-content max-content;
   column-gap: 12px;
   align-items: center;
-  margin-top: 7px;
+  margin-top: 0;
+  line-height: 1.4;
 }
-#strategy-field .strat-row .strat-name { font-size: 13px; line-height: 1.6; }
-#strategy-field .strat-row .check { margin-top: 0; }
+#strategy-field .strat-row .strat-name { font-size: 13px; line-height: 1.4; }
+#strategy-field .strat-row .check { margin-top: 0; padding: 0; line-height: 1.4; }
 /* 挂到「常用规则」列下面时，跟上面三个勾选框留一点空 */
 .rules-common #strategy-field { padding-top: 10px; }
 /* 策略格作为「常用规则」后面的一列时，网格多给一列 */

@@ -797,9 +797,24 @@
     var rrRow = $('auto-round-robin');
     var lbRow = $('lb-round-robin');
     // 注意：这些元素有 class 上的 display，单靠 hidden 属性会被 CSS 盖掉，必须改 style.display
-    // 两行位置固定：不显示时用 visibility 占位，避免出现/消失导致整块跳动
-    if (rrRow) $('rr-row').style.visibility = smartOn ? '' : 'hidden';
-    if (lbRow) $('lb-row').style.visibility = groupOn ? '' : 'hidden';
+    // 精准分流：两行固定占位，不显示时用 visibility，避免整块跳动。
+    // 内网控制：没有自动优选组，直接收起第一行，让「负载均衡」对住常用规则第一项。
+    var oneipMode = state.mode === 'oneip';
+    var rrRowEl = $('rr-row');
+    var lbRowEl = $('lb-row');
+    if (rrRowEl && lbRowEl) {
+      if (oneipMode) {
+        rrRowEl.style.display = 'none';
+        rrRowEl.style.visibility = '';
+        lbRowEl.style.display = groupOn ? '' : 'none';
+        lbRowEl.style.visibility = '';
+      } else {
+        rrRowEl.style.display = '';
+        lbRowEl.style.display = '';
+        rrRowEl.style.visibility = smartOn ? '' : 'hidden';
+        lbRowEl.style.visibility = groupOn ? '' : 'hidden';
+      }
+    }
     // 两个勾都不显示时，「同组同IP出口」那行提示也别占位
     var hintEl = $('strategy-hint');
     if (hintEl) hintEl.style.display = (smartOn || groupOn) ? '' : 'none';

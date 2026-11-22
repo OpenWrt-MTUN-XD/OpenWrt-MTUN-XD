@@ -411,6 +411,8 @@ def main():
           'doctor 的挂载判据覆盖 uhttpd / HAProxy / nginx')
     check('已挂载，但 /ui/ 打不开' in cli,
           '已挂载但 /ui/ 失败时按 core_alive 归因')
+    check('pidof haproxy' in cli and '[ -f "$NGINX_LOC" ]' in cli,
+          '挂载判据校验 HAProxy 进程 / nginx 挂载点')
     check('80 端口：已挂载（${mounted:-$(expose_addr)}）' in cli,
           'SOFT 文案用实际挂载地址')
     check('仍可使用 9090' not in cli,

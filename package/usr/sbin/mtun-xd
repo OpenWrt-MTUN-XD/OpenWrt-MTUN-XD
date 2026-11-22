@@ -1179,7 +1179,7 @@ doctor() {
         *)
             if expose_mounted; then
                 if core_alive; then
-                    _wrn "80 端口：已挂载，但 /ui/ 打不开（检查 uhttpd / 80 占用 / 静态文件）"
+                    _wrn "80 端口：已挂载，但 /ui/ 打不开（检查 uhttpd / 80 占用 / 静态文件；面板仅本机 $(expose_addr) 可访问）"
                 else
                     _wrn "80 端口：已挂载，内核未运行（启动后生效；面板仅本机 $(expose_addr) 可访问）"
                 fi
@@ -1571,8 +1571,8 @@ expose_ensure() {
 # doctor 不能只看 uhttpd：另两套的机器会误报「未挂载」。
 expose_mounted() {
     [ -n "$(uhttpd_cur 2>/dev/null)" ] && return 0
-    [ -f "$HAPROXY_STATE" ] && return 0
-    [ -f "$NGINX_STATE" ] && return 0
+    [ -f "$HAPROXY_STATE" ] && pidof haproxy >/dev/null 2>&1 && return 0
+    [ -f "$NGINX_STATE" ] && [ -f "$NGINX_LOC" ] && return 0
     return 1
 }
 

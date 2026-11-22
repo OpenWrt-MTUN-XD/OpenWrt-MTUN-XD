@@ -181,6 +181,7 @@ git diff --check
   `python tools/check-kit-dist.py /tmp/mihomo-deploy dist v<版本>`：解 `dist/mihomo-deploy.tar.gz`
   与当前源码拍平目录逐文件比对，并要求 `config/state.js` 的 `APP_VERSION` 等于本次版本号；不一致直接 fail。
 - 发布前或排查此类问题，跑 `sh tools/check-kit-sync.sh`（比对 `dist/`）或 `--remote`（比对 CDN）确认同源。
+- **tag 只承诺复现 `install.sh` 与两种包，不承诺复现 kit。** kit 是滚动产物，`dist/` 里的 kit 会随配置工具更新，不随 tag 冻结。
 - **只改配置工具（`generator/`）时不需要发版**：跑 `make-router-kit` → `python build.py kit <OUT>`
   重发 kit 即可，用户点「更新配置工具」（`mtun-xd tool`）或跑 `console` 就拿到。
   但 `dist/` 变更仍按部署纪律走：推送即上线，必须明确授权。

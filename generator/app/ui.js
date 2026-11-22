@@ -598,7 +598,7 @@
         ? '只有一个节点，所有流量走它'
         : (state.autoSelect
           ? (smartGroup
-            ? '默认：健康检查 + 哈希/轮询'
+            ? '默认：自动选最快的节点'
             : (smartPool.length
               ? '成员只剩一个，直接用它'
               : '成员全取消，默认直连'))
@@ -842,10 +842,14 @@
     // 下面只留策略行；精准分流仍由勾选框自身承载「一致性哈希 / 轮询」。
     var warnEl = $('strategy-warn');
     var brEl = $('strategy-br');
+    var techEl = $('strategy-tech');
+    var oneipEl = $('strategy-oneip');
     if (warnEl) warnEl.hidden = inRules;
     if (brEl) brEl.hidden = inRules;
+    if (techEl) techEl.hidden = inRules;
+    if (oneipEl) oneipEl.hidden = !inRules;
     if (strategyHint) strategyHint.hidden = false;
-    if (lbLabel) lbLabel.textContent = inRules ? '同组节点出口 IP 必须一致' : '负载均衡';
+    if (lbLabel) lbLabel.textContent = inRules ? '按连接轮流' : '负载均衡';
     if (box.hidden) return;
     // 成员框必须填：即使组里只剩 1 个（smartOn 为假）也要把节点列出来，否则框里是空的
     if (!(state.autoSelect && isMulti())) return;
@@ -905,6 +909,8 @@
     if (!hint) return;
     hint.style.marginTop = '';
     if (hint.hidden || getComputedStyle(hint).display === 'none') return;
+    // 提示超过两行时不强行贴底：会顶到上面的勾选框，改成自然往下排
+    if (hint.getBoundingClientRect().height > 42) return;
     var lbRow = $('lb-round-robin');
     var lbOn = lbRow && lbRow.parentNode
       && getComputedStyle(lbRow.parentNode).display !== 'none';

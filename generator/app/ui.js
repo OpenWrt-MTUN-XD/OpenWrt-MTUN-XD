@@ -898,45 +898,6 @@
   }
 
   /**
-   * 策略提示跟旁边对齐：
-   *   · 只有「智能选择组」一行 → 底边对齐左边「默认出口」的说明
-   *   · 「智能选择组 + 负载均衡组」两行 → 底边对齐右边成员框下的说明
-   * 按渲染结果算，不写死像素；窗口宽度变化时重算。
-   */
-  function alignStrategyHint() {
-    var hint = $('strategy-hint');
-    if (!hint) return;
-    hint.style.marginTop = '';
-    if (hint.hidden || getComputedStyle(hint).display === 'none') return;
-    var lh = parseFloat(getComputedStyle(hint).lineHeight);
-    if (!lh || !isFinite(lh)) lh = parseFloat(getComputedStyle(hint).fontSize) * 1.5 || 19;
-    var tall = hint.getBoundingClientRect().height > lh * 2 + 1;
-    var lbRow = $('lb-row');
-    var lbOn = lbRow && getComputedStyle(lbRow).display !== 'none';
-    // 只有一行勾选时不再贴底：窄宽度下左侧说明会折行，贴底会把提示推出一段空行
-    if (!lbOn) return;
-    var target = null;
-    if (lbOn) {
-      var poolField = $('auto-pool-field');
-      var poolHint = document.querySelector('#auto-pool-field p.hint');
-      if (poolField && !poolField.hidden && poolHint) target = poolHint;
-    }
-    if (!target) target = $('default-node-hint');
-    if (!target || target.getClientRects().length === 0) return;
-    var delta = target.getBoundingClientRect().bottom - hint.getBoundingClientRect().bottom;
-    if (Math.abs(delta) < 1) return;
-    // 长提示要往上贴时，先确认不会顶到上面的勾选框；顶到就不动
-    if (tall && delta < 0) {
-      // 上一个兄弟可能被藏掉（另一行的勾选框），要往前找到真正可见的那个
-      var prev = hint.previousElementSibling;
-      while (prev && prev.getClientRects().length === 0) prev = prev.previousElementSibling;
-      var floor = prev ? prev.getBoundingClientRect().bottom + 4 : 0;
-      if (hint.getBoundingClientRect().top + delta < floor) return;
-    }
-    hint.style.marginTop = Math.round(delta) + 'px';
-  }
-
-  /**
    * 出口策略整块贴底：让「不勾：…」最后一行和右边成员说明底边对齐。
    * 只调整标题的上边距，块内行距保持 2px，不产生新的空行。
    */

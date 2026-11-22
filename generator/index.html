@@ -6,7 +6,7 @@
 <meta name="description" content="MTUN-XD 配置工具 —— 全部在浏览器本地完成。">
 <title>MTUN-XD</title>
 <link rel="icon" href="app/favicon.png" type="image/png">
-<link rel="stylesheet" href="app/style.css?v=2026112301">
+<link rel="stylesheet" href="app/style.css?v=kit">
 
 <script src="app/secret.js"></script>
 
@@ -137,12 +137,12 @@
         <div class="field">
           <label class="field-label" for="unified-delay">统一延迟</label>
           <div class="check"><input type="checkbox" id="unified-delay"> 启用</div>
-          <p class="hint">测速握手超时时间，自动选择</p>
+          <p class="hint">握手与请求合为一次，测出来的延迟更接近真实</p>
         </div>
         <div class="field">
           <label class="field-label" for="tcp-concurrent">TCP 并发</label>
           <div class="check"><input type="checkbox" id="tcp-concurrent"> 启用</div>
-          <p class="hint">域名解析后的并发连接数，自动选择</p>
+          <p class="hint">同一域名解析出多个 IP 时并发连接，取最快的那个</p>
         </div>
 
         <div class="field" id="ipv6-field">
@@ -268,7 +268,7 @@
           <div class="chips" id="rule-list"></div>
           <p class="hint" id="rule-type-hint">域名生成 <code>DOMAIN</code>；公网 IP 生成 <code>IP-CIDR</code><span id="ipv6-rule-hint"> / <code>IP-CIDR6</code></span>（按目标）；
             内网 IP 自动生成 <code>SRC-IP-CIDR</code>（按来源，即这台设备怎么走）。</p>
-          <p class="hint">选 2 个以上节点：这几个节点分摊负载；默认同一网站固定走一个，要轮流就勾上面的「负载均衡」</p>
+          <p class="hint">选 2 个以上节点：这几个节点分摊负载；默认每个网站独立用一个节点，要叠加带宽就勾上面的「叠加轮询」</p>
         </div>
         <div class="rules-common" id="rules-common">
           <h3 class="group-title">常用规则</h3>

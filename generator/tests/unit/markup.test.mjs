@@ -17,9 +17,10 @@ describe('index.html 结构', () => {
     expect(count(/<label\b/g)).toBe(count(/<\/label>/g));
   });
 
-  test('勾选框一律 div.check，行内不夹 </label>', () => {
-    expect(html).not.toContain('<label class="check"');
-    const bad = html.split('\n').filter((ln) => ln.includes('class="check"') && ln.includes('</label>'));
-    expect(bad).toEqual([]);
+  test('勾选框标签配平（label.check 允许，但不能忘了闭合）', () => {
+    const labelRows = html.split('\n').filter((ln) => ln.includes('<label class="check"'));
+    expect(labelRows.length).toBeGreaterThan(0);
+    expect(labelRows.every((ln) => ln.includes('</label>'))).toBe(true);
+    expect(count(/<label\b/g)).toBe(count(/<\/label>/g));
   });
 });

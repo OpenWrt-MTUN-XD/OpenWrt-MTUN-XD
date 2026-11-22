@@ -238,10 +238,10 @@
           <p class="hint" id="default-node-hint">未匹配规则的流量将通过此节点转发。</p>
         </div>
         <div class="field" id="strategy-field" hidden>
-          <p class="group-title" id="strategy-title">出口策略</p>
-          <div class="check"><input type="checkbox" id="auto-round-robin"> <span id="rr-label">自动优选 · 按连接轮流</span></div>
-          <div class="check"><input type="checkbox" id="lb-round-robin"> <span id="lb-label">负载均衡 · 按连接轮流</span></div>
-          <p class="hint" id="strategy-hint">默认不勾：这些节点出口 IP 相同时，才勾「按连接轮流」。</p>
+          <p class="group-title" id="strategy-title">出口策略 · 按组设置</p>
+          <div class="strat-row" id="rr-row"><span class="strat-name">自动优选</span><label class="check"><input type="checkbox" id="auto-round-robin"> 按连接轮流</label></div>
+          <div class="strat-row" id="lb-row"><span class="strat-name">负载均衡</span><label class="check"><input type="checkbox" id="lb-round-robin"> 按连接轮流</label></div>
+          <p class="hint" id="strategy-hint">不勾：整组同一网站固定走一个<br>勾：按连接轮流，需同 IP 出口</p>
         </div>
         <div class="field" id="auto-pool-field" hidden>
           <div class="node-list pool-list" id="auto-pool-list"></div>

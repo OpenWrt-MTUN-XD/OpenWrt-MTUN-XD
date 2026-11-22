@@ -381,6 +381,15 @@ input[type="number"].field-input { max-width: 120px; }
 /* 节点框跟左边两个勾选框的起始行对齐（框的第一行文字 = 第一个勾选框） */
 #auto-pool-field { padding-top: 18px; }
 #strategy-field .hint { margin-top: 0; }
+#strategy-field .strat-row {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: 12px;
+  align-items: center;
+  margin-top: 7px;
+}
+#strategy-field .strat-row .strat-name { font-size: 13px; line-height: 1.6; }
+#strategy-field .strat-row .check { margin-top: 0; }
 /* 挂到「常用规则」列下面时，跟上面三个勾选框留一点空 */
 .rules-common #strategy-field { padding-top: 10px; }
 /* 策略格作为「常用规则」后面的一列时，网格多给一列 */
@@ -392,7 +401,7 @@ input[type="number"].field-input { max-width: 120px; }
 .rules-split #strategy-field .group-title { margin: 0; padding-top: 0; border-top: none; }
 .rules-split #strategy-field .check { margin-top: 8px; font-size: 13px; }
 /* 内网控制：说明行跟勾选框右侧的文字对齐，不是跟勾选框左缘对齐 */
-.rules-split #strategy-field .hint { padding-left: 22px; color: inherit; font-size: 13px; }
+.rules-split #strategy-field .hint { padding-left: 0; color: inherit; font-size: 13px; }
 
 
 /* 一机一IP 没有「默认出口」：策略格从第 1 列开始跨两列，别只占第 2 列 */

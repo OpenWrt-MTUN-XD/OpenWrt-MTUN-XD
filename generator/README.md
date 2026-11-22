@@ -135,6 +135,9 @@ curl -fsSL https://raw.githubusercontent.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/mai
 2. **同一主机的协议默认口**（只对 http 页面；https 不试 443）—— 给「页面开在 9090、
    写盘口在 uhttpd 80」那种布局兜底。
 
+⚠️ 写盘 CGI 的判活委托给套件的 `/usr/sbin/mtun-xd core-state`：
+**生成器独立部署时也必须安装套件**，否则「载入配置文件」会一直报 `none`。
+
 ⚠️ 两条都探不到（比如只映射了 9090、80 没露出去）⇒ **根本不显示「载入配置文件」按钮**，
 旁边写一句原因。以前的「信箱」兜底（投进 mihomo 的 `/storage`、机器上 cron 取信）
 2026-10-16 已整个撤掉。

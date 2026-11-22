@@ -16,7 +16,6 @@
 BASE='/etc/mihomo'
 CONFIG="$BASE/config.yaml"
 BIN="$BASE/mihomo"
-CONTAINER='mihomo'                             # Docker 容器名（API 调不通时兜底重启）
 CFG_TMP=''
 CFG_BAK=''
 CFG_TEST=''
@@ -102,7 +101,8 @@ lan_ips() {
 # ⚠️ 不能只打配置里那一个地址：内核热载不重新绑定监听（老地址照旧在听、新地址没人听），
 #    而写盘这一步是先落盘再让内核重读 ⇒ 新地址这时候没人应，PUT 拒连，整条链子退化成
 #    `reload: none`：配置只落了盘、内存里一点没生效，可页面还弹"已载入配置文件"。
-#    ⇒ 挨个试：配置地址 → 127.0.0.1:端口 → 本机各 IPv4:端口 → 再试 9090 → netstat 里真在听的。
+#    ⇒ 挨个试：配置地址 → 127.0.0.1:端口 → 本机各 IPv4:端口 → 再试 9090。
+#    ⚠️ 不按进程名去 netstat 里捞监听：那和「用端口有应答反推内核在跑」是同一类直觉。
 api_try() {
   local secret c p seen=''
   secret=$(api_secret)
@@ -114,8 +114,7 @@ api_try() {
            "127.0.0.1:$p" \
            $(lan_ips | sed "s|\$|:$p|") \
            "127.0.0.1:9090" \
-           $(lan_ips | sed 's|$|:9090|') \
-           $(netstat -ltnp 2>/dev/null | awk '/mihomo/ && $4 ~ /:/ {print $4}'); do
+           $(lan_ips | sed 's|$|:9090|'); do
     [ -n "$c" ] || continue
     case " $seen " in *" $c "*) continue ;; esac
     seen="$seen $c"
@@ -131,10 +130,9 @@ api_try() {
   return 1
 }
 
-# 重启内核（procd 那套是 /etc/init.d/mihomo，Docker 那套是 docker restart）
+# 重启内核（只支持 procd：/etc/init.d/mihomo）
 core_restart() {
-  /etc/init.d/mihomo restart >/dev/null 2>&1 && return 0
-  docker restart "$CONTAINER" >/dev/null 2>&1
+  /etc/init.d/mihomo restart >/dev/null 2>&1
 }
 
 # 配置里写的监听地址，内核是不是真的在听。
@@ -147,7 +145,8 @@ listen_ok() {
   port=${raw##*:}
   host=${raw%:*}
   case "$host" in \[*\]) host=${host#\[}; host=${host%\]} ;; esac
-  list=$(netstat -ltnp 2>/dev/null | awk '/mihomo/ {print $4}')
+  # 端口已被 api_try 用 secret 验过；这里只核对监听地址，不按进程名猜
+  list=$(netstat -ltn 2>/dev/null | awk '{print $4}' | grep -E ":$port\$")
   [ -n "$list" ] || return 0
   case "$host" in
     0.0.0.0|'::'|'')

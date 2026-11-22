@@ -16,6 +16,8 @@
 BASE='/etc/mihomo'
 CONFIG="$BASE/config.yaml"
 BIN="$BASE/mihomo"
+BIN_REAL=$(readlink -f "$BIN" 2>/dev/null || true)
+[ -n "$BIN_REAL" ] || BIN_REAL="$BIN"
 CONTAINER='mihomo'                             # Docker 容器名（API 调不通时兜底重启）
 CFG_TMP=''
 CFG_BAK=''
@@ -164,20 +166,44 @@ listen_ok() {
   esac
 }
 
-# 内核重启后**真的**回来了吗：/version 回 200/401 才算（进程被拉起 ≠ 能服务）。
+# 先确认跑着的是**我们自己的**内核：别的工具（OpenClash）也可能占着 9090 回 401/200。
+core_alive() {
+    local pid exe cmd
+    for pid in $(pidof mihomo 2>/dev/null) $(pgrep -f "$BIN" 2>/dev/null); do
+        [ -n "$pid" ] || continue
+        exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null) || continue
+        case "$exe" in
+            "$BIN_REAL"|"$BIN_REAL (deleted)") ;;
+            *) continue ;;
+        esac
+        cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+        case "$cmd" in *" -t "*) continue ;; esac
+        case "$cmd" in
+            *"-d $BASE"*|*"-f $CONFIG"*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# 内核重启后**真的**回来了吗：进程是我们的 + /version 回 200/401（进程被拉起 ≠ 能服务）。
+# ⚠️ 不写死 9090：只认配置里的 external-controller，9090 上可能是别家的 API。
 # 少了这一道，"载入配置文件"会把内核弄死也报成功 —— 文件已经是新的、备份还被删了。
 core_healthy() {
+    core_alive || return 1
     local c code i
-    for c in "$(api_addr_norm)" "127.0.0.1:9090"; do
-        [ -n "$c" ] || continue
-        i=0
-        while [ "$i" -lt 4 ]; do
-            i=$((i + 1))
-            code=$(curl -s -o /dev/null -w '%{http_code}' -m 3 \
-                     -H "Authorization: Bearer $(api_secret)" "http://$c/version" 2>/dev/null)
-            case "$code" in 200|401) return 0 ;; esac
-            sleep 1
-        done
+    c=$(api_addr_norm)
+    if [ -z "$c" ]; then
+        sleep 1
+        core_alive
+        return $?
+    fi
+    i=0
+    while [ "$i" -lt 4 ]; do
+        i=$((i + 1))
+        code=$(curl -s -o /dev/null -w '%{http_code}' -m 3 \
+                 -H "Authorization: Bearer $(api_secret)" "http://$c/version" 2>/dev/null)
+        case "$code" in 200|401) return 0 ;; esac
+        sleep 1
     done
     return 1
 }

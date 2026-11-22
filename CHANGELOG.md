@@ -1,5 +1,13 @@
 # 变更记录
 
+## 未发布
+
+### 修复
+
+- 收紧内核判活：`core-state` / `core-start` / `core-stop` 统一走 `core_alive`，
+  排除 `mihomo -t` 校验进程与外部 API 应答；`expose_probe` 与生成器 CGI 也先判进程
+- 注意：手动启动且不带 `-d` / `-f` 的内核会被判「未运行」，属有意取舍
+
 ## 2026.11.17
 
 ### 修复

@@ -30,6 +30,9 @@ UI="$BASE/ui"
 UINEW="$BASE/.ui.new"
 UIOLD="$BASE/.ui.old"
 BIN="$BASE/mihomo"
+# 软链也认：比较前先解析一次（每轮 fork readlink 没必要）
+BIN_REAL=$(readlink -f "$BIN" 2>/dev/null || true)
+[ -n "$BIN_REAL" ] || BIN_REAL="$BIN"
 # 工具密码的明文（在 /etc/mihomo 外面，别跟着 BASE 走）—— 收尾的汇总要读它。
 # 生成器那边同一个路径（deploy/generator.sh 的 TOOLFILE），改要一起改。
 TOOLFILE=/etc/mihomo-toolpass
@@ -343,21 +346,20 @@ cfg_get() {   # cfg_get <键>
 core_version() { "$BIN" -v 2>/dev/null | head -1 | sed -n 's/.*\(v[0-9][^ ]*\).*/\1/p' | sed 's/^v//'; }
 panel_version() { sed -n 's/.*appVersion:"\([^"]*\)".*/\1/p' "$UI/index.html" 2>/dev/null | head -1 | tr -d '\r'; }
 
-# 内核到底活没活：只看**我们自己的进程**（exe 路径 + 启动参数），不再拿 9090 上
-# 「有东西应答」当证据。OpenClash 等工具默认也占 9090，我们的内核关着时它会回
-# 401（甚至 200），按旧逻辑就会误报「运行中」。
-# ⚠️ 同名的 mihomo / 同路径二进制也可能被别的工具拉起来，所以再看一眼 -d/-f 指向。
-CORE_ADDR=''
+# 内核到底活没活：只看**我们自己的进程**（exe 路径 + 启动参数），不看任何端口。
+# OpenClash 等工具也可能占着 9090 回 401/200，靠「端口有应答」判活会误报。
+# ⚠️ `mihomo -t` 校验进程的 exe/cmdline 也满足前两条，必须先把 -t 排除掉。
 core_alive() {
     local pid exe cmd
     for pid in $(pidof mihomo 2>/dev/null) $(pgrep -f "$BIN" 2>/dev/null); do
         [ -n "$pid" ] || continue
         exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null) || continue
         case "$exe" in
-            "$BIN"|"$BIN (deleted)") ;;
+            "$BIN_REAL"|"$BIN_REAL (deleted)") ;;
             *) continue ;;
         esac
         cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+        case "$cmd" in *" -t "*) continue ;; esac
         case "$cmd" in
             *"-d $BASE"*|*"-f $CFG"*) return 0 ;;
         esac
@@ -1413,6 +1415,8 @@ expose_lan_ips() {
 # 内核在那个地址上**真的**应答吗：状态码 200/401 且主体是 JSON（mihomo 的 /version
 # 和那句 Unauthorized 都是 JSON）。⚠️ 不能只看"端口上有东西"—— 那上面可能蹲着别的服务。
 expose_probe() {
+    # 「端口有人应答」不能证明是我们的内核 —— 先过进程判活
+    core_alive || return 1
     local out code
     [ -n "$1" ] || return 1
     out=$(curl -s -m 2 -o - -w '\n@@%{http_code}' \
@@ -2165,17 +2169,19 @@ case "${1:-}" in
     toolpass) toolpass ;;
     core-state)
         # 给 LuCI「启动/停止核心」按钮查状态用：只回一行 running / stopped（别加花）
-        if pidof mihomo >/dev/null 2>&1; then echo running; else echo stopped; fi
+        core_alive && echo running || echo stopped
         ;;
     core-start)
         [ -x /etc/init.d/mihomo ] && /etc/init.d/mihomo start >/dev/null 2>&1
-        sleep 1
-        if pidof mihomo >/dev/null 2>&1; then echo running; else echo stopped; fi
+        i=0
+        while ! core_alive && [ "$i" -lt 5 ]; do i=$((i + 1)); sleep 1; done
+        core_alive && echo running || echo stopped
         ;;
     core-stop)
         [ -x /etc/init.d/mihomo ] && /etc/init.d/mihomo stop >/dev/null 2>&1
-        sleep 1
-        if pidof mihomo >/dev/null 2>&1; then echo running; else echo stopped; fi
+        i=0
+        while core_alive && [ "$i" -lt 5 ]; do i=$((i + 1)); sleep 1; done
+        core_alive && echo running || echo stopped
         ;;
     selfcheck)
         # 开机自检（由 /etc/init.d/mtun-xd-selfcheck 调；也可以手跑看它要修什么）

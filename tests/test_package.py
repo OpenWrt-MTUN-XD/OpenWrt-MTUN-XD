@@ -394,6 +394,28 @@ def main():
     check('selfcheck-install.sh' in cli and 'sh "$tmp" >/dev/null 2>&1' in cli,
           '开机自检补装时先下载再执行')
 
+    # 内核判活唯一入口：core_alive；按钮命令不得再裸 pidof
+    check(cli.count('pidof mihomo') == 1, 'pidof mihomo 只出现在 core_alive 内')
+    core_seg = cli[cli.find('core_alive()'):]
+    core_seg = core_seg[:core_seg.find('\n}\n')]
+    check('curl' not in core_seg and '9090' not in core_seg, 'core_alive 不依赖端口/API')
+    check(' -t ' in core_seg, 'core_alive 排除 -t 校验进程')
+    probe_seg = cli[cli.find('expose_probe()'):]
+    check('core_alive || return 1' in probe_seg[:400], 'expose_probe 先短路 core_alive')
+    for fn in ('core-state)', 'core-start)', 'core-stop)'):
+        part = cli[cli.find(fn):]
+        part = part[:part.find(';;')]
+        check('core_alive' in part and 'pidof' not in part, fn[:-1] + ' 走 core_alive')
+
+    # 生成器 CGI：先确认是我们自己的进程，再看 API；不再写死 9090
+    cgi_path = os.path.join(ROOT, 'generator', 'deploy', 'mihomo-apply')
+    if os.path.exists(cgi_path):
+        cgi = open(cgi_path, encoding='utf-8').read()
+        ch = cgi[cgi.find('core_healthy()'):]
+        ch = ch[:ch.find('\n}\n')]
+        check('core_alive || return 1' in ch, 'mihomo-apply 先判进程再探 API')
+        check('127.0.0.1:9090' not in ch, 'mihomo-apply 不写死 9090')
+
     # 卸载默认保留用户数据；只有显式 --purge 才全删；nginx 那套也要撤
     check('KEEP_CONFIG' in cli and 'uninstall [--purge|--keep-config]' in cli,
           'uninstall 支持安全保留与显式 purge')

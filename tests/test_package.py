@@ -395,7 +395,7 @@ def main():
           '开机自检补装时先下载再执行')
 
     # 装完先等 API 真应答，再挂 80 —— core_alive 只证明进程在，不证明 9090 能答
-    _i_wait = cli.find('while ! expose_probe "$(expose_addr)"')
+    _i_wait = cli.find('while core_alive && ! expose_probe "$(expose_addr)"')
     _i_on = cli.find('if expose_on; then expose_ok=1; fi')
     check(_i_wait != -1 and _i_on != -1 and _i_wait < _i_on,
           'setup 先等单点 expose_probe 应答再挂 80')
@@ -405,6 +405,14 @@ def main():
           '已挂载但内核未运行时有独立文案')
     check('面板仅本机 $(expose_addr)' in cli,
           '提示里的面板地址来自 expose_addr')
+    check('expose_mounted()' in cli
+          and '[ -f "$HAPROXY_STATE" ]' in cli
+          and '[ -f "$NGINX_STATE" ]' in cli,
+          'doctor 的挂载判据覆盖 uhttpd / HAProxy / nginx')
+    check('已挂载，但 /ui/ 打不开' in cli,
+          '已挂载但 /ui/ 失败时按 core_alive 归因')
+    check('80 端口：已挂载（${mounted:-$(expose_addr)}）' in cli,
+          'SOFT 文案用实际挂载地址')
     check('仍可使用 9090' not in cli,
           '失败文案不再建议访问不可达的 9090')
 

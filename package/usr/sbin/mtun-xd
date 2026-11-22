@@ -1177,8 +1177,12 @@ doctor() {
     case "$(expose_status 2>/dev/null)" in
         on) _ok "80 端口转发正常" ;;
         *)
-            if [ -n "$(uhttpd_cur 2>/dev/null)" ]; then
-                _wrn "80 端口：已挂载，内核未运行（启动后生效；面板仅本机 $(expose_addr) 可访问）"
+            if expose_mounted; then
+                if core_alive; then
+                    _wrn "80 端口：已挂载，但 /ui/ 打不开（检查 uhttpd / 80 占用 / 静态文件）"
+                else
+                    _wrn "80 端口：已挂载，内核未运行（启动后生效；面板仅本机 $(expose_addr) 可访问）"
+                fi
             else
                 _wrn "80 端口未挂载（面板仅本机 $(expose_addr) 可访问）"
             fi
@@ -1563,6 +1567,15 @@ expose_ensure() {
     if [ -n "$cur" ] && expose_probe "$cur" && expose_live; then echo on; else echo off; fi
 }
 
+# 80 上是不是已经有我们的挂载（uhttpd / HAProxy / nginx 三套任一）。
+# doctor 不能只看 uhttpd：另两套的机器会误报「未挂载」。
+expose_mounted() {
+    [ -n "$(uhttpd_cur 2>/dev/null)" ] && return 0
+    [ -f "$HAPROXY_STATE" ] && return 0
+    [ -f "$NGINX_STATE" ] && return 0
+    return 1
+}
+
 expose_on() {
     EXPOSE_ERR=''
     EXPOSE_SOFT=0
@@ -1896,7 +1909,7 @@ preflight() {
 }
 
 setup() {
-    local ok=1 i rc cfg_bad=0 corev panelv expose_ok=0 mounted
+    local ok=1 i rc cfg_bad=0 corev panelv expose_ok=0 mounted t0
     : > "$STEP_LOG" 2>/dev/null
     if [ "$STEP_MODE" = 1 ]; then
         if [ "${MTUN_XD_EMBEDDED:-0}" != 1 ]; then
@@ -2017,19 +2030,19 @@ setup() {
         # 等的是 API 真应答，不是进程存在；每次只探配置地址一个点（全地址 pick 一轮
         # 要打好几次 curl，放进循环会失控），20 秒硬上限。
         t0=$(date +%s)
-        while ! expose_probe "$(expose_addr)"               && [ $(( $(date +%s) - t0 )) -lt 20 ]; do
+        while core_alive && ! expose_probe "$(expose_addr)" && [ $(( $(date +%s) - t0 )) -lt 20 ]; do
             sleep 1
         done
         if expose_on; then expose_ok=1; fi
     fi
     if [ "$STEP_MODE" = 1 ]; then
         STEP_QUIET=0
+        mounted=$(expose_cur)
         if [ "$expose_ok" = 1 ] && [ "${EXPOSE_SOFT:-0}" = 1 ]; then
-            ui_warn "80 端口已挂载，内核未运行（启动后生效；面板仅本机 $(expose_addr) 可访问）"
+            ui_warn "80 端口：已挂载（${mounted:-$(expose_addr)}），内核未运行（启动后生效）"
         elif [ "$expose_ok" = 1 ]; then
             # 打实际挂上的那个地址：HAProxy 路径分流时后端可能不是 config.yaml 里写的那一个
             # （expose_pick 挑的是"真能应答"的），打错会把人带偏。
-            mounted=$(expose_cur)
             ui_ok "${mounted:-$(expose_addr)}"
         elif [ -f "$EXPOSE_OFF_MARK" ]; then
             ui_warn "80 端口转发曾被手动关闭，保持关闭"

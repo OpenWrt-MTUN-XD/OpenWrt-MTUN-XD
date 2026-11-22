@@ -856,8 +856,10 @@
       list.appendChild(item);
     });
     alignPoolWidth();
+    alignStrategyBottom();
     // 这一帧里列表刚铺好，某些浏览器量出来的行宽还是旧的 —— 下一帧再贴一次
     root.requestAnimationFrame(alignPoolWidth);
+    root.requestAnimationFrame(alignStrategyBottom);
   }
 
   /**
@@ -916,6 +918,26 @@
       if (hint.getBoundingClientRect().top + delta < floor) return;
     }
     hint.style.marginTop = Math.round(delta) + 'px';
+  }
+
+  /**
+   * 出口策略整块贴底：让「不勾：…」最后一行和右边成员说明底边对齐。
+   * 只调整标题的上边距，块内行距保持 2px，不产生新的空行。
+   */
+  function alignStrategyBottom() {
+    var title = $('strategy-title');
+    var hint = $('strategy-hint');
+    var poolField = $('auto-pool-field');
+    var poolHint = poolField && !poolField.hidden
+      ? document.querySelector('#auto-pool-field p.hint') : null;
+    if (!title || !hint || !poolHint) return;
+    title.style.marginTop = '';
+    if (getComputedStyle(hint).display === 'none' || poolField.hidden) return;
+    var delta = poolHint.getBoundingClientRect().bottom - hint.getBoundingClientRect().bottom;
+    if (Math.abs(delta) < 1) return;
+    var fieldTop = $('strategy-field').getBoundingClientRect().top;
+    if (title.getBoundingClientRect().top + delta < fieldTop) return;
+    title.style.marginTop = Math.round(delta) + 'px';
   }
 
   function closeRuleMenu() {
@@ -1781,6 +1803,7 @@
     // 设置页之前藏着的时候量不到宽度，切过来以后补一次
     root.requestAnimationFrame(function () {
       if (!$('auto-pool-field').hidden) alignPoolWidth();
+      alignStrategyBottom();
     });
   }
 

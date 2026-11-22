@@ -401,6 +401,7 @@ input[type="number"].field-input { max-width: 120px; }
 .rules-split #strategy-field { padding-top: 0; }
 .rules-split #strategy-field .group-title { margin: 0; padding-top: 0; border-top: none; }
 .rules-split #strategy-field .check { margin-top: 8px; font-size: 13px; }
+.rules-split #strategy-field .strat-row .check { margin-top: 0; }
 /* 内网控制：说明行跟勾选框右侧的文字对齐，不是跟勾选框左缘对齐 */
 .rules-split #strategy-field .hint { padding-left: 0; color: inherit; font-size: 13px; }
 

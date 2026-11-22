@@ -797,8 +797,9 @@
     var rrRow = $('auto-round-robin');
     var lbRow = $('lb-round-robin');
     // 注意：这些元素有 class 上的 display，单靠 hidden 属性会被 CSS 盖掉，必须改 style.display
-    if (rrRow) $('rr-row').style.display = smartOn ? '' : 'none';
-    if (lbRow) $('lb-row').style.display = groupOn ? '' : 'none';
+    // 两行位置固定：不显示时用 visibility 占位，避免出现/消失导致整块跳动
+    if (rrRow) $('rr-row').style.visibility = smartOn ? '' : 'hidden';
+    if (lbRow) $('lb-row').style.visibility = groupOn ? '' : 'hidden';
     // 两个勾都不显示时，「同组同IP出口」那行提示也别占位
     var hintEl = $('strategy-hint');
     if (hintEl) hintEl.style.display = (smartOn || groupOn) ? '' : 'none';

@@ -413,6 +413,8 @@ def main():
           '已挂载但 /ui/ 失败时按 core_alive 归因')
     check('pidof haproxy' in cli and '[ -f "$NGINX_LOC" ]' in cli,
           '挂载判据校验 HAProxy 进程 / nginx 挂载点')
+    check("local out tags='' t url" in cli,
+          'set -u 下 tags 先初始化（API 全失败也不报 unbound）')
     check('80 端口：已挂载（${mounted:-$(expose_addr)}）' in cli,
           'SOFT 文案用实际挂载地址')
     check('仍可使用 9090' not in cli,

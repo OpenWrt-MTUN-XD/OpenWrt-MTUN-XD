@@ -662,6 +662,39 @@ def write_index(d):
         f.write(INDEX_HTML.replace('@@VER@@', VERSION).replace('@@PREV@@', extra))
 
 
+def verify_kit_sync():
+    """both 分支动 dist 前，先确认 dist 里的 kit 与当前 generator/app 拍平目录一致。
+
+    做法：用 bun 在当前源码上重新生成一份临时 kit（KIT_NO_PUBLISH=1，不发布、不碰 dist），
+    再调 tools/check-kit-dist.py 逐文件比对 tar.gz / zip / generator.sh 与版本号。
+    不一致就 exit 1 —— 不允许带着旧 kit 继续 publish_dist/publish_release。
+    """
+    tmp = tempfile.mkdtemp(prefix='mtun-kit-')
+    out = os.path.join(tmp, 'mihomo-deploy')
+    bun = shutil.which('bun')
+    if not bun and os.name == 'nt':
+        cand = os.path.expanduser(r'~\.bun\bin\bun.exe')
+        if os.path.isfile(cand):
+            bun = cand
+    if not bun:
+        print('⚠️ 找不到 bun，无法校验 dist kit 与 generator/app 同步')
+        raise SystemExit(1)
+    env = os.environ.copy()
+    env['KIT_NO_PUBLISH'] = '1'
+    gen_dir = os.path.join(HERE, 'generator')
+    r = subprocess.run([bun, 'scripts/make-router-kit.mjs', out], cwd=gen_dir, env=env)
+    if r.returncode:
+        print('⚠️ kit 生成失败，无法完成同步校验')
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise SystemExit(1)
+    gate = os.path.join(HERE, 'tools', 'check-kit-dist.py')
+    r = subprocess.run([sys.executable, gate, out, os.path.join(HERE, 'dist'), 'v%s' % VERSION])
+    shutil.rmtree(tmp, ignore_errors=True)
+    if r.returncode:
+        print('⚠️ dist kit 与 generator/app 拍平目录不一致，已中止（先跑 make-router-kit + build.py kit）')
+        raise SystemExit(1)
+
+
 def publish_kit(src):
     """把 make-router-kit 产出的 kit 复制进 dist/，并重算索引与 SHA256SUMS。
 
@@ -881,6 +914,7 @@ def main():
     # 注意：只有**两种都造出来**才动 dist/ 和 Release —— 单造一种时清掉另一种，对应的用户 404。
     if which == 'both':
         publish_dist(made)
+        verify_kit_sync()
         publish_release(made)
     else:
         print('（只造了 %s：dist/ 和 Release 没动 —— 免得另一种格式的包 404）' % which)

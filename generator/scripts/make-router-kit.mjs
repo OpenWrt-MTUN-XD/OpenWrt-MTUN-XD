@@ -412,14 +412,12 @@ async function publishKit(files) {
 if (NO_PUBLISH) {
   console.log('  KIT_NO_PUBLISH=1：只写本地 OUT，不进 dist/、不发 genkit');
 }
-const kitFiles = [ZIP_NAME, TAR_NAME, 'generator.sh'];
 writeFileSync(join(OUT, ZIP_NAME), zipBuf);
 writeFileSync(join(OUT, TAR_NAME), tarBuf);
 writeFileSync(join(OUT, 'generator.sh'),
   lf(readFileSync(join(DEPLOY, 'generator.sh'), 'utf8')));
 console.log('  kit 产物：' + OUT);
 console.log('  进套件 dist/：python build.py kit ' + OUT);
-void kitFiles;
 
 let KIT_URL = '';
 if (NO_PUBLISH) {

@@ -1176,7 +1176,13 @@ doctor() {
 
     case "$(expose_status 2>/dev/null)" in
         on) _ok "80 端口转发正常" ;;
-        *)  _wrn "80 端口未挂载（面板仅本机 127.0.0.1:9090 可访问）" ;;
+        *)
+            if [ -n "$(uhttpd_cur 2>/dev/null)" ]; then
+                _wrn "80 端口：已挂载，内核未运行（启动后生效；面板仅本机 $(expose_addr) 可访问）"
+            else
+                _wrn "80 端口未挂载（面板仅本机 $(expose_addr) 可访问）"
+            fi
+            ;;
     esac
 
     geo="$BASE/GeoSite.dat"
@@ -1557,8 +1563,9 @@ expose_ensure() {
     if [ -n "$cur" ] && expose_probe "$cur" && expose_live; then echo on; else echo off; fi
 }
 
-EXPOSE_ERR=''
 expose_on() {
+    EXPOSE_ERR=''
+    EXPOSE_SOFT=0
     # 80 口归谁管，决定走哪条路：
     #   ① uhttpd + 原始流代理补丁（iStoreOS）→ 挂 proxy_prefix（下面那段）
     #   ② nginx 占着 80（Kwrt / QWRT）→ 调随包的 nginx 适配脚本
@@ -1637,7 +1644,12 @@ expose_on() {
                 expose_probe "$cur" && { say "✔ 80 端口：已挂好（$cur，内核已恢复应答）"; return 0; }
                 sleep 1
             done
-            say "✔ 80 端口：已挂好（$cur，内核重启中）"
+            if core_alive; then
+                say "✔ 80 端口：已挂好（$cur，内核重启中）"
+            else
+                EXPOSE_SOFT=1
+                say "⚠️ 80 端口：已挂载，但内核未运行（启动后生效）"
+            fi
             return 0
         fi
         a=$(expose_addr)
@@ -1999,17 +2011,22 @@ setup() {
     if [ -f "$EXPOSE_OFF_MARK" ]; then
         say "⚠️ 80 端口：你手动关过（expose off）—— 要开回来跑 mtun-xd expose on"
     elif [ "$expose_cfg" = "0" ]; then
-        say "⚠️ 80 端口：配置里 expose=0，跳过挂载（面板仅本机 127.0.0.1:9090 可访问）"
+        say "⚠️ 80 端口：配置里 expose=0，跳过挂载（面板仅本机 $(expose_addr) 可访问）"
     else
         # 内核刚重启时进程已在、9090 还没应答，直接 expose_on 会探测失败 → 误报「未挂载」。
-        # 等的是 API 应答（expose_pick 会真去探 /version），不是 core_alive 的进程存在。
-        i=0
-        while ! expose_pick >/dev/null 2>&1 && [ "$i" -lt 30 ]; do i=$((i + 1)); sleep 1; done
+        # 等的是 API 真应答，不是进程存在；每次只探配置地址一个点（全地址 pick 一轮
+        # 要打好几次 curl，放进循环会失控），20 秒硬上限。
+        t0=$(date +%s)
+        while ! expose_probe "$(expose_addr)"               && [ $(( $(date +%s) - t0 )) -lt 20 ]; do
+            sleep 1
+        done
         if expose_on; then expose_ok=1; fi
     fi
     if [ "$STEP_MODE" = 1 ]; then
         STEP_QUIET=0
-        if [ "$expose_ok" = 1 ]; then
+        if [ "$expose_ok" = 1 ] && [ "${EXPOSE_SOFT:-0}" = 1 ]; then
+            ui_warn "80 端口已挂载，内核未运行（启动后生效；面板仅本机 $(expose_addr) 可访问）"
+        elif [ "$expose_ok" = 1 ]; then
             # 打实际挂上的那个地址：HAProxy 路径分流时后端可能不是 config.yaml 里写的那一个
             # （expose_pick 挑的是"真能应答"的），打错会把人带偏。
             mounted=$(expose_cur)
@@ -2017,7 +2034,7 @@ setup() {
         elif [ -f "$EXPOSE_OFF_MARK" ]; then
             ui_warn "80 端口转发曾被手动关闭，保持关闭"
         else
-            ui_warn "80 端口未挂载：${EXPOSE_ERR:-原因见 /tmp/mtun-xd.log}"
+            ui_warn "80 端口未挂载：${EXPOSE_ERR:-原因见 /tmp/mtun-xd.log}（面板仅本机 $(expose_addr) 可访问）"
         fi
     fi
     # ⚠️ 最后核一眼内核真在跑没有：上面任何一步"看起来成功"都不代表它起来了

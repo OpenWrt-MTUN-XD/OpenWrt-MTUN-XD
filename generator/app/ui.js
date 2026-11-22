@@ -897,6 +897,8 @@
     var tall = hint.getBoundingClientRect().height > lh * 2 + 1;
     var lbRow = $('lb-row');
     var lbOn = lbRow && getComputedStyle(lbRow).display !== 'none';
+    // 只有一行勾选时不再贴底：窄宽度下左侧说明会折行，贴底会把提示推出一段空行
+    if (!lbOn) return;
     var target = null;
     if (lbOn) {
       var poolField = $('auto-pool-field');

@@ -850,9 +850,9 @@ def publish_existing():
     """包已经在仓库根：dist + SHA256SUMS + Release（本地一条龙用，CI 拆成 dist / release 两步）。
 
     注意：**不重新造包**；两种包缺一种就失败（半份发布比不发更糟）。
+    kit 同步校验在 main() 入口完成，早于这里的任何 dist 写入。
     """
     made = existing_pkgs()
-    verify_kit_sync()
     publish_dist(made)
     if not publish_release(made):
         raise SystemExit('✘ publish: Release 没发出去')
@@ -871,8 +871,10 @@ def main():
     if which not in ('ipk', 'apk', 'both', 'publish', 'dist', 'kit', 'release', 'version', 'sums'):
         print('用法: python build.py [ipk|apk|both|publish|dist|kit <dir>|release|version|sums]')
         sys.exit(2)
-    if which in ('both', 'publish'):
+    if which in ('both', 'publish', 'release'):
+        # 早于造包、早于桌面拷贝、早于任何 dist 写入：失败时仓库/桌面保持原样
         require_bun()
+        verify_kit_sync()
     if which == 'version':
         print(VERSION)
         return
@@ -922,8 +924,7 @@ def main():
         print('⚠️ 桌面目录不存在（%s）—— 跳过桌面副本' % DESKTOP)
     # 注意：只有**两种都造出来**才动 dist/ 和 Release —— 单造一种时清掉另一种，对应的用户 404。
     if which == 'both':
-        # 先校验再动 dist：失败时 dist/桌面都保持原样，不留半成品
-        verify_kit_sync()
+        # kit 校验已在 main() 入口完成（早于造包与桌面拷贝）
         publish_dist(made)
         publish_release(made)
     else:

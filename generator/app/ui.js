@@ -856,10 +856,8 @@
       list.appendChild(item);
     });
     alignPoolWidth();
-    alignStrategyHint();
     // 这一帧里列表刚铺好，某些浏览器量出来的行宽还是旧的 —— 下一帧再贴一次
     root.requestAnimationFrame(alignPoolWidth);
-    root.requestAnimationFrame(alignStrategyHint);
   }
 
   /**
@@ -1783,7 +1781,6 @@
     // 设置页之前藏着的时候量不到宽度，切过来以后补一次
     root.requestAnimationFrame(function () {
       if (!$('auto-pool-field').hidden) alignPoolWidth();
-      alignStrategyHint();
     });
   }
 

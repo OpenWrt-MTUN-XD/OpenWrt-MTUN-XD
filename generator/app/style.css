@@ -375,8 +375,8 @@ input[type="number"].field-input { max-width: 120px; }
 }
 /* 策略那格的备注压到底，跟左边「未选中的流量走这个节点」对齐成一条线 */
 #strategy-field { display: flex; flex-direction: column; padding-top: 24px; }
-/* 精准分流：出口策略整块比默认出口低两行，底部贴近分隔线 */
-#node-role-grid #strategy-field { padding-top: 42px; }
+/* 精准分流：出口策略标题跟默认出口下拉框、节点框的上沿齐平 */
+#node-role-grid #strategy-field { padding-top: 22px; }
 #node-role-grid #strategy-field .group-title { margin: 0; padding-top: 0; border-top: none; }
 /* 节点框跟左边两个勾选框的起始行对齐（框的第一行文字 = 第一个勾选框） */
 #auto-pool-field { padding-top: 18px; }

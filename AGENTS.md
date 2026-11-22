@@ -92,6 +92,7 @@ git diff --check
 - **纯排版 / 文案 / 注释 / 样式改动不 bump 版本号**，随下一个功能版本一起发；避免为一个空格或一行对齐单独发版。
 - **改脚本 / 样式 / 文档可以直接推**：推送本身不触发发版 —— release 工作流只有在 `APP_VERSION` 变化时才会真正发布（版本没变时 `prepare` 判 `release=false` 直接跳过）。
 - **只有用户明确说「发版 / 发」时才更新 `APP_VERSION`**。「顺手改版本号」才是发版的唯一触发点。
+- **CGI 抽检**：`mihomo-apply` 不在 ipk/apk 内（由生成器 kit 安装），包检只能查 `usr/sbin/mtun-xd`；装完必须在真机 `/www/cgi-bin/mihomo-apply` 抽查一次 —— 无 `docker` / `CONTAINER` / `pidof` / `'/mihomo/'`，且判活委托 `mtun-xd core-state`。
 - 提交前确认没有把版本号顺手改掉（`git diff generator/app/state.js` 应为空，除非本次就是发版）。
 - 不要手工修改 `dist/`；发布工作流负责生成并提交它。
 - 保持 LF。Windows 下的 CRLF 会直接破坏路由器 shell 脚本执行。

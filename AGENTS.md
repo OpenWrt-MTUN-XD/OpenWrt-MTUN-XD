@@ -94,7 +94,10 @@ git diff --check
 - **只有用户明确说「发版 / 发」时才更新 `APP_VERSION`**。「顺手改版本号」才是发版的唯一触发点。
 - **CGI 抽检**：`mihomo-apply` 不在 ipk/apk 内（由生成器 kit 安装），包检只能查 `usr/sbin/mtun-xd`；装完必须在真机 `/www/cgi-bin/mihomo-apply` 抽查一次 —— 无 `docker` / `CONTAINER` / `pidof` / `'/mihomo/'`，且判活委托 `mtun-xd core-state`。
 - 提交前确认没有把版本号顺手改掉（`git diff generator/app/state.js` 应为空，除非本次就是发版）。
-- 不要手工修改 `dist/`；发布工作流负责生成并提交它。
+- **`dist/` 里的任何文件都算线上产物**：改动落进 `dist/` 就等于部署（CF Workers 随 push 自动发布）。只能在发版提交里出现，且必须先拿到明确「发」。
+- **禁止手工往 `dist/` copy 文件**。同步只能走 `python build.py` / `build.py dist` / CI 流水线；本地 build 跑不动（缺另一种外壳的包等）时，**不许绕**——把 `dist/` 的同步留给发版那一步。
+- **改动单里出现「`dist/` 与根文件一致」这类验收时**，若本地无法用构造脚本达成，一律视为「本提交不做同步」，不是「手工同步」。
+- 推送本身也会触发 CF 重新部署一次（即使 `dist/` 没变）；推文档时默认会走一趟部署，别顺手带别的改动。
 - 保持 LF。Windows 下的 CRLF 会直接破坏路由器 shell 脚本执行。
 - shell 优先 POSIX / BusyBox ash，避免 Bash 专属语法。
 - 面向路由器的文本文件继续使用 UTF-8。
@@ -261,7 +264,9 @@ HAProxy 方案必须：
 5. 等待 CI 与 Release 工作流成功。
 6. `git pull --ff-only` 同步 bot 生成的 `dist:` 提交。
 7. 验证 GitHub Release、线上 `latest.txt`、`/gh-api/`。
-8. 用户要求真机验收时，升级目标设备并验证状态。
+8. 核对同源：`sha256(install.sh)` == `sha256(dist/install.sh)` == `sha256(CF install.sh)`；
+   `dist/latest.txt` == CF `latest.txt` == 版本号。
+9. 用户要求真机验收时，升级目标设备并验证状态。
 
 不要手工跳过失败的 Actions，也不要在 `dist/` 与 Release 不一致时宣称发布完成。
 

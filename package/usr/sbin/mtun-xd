@@ -343,19 +343,26 @@ cfg_get() {   # cfg_get <键>
 core_version() { "$BIN" -v 2>/dev/null | head -1 | sed -n 's/.*\(v[0-9][^ ]*\).*/\1/p' | sed 's/^v//'; }
 panel_version() { sed -n 's/.*appVersion:"\([^"]*\)".*/\1/p' "$UI/index.html" 2>/dev/null | head -1 | tr -d '\r'; }
 
-# 内核到底活没活：问它自己的 API（配置里没有 external-controller 才退回看进程）。
-# ⚠️ 地址按**谁能答**来（expose_pick）：文件跟跑着的内核可以不是一回事，照文件硬连会把
-#    活内核判成死的；探出来的地址一个进程内只算一次（升级的等待循环会问十几遍）。
-# ⚠️ 判据只看状态码/主体，不看正文有没有 "version" 字样 —— 没认证时回的是
-#    401 {"message":"Unauthorized"}，正文里压根没有 version。
+# 内核到底活没活：只看**我们自己的进程**（exe 路径 + 启动参数），不再拿 9090 上
+# 「有东西应答」当证据。OpenClash 等工具默认也占 9090，我们的内核关着时它会回
+# 401（甚至 200），按旧逻辑就会误报「运行中」。
+# ⚠️ 同名的 mihomo / 同路径二进制也可能被别的工具拉起来，所以再看一眼 -d/-f 指向。
 CORE_ADDR=''
 core_alive() {
-    if [ -z "$(cfg_get external-controller)" ]; then
-        pidof mihomo >/dev/null 2>&1 || pgrep -f "$BIN" >/dev/null 2>&1
-        return $?
-    fi
-    [ -n "$CORE_ADDR" ] || CORE_ADDR=$(expose_pick) || CORE_ADDR=$(expose_addr)
-    expose_probe "$CORE_ADDR"
+    local pid exe cmd
+    for pid in $(pidof mihomo 2>/dev/null) $(pgrep -f "$BIN" 2>/dev/null); do
+        [ -n "$pid" ] || continue
+        exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null) || continue
+        case "$exe" in
+            "$BIN"|"$BIN (deleted)") ;;
+            *) continue ;;
+        esac
+        cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+        case "$cmd" in
+            *"-d $BASE"*|*"-f $CFG"*) return 0 ;;
+        esac
+    done
+    return 1
 }
 
 # 文件的修改时间（秒）；拿不到就当 0（宁可判"要重启"，也别漏了该重启的）

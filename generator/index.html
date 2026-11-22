@@ -241,7 +241,7 @@
           <p class="group-title" id="strategy-title">出口策略</p>
           <div class="check"><input type="checkbox" id="auto-round-robin"> <span id="rr-label">自动优选 · 按连接轮流</span></div>
           <div class="check"><input type="checkbox" id="lb-round-robin"> <span id="lb-label">负载均衡 · 按连接轮流</span></div>
-          <p class="hint" id="strategy-hint">默认都不勾：同一网站固定走一个。这几个节点出口 IP 相同时，才需要勾选轮流。</p>
+          <p class="hint" id="strategy-hint">默认不勾：这些节点出口 IP 相同时，才勾「按连接轮流」。</p>
         </div>
         <div class="field" id="auto-pool-field" hidden>
           <div class="node-list pool-list" id="auto-pool-list"></div>

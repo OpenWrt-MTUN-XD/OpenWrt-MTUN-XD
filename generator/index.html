@@ -241,10 +241,11 @@
           <p class="group-title" id="strategy-title" hidden>负载均衡</p>
           <div class="check"><input type="checkbox" id="auto-round-robin"> <span id="rr-label">智能选择</span></div>
           <div class="check"><input type="checkbox" id="lb-round-robin"> <span id="lb-label">负载均衡</span></div>
-          <p class="hint" id="strategy-hint">同组流量统一使用相同的 IP 出口。</p>
+          <p class="hint" id="strategy-hint"><span id="strategy-warn">同组节点出口 IP 必须一致</span><br id="strategy-br"><span id="strategy-tech">健康检查 + 一致性哈希 / 轮询</span></p>
         </div>
         <div class="field" id="auto-pool-field" hidden>
           <div class="node-list pool-list" id="auto-pool-list"></div>
+          <p class="hint">可反选移出「智能选择」组：仍可被自定义规则单独使用，或建立新的负载均衡组。</p>
         </div>
       </div>
 
@@ -265,9 +266,9 @@
             <button type="button" class="btn" id="rule-add">添加</button>
           </div>
           <div class="chips" id="rule-list"></div>
-          <p class="hint">域名生成 <code>DOMAIN</code>；公网 IP 生成 <code>IP-CIDR</code> / <code>IP-CIDR6</code>（按目标）；
+          <p class="hint" id="rule-type-hint">域名生成 <code>DOMAIN</code>；公网 IP 生成 <code>IP-CIDR</code><span id="ipv6-rule-hint"> / <code>IP-CIDR6</code></span>（按目标）；
             内网 IP 自动生成 <code>SRC-IP-CIDR</code>（按来源，即这台设备怎么走）。</p>
-          <p class="hint">选择单个节点时直接使用该节点；选择多个节点时自动创建负载均衡组。</p>
+          <p class="hint">选择单个节点时直接使用该节点；选择多个节点时自动创建,默认：健康检查 + 哈希/轮询负载均衡组。</p>
         </div>
         <div class="rules-common" id="rules-common">
           <h3 class="group-title">常用规则</h3>

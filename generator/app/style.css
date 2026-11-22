@@ -381,13 +381,15 @@ input[type="number"].field-input { max-width: 120px; }
 /* 挂到「常用规则」列下面时，跟上面三个勾选框留一点空 */
 .rules-common #strategy-field { padding-top: 10px; }
 /* 策略格作为「常用规则」后面的一列时，网格多给一列 */
-.rules-split.has-strategy { grid-template-columns: minmax(0, 1fr) 190px 190px 190px; }
-.rules-split.has-strategy.no-local { grid-template-columns: minmax(0, 1fr) 190px 190px; }
-.rules-split.has-strategy.no-common { grid-template-columns: minmax(0, 1fr) 190px; }
+.rules-split.has-strategy { grid-template-columns: minmax(0, 1fr) 190px 190px 250px; }
+.rules-split.has-strategy.no-local { grid-template-columns: minmax(0, 1fr) 190px 250px; }
+.rules-split.has-strategy.no-common { grid-template-columns: minmax(0, 1fr) 250px; }
 /* 排到「常用规则」后面时：小节标题（负载均衡）+ 一行带备注的勾选框，跟旁边那列同构 */
 .rules-split #strategy-field { padding-top: 0; }
 .rules-split #strategy-field .group-title { margin: 0; padding-top: 0; border-top: none; }
 .rules-split #strategy-field .check { margin-top: 8px; font-size: 13px; }
+/* 内网控制：说明行跟勾选框右侧的文字对齐，不是跟勾选框左缘对齐 */
+.rules-split #strategy-field .hint { padding-left: 22px; color: inherit; font-size: 13px; }
 
 
 /* 一机一IP 没有「默认出口」：策略格从第 1 列开始跨两列，别只占第 2 列 */

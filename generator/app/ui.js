@@ -534,6 +534,9 @@
    */
   function renderMode() {
     $('mode-select').value = state.mode;
+    // 内网控制不提示 IP-CIDR6（避免误解成要 IPv6）；精准分流保留完整两类
+    var v6Hint = $('ipv6-rule-hint');
+    if (v6Hint) v6Hint.hidden = state.mode === 'oneip';
 
     var panels = doc.querySelectorAll('.mode-panel');
     for (var j = 0; j < panels.length; j++) {
@@ -595,7 +598,7 @@
         ? '只有一个节点，所有流量走它'
         : (state.autoSelect
           ? (smartGroup
-            ? '固定使用「' + MH.SplitEngine.AUTO_GROUP + '」组'
+            ? '默认：健康检查 + 哈希/轮询'
             : (smartPool.length
               ? '成员只剩一个，直接用它'
               : '成员全取消，默认直连'))
@@ -835,8 +838,14 @@
     var lbLabel = $('lb-label');
     var strategyHint = $('strategy-hint');
     if (strategyTitle) strategyTitle.hidden = !inRules;
-    if (strategyHint) strategyHint.hidden = inRules;
-    if (lbLabel) lbLabel.textContent = inRules ? '同组设备统一使用相同的 IP 出口。' : '负载均衡';
+    // 内网控制：标题「负载均衡」+ 勾选框写「同组节点出口 IP 必须一致」，
+    // 下面只留策略行；精准分流仍由勾选框自身承载「一致性哈希 / 轮询」。
+    var warnEl = $('strategy-warn');
+    var brEl = $('strategy-br');
+    if (warnEl) warnEl.hidden = inRules;
+    if (brEl) brEl.hidden = inRules;
+    if (strategyHint) strategyHint.hidden = false;
+    if (lbLabel) lbLabel.textContent = inRules ? '同组节点出口 IP 必须一致' : '负载均衡';
     if (box.hidden) return;
     // 成员框必须填：即使组里只剩 1 个（smartOn 为假）也要把节点列出来，否则框里是空的
     if (!(state.autoSelect && isMulti())) return;
@@ -860,8 +869,10 @@
       list.appendChild(item);
     });
     alignPoolWidth();
+    alignStrategyHint();
     // 这一帧里列表刚铺好，某些浏览器量出来的行宽还是旧的 —— 下一帧再贴一次
     root.requestAnimationFrame(alignPoolWidth);
+    root.requestAnimationFrame(alignStrategyHint);
   }
 
   /**
@@ -881,6 +892,32 @@
     var right = range.getBoundingClientRect().right;
     var left = field.getBoundingClientRect().left;
     if (right > left) field.style.width = Math.round(right - left) + 'px';
+  }
+
+  /**
+   * 策略提示跟旁边对齐：
+   *   · 只有「智能选择」一行 → 底边对齐左边「默认：健康检查 + 哈希/轮询」
+   *   · 「智能选择 + 负载均衡」两行 → 底边对齐右边成员框下的说明
+   * 按渲染结果算，不写死像素；窗口宽度变化时重算。
+   */
+  function alignStrategyHint() {
+    var hint = $('strategy-hint');
+    if (!hint) return;
+    hint.style.marginTop = '';
+    if (hint.hidden || getComputedStyle(hint).display === 'none') return;
+    var lbRow = $('lb-round-robin');
+    var lbOn = lbRow && lbRow.parentNode
+      && getComputedStyle(lbRow.parentNode).display !== 'none';
+    var target = null;
+    if (lbOn) {
+      var poolField = $('auto-pool-field');
+      var poolHint = document.querySelector('#auto-pool-field p.hint');
+      if (poolField && !poolField.hidden && poolHint) target = poolHint;
+    }
+    if (!target) target = $('default-node-hint');
+    if (!target || target.getClientRects().length === 0) return;
+    var delta = target.getBoundingClientRect().bottom - hint.getBoundingClientRect().bottom;
+    if (Math.abs(delta) >= 1) hint.style.marginTop = Math.round(delta) + 'px';
   }
 
   function closeRuleMenu() {
@@ -1746,6 +1783,7 @@
     // 设置页之前藏着的时候量不到宽度，切过来以后补一次
     root.requestAnimationFrame(function () {
       if (!$('auto-pool-field').hidden) alignPoolWidth();
+      alignStrategyHint();
     });
   }
 

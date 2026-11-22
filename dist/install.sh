@@ -49,6 +49,8 @@ ONLY_PKG=0
 [ "${PKG_ONLY:-0}" = 1 ] && ONLY_PKG=1
 case "${1:-}" in pkg|--pkg|-p) ONLY_PKG=1 ;; esac
 
+[ "$(id -u)" = 0 ] || die "要用 root 跑（SSH 上去直接跑就行）"
+
 # ── 后台模式：下载后 `sh /tmp/mtun-xd-install.sh bg` ────────────────
 # 隧道 SSH 装到一半掉线 → 安装跟着死，界面还留个 404。
 # 这里把自己重新拉一份到 /tmp、脱离终端跑，日志落盘；**断线不影响安装**。
@@ -71,12 +73,12 @@ if [ "${1:-}" = bg ] || [ "${1:-}" = --bg ]; then
     exit 0
 fi
 MARK=/tmp/mtun-xd.pkg-only
-# ⚠️ 开工前先把残留的「只换包」标记清掉：那个标记是给 postinst 看的，它见到就静默收工
-#    （核心 / 面板 / 工具 / 80 端口一个都不装，而且一声不吭）。只在非 pkg 时清 ——
-#    pkg 模式自己会在下面重新创建它。
-[ "$ONLY_PKG" = 1 ] || rm -f "$MARK"
+# 只清理自己创建的标记；未持有（或已经清过）就什么都不做。
+mark_clear() {
+    [ "${MARK_OWNED:-0}" = 1 ] && rm -f "$MARK"
+    MARK_OWNED=0
+}
 
-[ "$(id -u)" = 0 ] || die "要用 root 跑（SSH 上去直接跑就行）"
 
 # ── 并发锁（安装器自己的，不是套件那把）──────────────────────────────
 # 两条 install.sh 同时跑（SSH 一条 + 页面点控制台升级）会在 apk 数据库上撞锁：
@@ -104,7 +106,8 @@ lock_acquire() {
 }
 cleanup_install() {
     [ -n "${TMP:-}" ] && rm -rf "$TMP"
-    [ -n "${MARK:-}" ] && rm -f "$MARK"
+    # 只删自己建的那份；别人的标记不碰
+    [ "${MARK_OWNED:-0}" = 1 ] && rm -f "$MARK"
     # 只删自己那把锁
     [ "$LOCKED" = 1 ] && [ "$(cat "$SUITE_LOCK/pid" 2>/dev/null)" = "$$" ] && rm -rf "$SUITE_LOCK"
     return 0
@@ -112,6 +115,11 @@ cleanup_install() {
 trap cleanup_install EXIT
 trap 'cleanup_install; exit 130' INT TERM
 lock_acquire || { say "⚠️ 另一个安装正在进行，稍后再试"; exit 1; }
+
+# ⚠️ 拿到锁之后才动共享标记：另一个安装正在跑（持锁）时，那份标记是它的有效状态，
+#    不是残留 —— 在这里删掉会让它的 postinst 认不出「只换包」而跑全套 setup。
+[ "$ONLY_PKG" = 1 ] || rm -f "$MARK"
+MARK_OWNED=0
 
 # ── 认包管理器 ────────────────────────────────────────────────────────────
 if command -v apk >/dev/null 2>&1; then
@@ -174,7 +182,7 @@ notready() {
 # 内核真在跑没有（装完必须能满足正常运行）。
 # ⚠️ 只看"文件在不在"不够：配置坏 / 缺 TUN / 端口被占，包都在、内核却起不来。
 core_running() {
-    [ -x /usr/sbin/mtun-xd ] || return 0
+    [ -x /usr/sbin/mtun-xd ] || return 1
     # 用 `corestate`（只输出 on/off，跟显示文案解耦）。
     # 本仓库从 2026.11 起就带这个命令，不再需要「老版本没有它」的回退分支。
     [ "$(/usr/sbin/mtun-xd corestate 2>/dev/null | head -1)" = on ]
@@ -364,10 +372,11 @@ if [ "$ONLY_PKG" = 1 ]; then
         ipk_overlay "$TMP/$FILE" || die "套件：换包失败（铺文件出错）"
     else
         : > "$MARK"
-        pm opkg install "$TMP/$FILE" || { rm -f "$MARK"; die "套件：安装失败"; }
-        rm -f "$MARK"
+        MARK_OWNED=1
+        pm opkg install "$TMP/$FILE" || { mark_clear; die "套件：安装失败"; }
+        mark_clear
     fi
-    rm -f "$MARK"
+    mark_clear
     # 版本为准（apk 的退出码可能是环境噪音，见上面那段注释）
     [ "$(ver_base "$(installed_ver)")" = "$(ver_base "$latest")" ] || die "套件：安装失败（版本没对上：$(installed_ver)）"
     # 换完验一遍文件在不在（包坏了 / 被别的包删过都得能看出来）
@@ -432,8 +441,9 @@ if [ "$PM" = apk ]; then
 else
     opkg update >/dev/null 2>&1 || say "    ⚠️ opkg update 没成功，继续"
     : > "$MARK"
-    pm opkg install "$TMP/$FILE" >"$TMP/pm.log" 2>&1 || { rm -f "$MARK"; die "套件：安装失败"; }
-    rm -f "$MARK"
+    MARK_OWNED=1
+    pm opkg install "$TMP/$FILE" >"$TMP/pm.log" 2>&1 || { mark_clear; die "套件：安装失败"; }
+    mark_clear
     # ⚠️ opkg 对同一个版本会直接说 "…is up to date" 然后什么都不干 —— 上一次要是没装全
     #    （或者文件被别的包删过），它永远不会补回来，而且连 postinst 都不会跑。所以自己验一遍：
     bad=$(missing)

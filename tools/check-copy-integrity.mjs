@@ -34,7 +34,7 @@ const sample = [
   '    sni: sg2.example.com',
   '    skip-cert-verify: false',
   'proxy-groups:',
-  '  - name: 智能选择',
+  '  - name: 自动优选',
   '    type: url-test',
   '    url: "https://www.gstatic.com/generate_204"',
   '    interval: 300',
@@ -42,9 +42,9 @@ const sample = [
   '      - "🇭🇰 香港专线 01"',
   '      - "🇸🇬 新加坡 02 # 备用"',
   'rules:',
-  '  - DOMAIN-SUFFIX,example.com,智能选择   # 行尾注释',
+  '  - DOMAIN-SUFFIX,example.com,自动优选   # 行尾注释',
   '  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve',
-  '  - MATCH,智能选择',
+  '  - MATCH,自动优选',
   '',
 ].join('\n');
 

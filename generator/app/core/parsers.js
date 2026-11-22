@@ -110,7 +110,7 @@
     s = Array.from(s).slice(0, 128).join('');   // Python 按码点截断，不是 UTF-16 码元
     // ⚠️ 内置动作 / 组名不能当节点名：叫 REJECT 的节点会让 `MATCH,REJECT` 拒掉所有流量，
     //    叫 DIRECT 的会静默变成直连。加个后缀区分开。
-    if (/^(DIRECT|REJECT|PASS|COMPATIBLE|GLOBAL|智能选择)$/i.test(s)) s += '（节点）';
+    if (/^(DIRECT|REJECT|PASS|COMPATIBLE|GLOBAL|自动优选|智能选择)$/i.test(s)) s += '（节点）';
     return s || fallback;
   }
 

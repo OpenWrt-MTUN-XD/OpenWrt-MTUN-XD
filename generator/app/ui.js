@@ -566,10 +566,10 @@
       ? MH.SplitEngine.smartPool(state.nodes, state.autoSelectExclude) : [];
     var smartGroup = smartPool.length >= 2;
     $('auto-select-hint').textContent = state.autoSelect
-      ? (smartGroup ? '已开启：由「智能选择」组接管，自动走最快的节点'
+      ? (smartGroup ? '已开启：没被规则命中的流量由这组自动挑最快的节点'
         : (smartPool.length ? '已开启：成员只剩一个，直接用它'
           : '已开启：成员全部取消，默认直连'))
-      : '勾上后由「智能选择」组接管没被规则命中的流量';
+      : '勾上：没被规则命中的流量由这组自动挑最快的节点';
     // 成员框跟着一起刷新（藏/显、节点增减、黑名单清理都在里面）
     renderAutoPool();
 
@@ -598,7 +598,7 @@
         ? '只有一个节点，所有流量走它'
         : (state.autoSelect
           ? (smartGroup
-            ? '走「智能选择」组（自动挑最快），这里的选择不生效'
+            ? '自动：跟随自动优选组'
             : (smartPool.length
               ? '成员只剩一个，直接用它'
               : '成员全取消，默认直连'))
@@ -833,20 +833,6 @@
     }
     if (rulesGrid) rulesGrid.classList.toggle('has-strategy', !showDefault && !!(strategyBox && !strategyBox.hidden));
     // 排到「常用规则」后面时改成「小节标题 + 一个带备注的勾选框」，跟旁边那一列同构
-    var inRules = !showDefault;
-    var strategyTitle = $('strategy-title');
-    var lbLabel = $('lb-label');
-    var strategyHint = $('strategy-hint');
-    if (strategyTitle) strategyTitle.hidden = !inRules;
-    if (strategyHint) {
-      strategyHint.hidden = false;
-      strategyHint.textContent = inRules
-        ? '仅当这组节点出口 IP 相同时才勾'
-        : '不勾＝同一网站固定走一个（更稳）；勾上＝可能换节点，仅当这组节点出口 IP 相同时才勾';
-    }
-    if (lbLabel) {
-      lbLabel.textContent = inRules ? '按连接轮流' : '负载均衡组：按连接轮流';
-    }
     if (box.hidden) return;
     // 成员框必须填：即使组里只剩 1 个（smartOn 为假）也要把节点列出来，否则框里是空的
     if (!(state.autoSelect && isMulti())) return;
@@ -924,7 +910,9 @@
     if (Math.abs(delta) < 1) return;
     // 长提示要往上贴时，先确认不会顶到上面的勾选框；顶到就不动
     if (tall && delta < 0) {
+      // 上一个兄弟可能被藏掉（另一行的勾选框），要往前找到真正可见的那个
       var prev = hint.previousElementSibling;
+      while (prev && prev.getClientRects().length === 0) prev = prev.previousElementSibling;
       var floor = prev ? prev.getBoundingClientRect().bottom + 4 : 0;
       if (hint.getBoundingClientRect().top + delta < floor) return;
     }
@@ -1035,9 +1023,9 @@
     // 否则标签写着「出口：B」、菜单里却看不到它，用户没法取消。
     acts.forEach(function (name) {
       if (name === 'DIRECT' || visible.indexOf(name) !== -1) return;
-      // 说清它为什么不在常规候选里：是默认出口，还是被智能选择排除了
+      // 说清它为什么不在常规候选里：是默认出口，还是被自动优选排除了
       var why = state.defaultNode === name ? '（当前默认出口）'
-        : (state.autoSelect ? '（已并入智能选择组）' : '（不在当前候选中）');
+        : (state.autoSelect ? '（已并入自动优选）' : '（不在当前候选中）');
       var row = ruleActionRow(name + why, name, true, names);
       row.className += ' muted';
       menu.appendChild(row);

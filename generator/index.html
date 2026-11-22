@@ -137,12 +137,12 @@
         <div class="field">
           <label class="field-label" for="unified-delay">统一延迟</label>
           <div class="check"><input type="checkbox" id="unified-delay"> 启用</div>
-          <p class="hint">测速握手超时时间，智能选择</p>
+          <p class="hint">测速握手超时时间，自动选择</p>
         </div>
         <div class="field">
           <label class="field-label" for="tcp-concurrent">TCP 并发</label>
           <div class="check"><input type="checkbox" id="tcp-concurrent"> 启用</div>
-          <p class="hint">域名解析后的并发连接数，智能选择</p>
+          <p class="hint">域名解析后的并发连接数，自动选择</p>
         </div>
 
         <div class="field" id="ipv6-field">
@@ -169,7 +169,7 @@
           <div class="field" id="auto-select-field">
             <label class="field-label" for="auto-select">路由模式</label>
             <div class="check"><input type="checkbox" id="auto-select"> 智能选择模式</div>
-            <p class="hint" id="auto-select-hint">勾上后由「智能选择」组接管没被规则命中的流量，自动走最快的节点。</p>
+            <p class="hint" id="auto-select-hint">勾上后由「自动优选」组接管没被规则命中的流量，自动走最快的节点。</p>
           </div>
           <div class="field">
             <label class="field-label" for="return-mode">区域模式</label>
@@ -238,14 +238,14 @@
           <p class="hint" id="default-node-hint">未匹配规则的流量将通过此节点转发。</p>
         </div>
         <div class="field" id="strategy-field" hidden>
-          <p class="group-title" id="strategy-title" hidden>负载均衡组</p>
-          <div class="check"><input type="checkbox" id="auto-round-robin"> <span id="rr-label">智能选择组：按连接轮流</span></div>
-          <div class="check"><input type="checkbox" id="lb-round-robin"> <span id="lb-label">负载均衡组：按连接轮流</span></div>
-          <p class="hint" id="strategy-hint"></p>
+          <p class="group-title" id="strategy-title">出口策略</p>
+          <div class="check"><input type="checkbox" id="auto-round-robin"> <span id="rr-label">自动优选 · 按连接轮流</span></div>
+          <div class="check"><input type="checkbox" id="lb-round-robin"> <span id="lb-label">负载均衡 · 按连接轮流</span></div>
+          <p class="hint" id="strategy-hint">默认都不勾：同一网站固定走一个。这几个节点出口 IP 相同时，才需要勾选轮流。</p>
         </div>
         <div class="field" id="auto-pool-field" hidden>
           <div class="node-list pool-list" id="auto-pool-list"></div>
-          <p class="hint">点一下节点＝切换是否参与；变灰＝不参与（仍能用于规则）</p>
+          <p class="hint">点一下节点切换是否参与；变灰的节点不进组，仍可被规则单独使用</p>
         </div>
       </div>
 
@@ -268,7 +268,7 @@
           <div class="chips" id="rule-list"></div>
           <p class="hint" id="rule-type-hint">域名生成 <code>DOMAIN</code>；公网 IP 生成 <code>IP-CIDR</code><span id="ipv6-rule-hint"> / <code>IP-CIDR6</code></span>（按目标）；
             内网 IP 自动生成 <code>SRC-IP-CIDR</code>（按来源，即这台设备怎么走）。</p>
-          <p class="hint">选 2 个以上节点 = 这几个节点分摊负载；默认同一网站固定走一个（要轮流就勾上面的「负载均衡组」）</p>
+          <p class="hint">选 2 个以上节点：这几个节点分摊负载；默认同一网站固定走一个，要轮流就勾上面的「负载均衡」</p>
         </div>
         <div class="rules-common" id="rules-common">
           <h3 class="group-title">常用规则</h3>

@@ -122,7 +122,7 @@ describe('精准分流（对齐基线）', () => {
     const y = makeSplit({ global_mode: true }).generate();
     expect(y).toContain('- MATCH,' + names[0]);
     expect(y).not.toContain('- MATCH,' + MH.SplitEngine.AUTO_GROUP);
-    expect(y).not.toContain('proxy-groups:');             // 没勾智能选择就不该建组
+    expect(y).not.toContain('proxy-groups:');             // 没勾自动优选就不该建组
   });
 });
 
@@ -190,9 +190,9 @@ describe('生成的配置本身是合法 YAML', () => {
   });
 });
 
-// 界面「智能选择」下面那张成员框：勾掉的节点不进 fallback 测速组，
+// 界面「自动优选」下面那张成员框：勾掉的节点不进 fallback 测速组，
 // 但节点本身、规则、其它引用一概不动（黑名单只管这一个组）。
-describe('智能选择：成员黑名单（auto_select_exclude）', () => {
+describe('自动优选：成员黑名单（auto_select_exclude）', () => {
   const groupBlock = (yaml) => yaml.slice(yaml.indexOf('proxy-groups:'), yaml.indexOf('\nrules:'));
 
   test('勾掉的节点不进测速组，且没被引用就不写进配置', () => {
@@ -229,7 +229,7 @@ describe('智能选择：成员黑名单（auto_select_exclude）', () => {
     expect(withGhost).toBe(base);
   });
 
-  test('没开智能选择时黑名单不起作用', () => {
+  test('没开自动优选时黑名单不起作用', () => {
     const base = makeSplit({ default_node: names[0] }).generate();
     const withEx = makeSplit({ default_node: names[0], auto_select_exclude: [names[1]] }).generate();
     expect(withEx).toBe(base);

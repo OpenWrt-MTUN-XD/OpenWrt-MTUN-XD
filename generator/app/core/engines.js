@@ -475,7 +475,7 @@
    * GEOx 规则的目标；写岔了产物就会引用一个不存在的 proxy-group，mihomo 直接拒绝加载。
    * 基线里 tests/golden/bless.mjs 用本常量装配，不写字面量。
    */
-  SplitEngine.AUTO_GROUP = '智能选择';
+  SplitEngine.AUTO_GROUP = '自动优选';
 
   /**
    * 智能选择组的实际成员池 = 全部节点减去界面上勾掉的。

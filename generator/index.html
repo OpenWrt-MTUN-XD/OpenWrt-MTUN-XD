@@ -169,7 +169,7 @@
           <div class="field" id="auto-select-field">
             <label class="field-label" for="auto-select">路由模式</label>
             <div class="check"><input type="checkbox" id="auto-select"> 智能选择模式</div>
-            <p class="hint" id="auto-select-hint">自动创建智能选择负载均衡组，并将其设为默认出口。</p>
+            <p class="hint" id="auto-select-hint">勾上后由「智能选择」组接管没被规则命中的流量，自动走最快的节点。</p>
           </div>
           <div class="field">
             <label class="field-label" for="return-mode">区域模式</label>
@@ -238,14 +238,14 @@
           <p class="hint" id="default-node-hint">未匹配规则的流量将通过此节点转发。</p>
         </div>
         <div class="field" id="strategy-field" hidden>
-          <p class="group-title" id="strategy-title" hidden>负载均衡</p>
-          <div class="check"><input type="checkbox" id="auto-round-robin"> <span id="rr-label">智能选择</span></div>
-          <div class="check"><input type="checkbox" id="lb-round-robin"> <span id="lb-label">负载均衡</span></div>
-          <p class="hint" id="strategy-hint"><span id="strategy-warn">同组节点出口 IP 必须一致</span><br id="strategy-br"><span id="strategy-tech">没被规则命中的网站自动挑最快<br>同一网站固定走一个</span><span id="strategy-oneip" hidden>仅当这组节点出口 IP 相同时才勾</span></p>
+          <p class="group-title" id="strategy-title" hidden>负载均衡组</p>
+          <div class="check"><input type="checkbox" id="auto-round-robin"> <span id="rr-label">智能选择组：按连接轮流</span></div>
+          <div class="check"><input type="checkbox" id="lb-round-robin"> <span id="lb-label">负载均衡组：按连接轮流</span></div>
+          <p class="hint" id="strategy-hint"></p>
         </div>
         <div class="field" id="auto-pool-field" hidden>
           <div class="node-list pool-list" id="auto-pool-list"></div>
-          <p class="hint">可反选移出「智能选择」组：仍可被自定义规则单独使用，或建立新的负载均衡组。</p>
+          <p class="hint">点一下节点＝切换是否参与；变灰＝不参与（仍能用于规则）</p>
         </div>
       </div>
 
@@ -268,7 +268,7 @@
           <div class="chips" id="rule-list"></div>
           <p class="hint" id="rule-type-hint">域名生成 <code>DOMAIN</code>；公网 IP 生成 <code>IP-CIDR</code><span id="ipv6-rule-hint"> / <code>IP-CIDR6</code></span>（按目标）；
             内网 IP 自动生成 <code>SRC-IP-CIDR</code>（按来源，即这台设备怎么走）。</p>
-          <p class="hint">选 2 个以上节点 = 这几个节点轮流分摊；同一网站默认固定走一个</p>
+          <p class="hint">选 2 个以上节点 = 这几个节点分摊负载；默认同一网站固定走一个（要轮流就勾上面的「负载均衡组」）</p>
         </div>
         <div class="rules-common" id="rules-common">
           <h3 class="group-title">常用规则</h3>

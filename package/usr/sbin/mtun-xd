@@ -1987,6 +1987,10 @@ setup() {
     elif [ "$expose_cfg" = "0" ]; then
         say "⚠️ 80 端口：配置里 expose=0，跳过挂载（用 9090 直连）"
     else
+        # 内核刚重启时 9090 还没应答，直接 expose_on 会探测失败 → 误报「未挂载」。
+        # 先等它起来（开机 5 分钟内最多等 30 秒），再挂 80；挂不上才是真的挂不上。
+        i=0
+        while ! core_alive && [ "$i" -lt 30 ]; do i=$((i + 1)); sleep 1; done
         if expose_on; then expose_ok=1; fi
     fi
     if [ "$STEP_MODE" = 1 ]; then

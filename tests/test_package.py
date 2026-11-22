@@ -394,6 +394,12 @@ def main():
     check('selfcheck-install.sh' in cli and 'sh "$tmp" >/dev/null 2>&1' in cli,
           '开机自检补装时先下载再执行')
 
+    # 装完先等内核应答，再挂 80 —— 否则核心刚重启时会误报「80 端口未挂载」
+    _i_wait = cli.find('while ! core_alive && [ "$i" -lt 30 ]')
+    _i_on = cli.find('if expose_on; then expose_ok=1; fi')
+    check(_i_wait != -1 and _i_on != -1 and _i_wait < _i_on,
+          'setup 先等 core_alive 再挂 80（避免误报未挂载）')
+
     # 内核判活唯一入口：core_alive；按钮命令不得再裸 pidof
     check(cli.count('pidof mihomo') == 1, 'pidof mihomo 只出现在 core_alive 内')
     core_seg = cli[cli.find('core_alive()'):]

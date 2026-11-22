@@ -239,9 +239,9 @@
         </div>
         <div class="field" id="strategy-field" hidden>
           <p class="group-title" id="strategy-title">出口策略 · 按组设置</p>
-          <div class="strat-row" id="rr-row"><span class="strat-name">自动优选</span><label class="check"><input type="checkbox" id="auto-round-robin"> 按连接轮流</label></div>
-          <div class="strat-row" id="lb-row"><span class="strat-name">负载均衡</span><label class="check"><input type="checkbox" id="lb-round-robin"> 按连接轮流</label></div>
-          <p class="hint" id="strategy-hint">不勾：整组同一网站固定走一个<br>勾：按连接轮流，需同 IP 出口</p>
+          <div class="strat-row" id="rr-row"><span class="strat-name">自动优选</span><label class="check"><input type="checkbox" id="auto-round-robin"> 叠加轮询</label></div>
+          <div class="strat-row" id="lb-row"><span class="strat-name">负载均衡</span><label class="check"><input type="checkbox" id="lb-round-robin"> 叠加轮询</label></div>
+          <p class="hint" id="strategy-hint">勾：叠加轮询，需同 IP 出口<br>不勾：各网站独立节点，故障自切</p>
         </div>
         <div class="field" id="auto-pool-field" hidden>
           <div class="node-list pool-list" id="auto-pool-list"></div>

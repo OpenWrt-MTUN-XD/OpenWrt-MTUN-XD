@@ -662,6 +662,19 @@ def write_index(d):
         f.write(INDEX_HTML.replace('@@VER@@', VERSION).replace('@@PREV@@', extra))
 
 
+def require_bun():
+    """both/publish 前的早期检查：没有 bun 就无法校验 kit，直接退出，不碰任何文件。"""
+    bun = shutil.which('bun')
+    if not bun and os.name == 'nt':
+        cand = os.path.join(os.path.expanduser('~'), '.bun', 'bin', 'bun.exe')
+        if os.path.isfile(cand):
+            bun = cand
+    if not bun:
+        print('⚠️ 找不到 bun，无法校验 dist kit 与 generator/app 同步')
+        raise SystemExit(1)
+    return bun
+
+
 def verify_kit_sync():
     """both 分支动 dist 前，先确认 dist 里的 kit 与当前 generator/app 拍平目录一致。
 
@@ -671,14 +684,7 @@ def verify_kit_sync():
     """
     tmp = tempfile.mkdtemp(prefix='mtun-kit-')
     out = os.path.join(tmp, 'mihomo-deploy')
-    bun = shutil.which('bun')
-    if not bun and os.name == 'nt':
-        cand = os.path.expanduser(r'~\.bun\bin\bun.exe')
-        if os.path.isfile(cand):
-            bun = cand
-    if not bun:
-        print('⚠️ 找不到 bun，无法校验 dist kit 与 generator/app 同步')
-        raise SystemExit(1)
+    bun = require_bun()
     env = os.environ.copy()
     env['KIT_NO_PUBLISH'] = '1'
     gen_dir = os.path.join(HERE, 'generator')
@@ -846,6 +852,7 @@ def publish_existing():
     注意：**不重新造包**；两种包缺一种就失败（半份发布比不发更糟）。
     """
     made = existing_pkgs()
+    verify_kit_sync()
     publish_dist(made)
     if not publish_release(made):
         raise SystemExit('✘ publish: Release 没发出去')
@@ -864,6 +871,8 @@ def main():
     if which not in ('ipk', 'apk', 'both', 'publish', 'dist', 'kit', 'release', 'version', 'sums'):
         print('用法: python build.py [ipk|apk|both|publish|dist|kit <dir>|release|version|sums]')
         sys.exit(2)
+    if which in ('both', 'publish'):
+        require_bun()
     if which == 'version':
         print(VERSION)
         return
@@ -913,8 +922,9 @@ def main():
         print('⚠️ 桌面目录不存在（%s）—— 跳过桌面副本' % DESKTOP)
     # 注意：只有**两种都造出来**才动 dist/ 和 Release —— 单造一种时清掉另一种，对应的用户 404。
     if which == 'both':
-        publish_dist(made)
+        # 先校验再动 dist：失败时 dist/桌面都保持原样，不留半成品
         verify_kit_sync()
+        publish_dist(made)
         publish_release(made)
     else:
         print('（只造了 %s：dist/ 和 Release 没动 —— 免得另一种格式的包 404）' % which)

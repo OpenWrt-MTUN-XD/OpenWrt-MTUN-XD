@@ -77,6 +77,7 @@ python3 build.py
 > - **本次要更新 kit**：不带 `KIT_NO_PUBLISH` 跑一次 `bun scripts/make-router-kit.mjs`（只写 OUT），
 >   再跑 `python build.py kit <OUT>` 把 kit 复制进 `dist/` 并重算 `SHA256SUMS`，然后把 `dist/` 一起提交。
 >   **禁止手工 cp kit 进 `dist/`。**
+> - **版本号、`dist/` 里的 kit、`dist/` 其它文件必须在同一个提交里**；否则 push 后 CI 闸门会红，Release 直接中止（参考 `53ac117`）。
 > - 推送前跑 `sh tools/check-kit-sync.sh`（本地）或 `--remote`（CDN）确认与 genkit 同源；
 >   CI 还会用 `python tools/check-kit-dist.py /tmp/mihomo-deploy dist v<版本>` 卡一次源码同步。
 >

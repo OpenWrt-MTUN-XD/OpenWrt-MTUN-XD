@@ -895,9 +895,8 @@
     var lh = parseFloat(getComputedStyle(hint).lineHeight);
     if (!lh || !isFinite(lh)) lh = parseFloat(getComputedStyle(hint).fontSize) * 1.5 || 19;
     var tall = hint.getBoundingClientRect().height > lh * 2 + 1;
-    var lbRow = $('lb-round-robin');
-    var lbOn = lbRow && lbRow.parentNode
-      && getComputedStyle(lbRow.parentNode).display !== 'none';
+    var lbRow = $('lb-row');
+    var lbOn = lbRow && getComputedStyle(lbRow).display !== 'none';
     var target = null;
     if (lbOn) {
       var poolField = $('auto-pool-field');

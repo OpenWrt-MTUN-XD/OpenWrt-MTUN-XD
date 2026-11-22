@@ -413,8 +413,25 @@ def main():
           '已挂载但 /ui/ 失败时按 core_alive 归因')
     check('pidof haproxy' in cli and '[ -f "$NGINX_LOC" ]' in cli,
           '挂载判据校验 HAProxy 进程 / nginx 挂载点')
-    check("local out tags='' t url" in cli,
-          'set -u 下 tags 先初始化（API 全失败也不报 unbound）')
+    # 行为断言：API 全失败时函数应安静返回，不能把 unbound 漏到 stderr
+    _fn_start = cli.find('panel_latest_ver() {')
+    _fn_end = cli.find('\n}\n', _fn_start)
+    if _fn_start != -1 and _fn_end != -1:
+        _fn = cli[_fn_start:_fn_end + 3]
+        _script = ("set -u\nGH_API='http://127.0.0.1:9'\n"
+                   "curl() { return 22; }\nrelease_asset_sha() { return 1; }\n"
+                   + _fn + "\npanel_latest_ver\n")
+        if shutil.which('sh'):
+            _r = subprocess.run(['sh', '-u', '-c', _script],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            _err = _r.stderr.decode('utf-8', 'replace')
+            check(_r.returncode != 0 and 'unbound' not in _err
+                  and 'parameter not set' not in _err,
+                  'panel_latest_ver 在 set -u 下 API 全失败不报 unbound', _err[:200])
+        else:
+            check(True, 'panel_latest_ver 行为断言（跳过：没有 sh）')
+    else:
+        check(False, 'panel_latest_ver 行为断言（函数体没定位到）')
     check('80 端口：已挂载（${mounted:-$(expose_addr)}）' in cli,
           'SOFT 文案用实际挂载地址')
     check('仍可使用 9090' not in cli,

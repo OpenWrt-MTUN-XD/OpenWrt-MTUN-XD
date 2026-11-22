@@ -394,11 +394,15 @@ def main():
     check('selfcheck-install.sh' in cli and 'sh "$tmp" >/dev/null 2>&1' in cli,
           '开机自检补装时先下载再执行')
 
-    # 装完先等内核应答，再挂 80 —— 否则核心刚重启时会误报「80 端口未挂载」
-    _i_wait = cli.find('while ! core_alive && [ "$i" -lt 30 ]')
+    # 装完先等 API 真应答，再挂 80 —— core_alive 只证明进程在，不证明 9090 能答
+    _i_wait = cli.find('while ! expose_pick >/dev/null 2>&1')
     _i_on = cli.find('if expose_on; then expose_ok=1; fi')
     check(_i_wait != -1 and _i_on != -1 and _i_wait < _i_on,
-          'setup 先等 core_alive 再挂 80（避免误报未挂载）')
+          'setup 先等 expose_pick 应答再挂 80')
+    check('已挂好（$cur，内核重启中）' in cli,
+          '已挂载但内核未就绪时不报挂载失败')
+    check('仍可使用 9090' not in cli,
+          '失败文案不再建议访问不可达的 9090')
 
     # 内核判活唯一入口：core_alive；按钮命令不得再裸 pidof
     check(cli.count('pidof mihomo') == 1, 'pidof mihomo 只出现在 core_alive 内')

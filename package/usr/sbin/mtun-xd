@@ -1176,7 +1176,7 @@ doctor() {
 
     case "$(expose_status 2>/dev/null)" in
         on) _ok "80 端口转发正常" ;;
-        *)  _wrn "80 端口未挂载（面板 / 配置工具需带端口访问）" ;;
+        *)  _wrn "80 端口未挂载（面板仅本机 127.0.0.1:9090 可访问）" ;;
     esac
 
     geo="$BASE/GeoSite.dat"
@@ -1557,6 +1557,7 @@ expose_ensure() {
     if [ -n "$cur" ] && expose_probe "$cur" && expose_live; then echo on; else echo off; fi
 }
 
+EXPOSE_ERR=''
 expose_on() {
     # 80 口归谁管，决定走哪条路：
     #   ① uhttpd + 原始流代理补丁（iStoreOS）→ 挂 proxy_prefix（下面那段）
@@ -1590,6 +1591,7 @@ expose_on() {
                 say "✔ 80 端口：已挂好（nginx）"
                 return 0
             fi
+            EXPOSE_ERR='nginx 适配失败'
             say "✘ 80 端口：nginx 适配失败（看上面；要退就跑 mtun-xd expose off）"
             return 1
         fi
@@ -1603,12 +1605,15 @@ expose_on() {
                     say "✔ 80 端口：已挂好（HAProxy $a）"
                     return 0
                 fi
-                say "✘ 80 端口：HAProxy 分流失败（看上面；面板可直连 :端口）"
+                EXPOSE_ERR='HAProxy 分流失败'
+                say "✘ 80 端口：HAProxy 分流失败（看上面；面板需自行暴露到局域网）"
             else
-                say "⚠️ 80 端口：uhttpd 不带原始流代理 —— 跳过（面板请直连 :端口）"
+                EXPOSE_ERR='uhttpd 不带原始流代理'
+                say "⚠️ 80 端口：uhttpd 不带原始流代理 —— 跳过（面板需自行暴露到局域网）"
             fi
         else
-            say "⚠️ 80 端口：没有 uhttpd、也没有 nginx —— 跳过（面板请直连 :端口）"
+            EXPOSE_ERR='没有 uhttpd / nginx'
+            say "⚠️ 80 端口：没有 uhttpd、也没有 nginx —— 跳过（面板需自行暴露到局域网）"
         fi
         return 1
     fi
@@ -1624,8 +1629,16 @@ expose_on() {
         # 内核哪儿都不应答（没起来 / 正在重启）—— 别乱动已经挂好的那套，
         # 它多半只是内核没跑，起来之后那条路自己就通了。
         if [ -n "$cur" ]; then
-            say "⚠️ 80 端口：内核没应答（挂着的还是 $cur）"
-            return 1
+            # 先等最多 10 秒（内核重启中）；仍不应答也不算挂载失败：
+            # 路由客观挂着，失败文案会让人以为要重装。
+            i=0
+            while [ "$i" -lt 10 ]; do
+                i=$((i + 1))
+                expose_probe "$cur" && { say "✔ 80 端口：已挂好（$cur，内核已恢复应答）"; return 0; }
+                sleep 1
+            done
+            say "✔ 80 端口：已挂好（$cur，内核重启中）"
+            return 0
         fi
         a=$(expose_addr)
     fi
@@ -1635,16 +1648,16 @@ expose_on() {
     say "→ 80 端口：挂上内核的口子"
     for p in $EXPOSE_PFX; do
         uci add_list uhttpd.main.proxy_prefix="/$p=http://$a" 2>/dev/null \
-            || { say "✘ 80 端口：uci 写不进去"; return 1; }
+            || { EXPOSE_ERR='uci 写入失败'; say "✘ 80 端口：uci 写不进去"; return 1; }
     done
-    uci commit uhttpd 2>/dev/null || { say "✘ 80 端口：uci commit 失败"; return 1; }
+    uci commit uhttpd 2>/dev/null || { EXPOSE_ERR='uci commit 失败'; say "✘ 80 端口：uci commit 失败"; return 1; }
     # 记下**这一次**写进去的原文：以后只摘这些（别人的同名条目一条不碰）
     : > "$EXPOSE_STATE" 2>/dev/null
     for p in $EXPOSE_PFX; do
         printf '%s\n' "/$p=http://$a" >> "$EXPOSE_STATE" 2>/dev/null
     done
     /etc/init.d/uhttpd restart >/dev/null 2>&1 \
-        || { say "✘ 80 端口：uhttpd 重启失败（看 logread）"; return 1; }
+        || { EXPOSE_ERR='uhttpd 重启失败'; say "✘ 80 端口：uhttpd 重启失败（看 logread）"; return 1; }
     port=$(uci -q show uhttpd.main.listen_http 2>/dev/null \
             | sed -n "s/.*='\([^']*\)'.*/\1/p" | grep -v '^\[' | head -1 | sed 's/.*://')
     [ -n "$port" ] || port=80
@@ -1662,6 +1675,7 @@ expose_on() {
             say "✔ 80 端口：已挂好（$a）"
             return 0 ;;
     esac
+    EXPOSE_ERR="/ui/ → ${code:-无响应}"
     say "✘ 80 端口：挂上了但没通（/ui/ → ${code:-无响应}）"
     return 1
 }
@@ -1985,12 +1999,12 @@ setup() {
     if [ -f "$EXPOSE_OFF_MARK" ]; then
         say "⚠️ 80 端口：你手动关过（expose off）—— 要开回来跑 mtun-xd expose on"
     elif [ "$expose_cfg" = "0" ]; then
-        say "⚠️ 80 端口：配置里 expose=0，跳过挂载（用 9090 直连）"
+        say "⚠️ 80 端口：配置里 expose=0，跳过挂载（面板仅本机 127.0.0.1:9090 可访问）"
     else
-        # 内核刚重启时 9090 还没应答，直接 expose_on 会探测失败 → 误报「未挂载」。
-        # 先等它起来（开机 5 分钟内最多等 30 秒），再挂 80；挂不上才是真的挂不上。
+        # 内核刚重启时进程已在、9090 还没应答，直接 expose_on 会探测失败 → 误报「未挂载」。
+        # 等的是 API 应答（expose_pick 会真去探 /version），不是 core_alive 的进程存在。
         i=0
-        while ! core_alive && [ "$i" -lt 30 ]; do i=$((i + 1)); sleep 1; done
+        while ! expose_pick >/dev/null 2>&1 && [ "$i" -lt 30 ]; do i=$((i + 1)); sleep 1; done
         if expose_on; then expose_ok=1; fi
     fi
     if [ "$STEP_MODE" = 1 ]; then
@@ -2003,7 +2017,7 @@ setup() {
         elif [ -f "$EXPOSE_OFF_MARK" ]; then
             ui_warn "80 端口转发曾被手动关闭，保持关闭"
         else
-            ui_warn "80 端口未挂载，仍可使用 9090"
+            ui_warn "80 端口未挂载：${EXPOSE_ERR:-原因见 /tmp/mtun-xd.log}"
         fi
     fi
     # ⚠️ 最后核一眼内核真在跑没有：上面任何一步"看起来成功"都不代表它起来了

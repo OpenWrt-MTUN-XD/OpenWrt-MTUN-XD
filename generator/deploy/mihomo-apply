@@ -16,8 +16,6 @@
 BASE='/etc/mihomo'
 CONFIG="$BASE/config.yaml"
 BIN="$BASE/mihomo"
-BIN_REAL=$(readlink -f "$BIN" 2>/dev/null || true)
-[ -n "$BIN_REAL" ] || BIN_REAL="$BIN"
 CONTAINER='mihomo'                             # Docker 容器名（API 调不通时兜底重启）
 CFG_TMP=''
 CFG_BAK=''
@@ -166,23 +164,10 @@ listen_ok() {
   esac
 }
 
-# 先确认跑着的是**我们自己的**内核：别的工具（OpenClash）也可能占着 9090 回 401/200。
+# 判活只认套件那一份实现（AGENTS.md：内核判活只有一个答案 core_alive），不再复制一份。
 core_alive() {
-    local pid exe cmd
-    for pid in $(pidof mihomo 2>/dev/null) $(pgrep -f "$BIN" 2>/dev/null); do
-        [ -n "$pid" ] || continue
-        exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null) || continue
-        case "$exe" in
-            "$BIN_REAL"|"$BIN_REAL (deleted)") ;;
-            *) continue ;;
-        esac
-        cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
-        case "$cmd" in *" -t "*) continue ;; esac
-        case "$cmd" in
-            *"-d $BASE"*|*"-f $CONFIG"*) return 0 ;;
-        esac
-    done
-    return 1
+    [ -x /usr/sbin/mtun-xd ] || return 1
+    [ "$(/usr/sbin/mtun-xd core-state 2>/dev/null)" = "running" ]
 }
 
 # 内核重启后**真的**回来了吗：进程是我们的 + /version 回 200/401（进程被拉起 ≠ 能服务）。

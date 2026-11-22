@@ -359,6 +359,7 @@ core_alive() {
             *) continue ;;
         esac
         cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+        cmd=" $cmd "
         case "$cmd" in *" -t "*) continue ;; esac
         case "$cmd" in
             *"-d $BASE"*|*"-f $CFG"*) return 0 ;;

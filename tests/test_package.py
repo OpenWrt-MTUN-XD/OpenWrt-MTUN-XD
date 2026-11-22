@@ -415,6 +415,8 @@ def main():
         ch = ch[:ch.find('\n}\n')]
         check('core_alive || return 1' in ch, 'mihomo-apply 先判进程再探 API')
         check('127.0.0.1:9090' not in ch, 'mihomo-apply 不写死 9090')
+        check('pidof' not in cgi, 'mihomo-apply 不自己判活（调 core-state）')
+        check('/usr/sbin/mtun-xd core-state' in cgi, 'mihomo-apply 复用套件判活')
 
     # 卸载默认保留用户数据；只有显式 --purge 才全删；nginx 那套也要撤
     check('KEEP_CONFIG' in cli and 'uninstall [--purge|--keep-config]' in cli,

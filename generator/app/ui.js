@@ -32,6 +32,8 @@
   var TK_CATEGORY = 'tiktok';
   // 「常用 → TC」固定用 tencent 分类（含微信 / QQ / 腾讯全家桶）。
   var TENCENT_CATEGORY = 'tencent';
+  // 「常用 → NF」：域名走 NETFLIX 分类，IP 走 GEOIP netflix 标签。
+  var NF_CATEGORY = 'netflix';
 
   function returnModeOn() {
     return !!(state.mode === 'oneip' ? state.oneipReturnMode : state.returnMode);
@@ -62,14 +64,22 @@
     return r.type === 'geosite' && r.target === TENCENT_CATEGORY;
   }
 
+  /** 这条是不是「常用 → NF」那条（geosite / geoip 两种都算）。 */
+  function isNfRule(r) {
+    if (!r) return false;
+    if (r.preset === 'nf') return true;
+    return (r.type === 'geosite' || r.type === 'geoip') && r.target === NF_CATEGORY;
+  }
+
   /**
-   * 常用规则的固定顺序：TK → TC → AI（短的在上面）；勾选先后不参与排序。
-   * 手写的 geosite:tiktok / tencent / category-ai-* 同样算。
+   * 常用规则的固定顺序：TK → TC → NF → AI；勾选先后不参与排序。
+   * 手写的 geosite:tiktok / tencent / category-ai-* / netflix 同样算。
    */
   function presetRank(r) {
     if (isTkRule(r)) return 0;
     if (isTencentRule(r)) return 1;
-    if (isAiRule(r)) return 2;
+    if (isNfRule(r)) return 2;
+    if (isAiRule(r)) return 3;
     return -1;
   }
 
@@ -110,6 +120,7 @@
     if (isAiRule(r)) return 'AI';
     if (isTkRule(r)) return 'TK';
     if (isTencentRule(r)) return 'TC';
+    if (isNfRule(r)) return r.type === 'geoip' ? 'NF-IP' : 'NF';
     if (r.type !== 'geosite') return r.target;
     return 'geosite:' + r.target;
   }
@@ -239,6 +250,10 @@
         if (acts.indexOf(a) === -1) acts.push(a);
       });
       if (!acts.length) continue;
+      if (r.type === 'geoip') {
+        nodeRules.push({ target: target, type: 'geoip', preset: r.preset, actions: acts });
+        continue;
+      }
       var cat;
       if (r.preset === 'ai') {
         // 「常用 → AI」：国内环境用海外 AI 分类，回国模式换成国内 AI 分类
@@ -629,6 +644,7 @@
     syncAiCheckbox();
     syncTkCheckbox();
     syncTencentCheckbox();
+    syncNfCheckbox();
     syncRuleVisibility();
   }
 
@@ -940,10 +956,11 @@
     //    见 validRuleActions 的注释（否则会把选好的出口悄悄重置成 DIRECT）。
     ruleActions = validRuleActions(ruleActions, names);
     var acts = ruleActions;
-    // 出口没选节点时，「常用规则」的 AI / TK / TC 都不能勾
+    // 出口没选节点时，「常用规则」的 AI / TK / TC / NF 都不能勾
     syncAiCheckbox();
     syncTkCheckbox();
     syncTencentCheckbox();
+    syncNfCheckbox();
     // 出口一改，策略与常用规则立刻跟着出现 / 收起
     syncRuleVisibility();
 
@@ -1043,6 +1060,17 @@
     var box = $('common-tc');
     if (!box) return;
     var hasRule = state.customRules.some(isTencentRule);
+    var hasExit = ruleActions.some(function (a) { return a !== 'DIRECT'; });
+    box.checked = hasRule;
+    box.disabled = !hasRule && !hasExit;
+    box.title = box.disabled ? '先选好节点' : '';
+  }
+
+  /** 「常用规则 → NF」：域名 + IP 两条，勾选状态以任一存在为准。 */
+  function syncNfCheckbox() {
+    var box = $('common-nf');
+    if (!box) return;
+    var hasRule = state.customRules.some(isNfRule);
     var hasExit = ruleActions.some(function (a) { return a !== 'DIRECT'; });
     box.checked = hasRule;
     box.disabled = !hasRule && !hasExit;
@@ -2192,6 +2220,18 @@
           type: 'geosite',
           actions: (ruleActions.length ? ruleActions.slice() : ['DIRECT'])
         });
+      }
+      renderRuleList();
+      refresh();
+    });
+    on($('common-nf'), 'change', function () {
+      var on = this.checked;
+      state.customRules = state.customRules.filter(function (r) { return !isNfRule(r); });
+      if (on) {
+        var acts = (ruleActions.length ? ruleActions.slice() : ['DIRECT']);
+        // IP 规则放前面：目标相同时顺序不影响结果，只是看起来更直观
+        state.customRules.push({ preset: 'nf', target: NF_CATEGORY, type: 'geoip', actions: acts });
+        state.customRules.push({ preset: 'nf', target: NF_CATEGORY, type: 'geosite', actions: acts });
       }
       renderRuleList();
       refresh();

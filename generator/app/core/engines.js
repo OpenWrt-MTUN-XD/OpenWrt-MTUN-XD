@@ -185,8 +185,8 @@
    */
   function customRuleBlock(rules) {
     if (!rules || !rules.length) return null;
-    // 「常用 → TK / TC / AI」各自单独成段，其余还是 `# 定义 规则`。
-    var normal = [], ai = [], tk = [], tencent = [];
+    // 「常用 → TK / TC / AI / NF」各自单独成段，其余还是 `# 定义 规则`。
+    var normal = [], ai = [], tk = [], tencent = [], nf = [];
     var seen = Object.create(null);
     for (var i = 0; i < rules.length; i++) {
       var r = rules[i];
@@ -198,6 +198,9 @@
       if (r.type === 'geosite') {
         // 目标是一个 GeoSite 分类（如 category-ai-!cn / tiktok）
         lines = ['  - GEOSITE,' + target + ',' + action];
+      } else if (r.type === 'geoip') {
+        // 目标是一个 GeoIP 标签（如 netflix / cloudflare）
+        lines = ['  - GEOIP,' + target + ',' + action];
       } else {
         lines = ruleLines(target, action);
       }
@@ -206,6 +209,8 @@
         (target === 'category-ai-!cn' || target === 'category-ai-cn'));
       var isTk = r.preset === 'tk' || (r.type === 'geosite' && target === 'tiktok');
       var isTc = r.preset === 'tencent' || (r.type === 'geosite' && target === 'tencent');
+      var isNf = r.preset === 'nf' ||
+        ((r.type === 'geosite' || r.type === 'geoip') && target === 'netflix');
       for (var li = 0; li < lines.length; li++) {
         var line = lines[li];
         if (!line || seen[line]) continue;
@@ -213,10 +218,11 @@
         if (isAi) ai.push(line);
         else if (isTk) tk.push(line);
         else if (isTc) tencent.push(line);
+        else if (isNf) nf.push(line);
         else normal.push(line);
       }
     }
-    if (!normal.length && !ai.length && !tk.length && !tencent.length) return null;
+    if (!normal.length && !ai.length && !tk.length && !tencent.length && !nf.length) return null;
     var b = [];
     if (normal.length) {
       b.push('  # 定义 规则');
@@ -232,6 +238,11 @@
       if (b.length) b.push('');
       b.push('  # TC 服务');
       b.push.apply(b, tencent);
+    }
+    if (nf.length) {
+      if (b.length) b.push('');
+      b.push('  # Net Flix');
+      b.push.apply(b, nf);
     }
     if (ai.length) {
       if (b.length) b.push('');

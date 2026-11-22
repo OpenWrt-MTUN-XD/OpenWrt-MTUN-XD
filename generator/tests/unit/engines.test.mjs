@@ -80,6 +80,13 @@ describe('精准分流（对齐基线）', () => {
     expect((y.match(/DOMAIN,a\.com,/g) || []).length).toBe(1);
   });
 
+  test('自定义规则：GEOIP 标签', () => {
+    const y = makeSplit({
+      custom_rules: [{ type: 'geoip', target: 'netflix', action: names[0] }],
+    }).generate();
+    expect(y).toContain('  # Net Flix\n  - GEOIP,netflix,' + names[0]);
+  });
+
   test('自定义规则：一条都没有时不输出空挂的标题', () => {
     expect(makeSplit({}).generate()).not.toContain('# 定义 规则');
     expect(makeSplit({ custom_rules: [] }).generate()).not.toContain('# 定义 规则');

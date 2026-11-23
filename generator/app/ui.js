@@ -783,32 +783,39 @@
     // 成员框只要开着智能选择就留着 —— 组里只剩 1 个成员时还得能把它加回去
     var smartOn = state.autoSelect && isMulti() && smartPoolNow.length >= 2;
     var groupOn = ruleActions.length >= 2;
-    // 固定显示：只要是多节点，就让这两行一直在；当前用不上的那行禁用勾选，
-    // 不再按策略来回收起，避免整块忽高忽低。
-    box.hidden = !isMulti();
+    // 只有勾了「智能选择」才把两行固定下来；其余情况仍按负载均衡组按需出现。
+    // 当前用不上的那行只禁用勾选，行本身保留，避免整块忽高忽低。
+    var oneipMode = state.mode === 'oneip';
+    var fixedStrategy = !oneipMode && state.autoSelect && isMulti();
+    box.hidden = !(fixedStrategy || groupOn);
     poolBox.hidden = !(state.autoSelect && isMulti());
     poolBox.style.width = '';
     list.textContent = '';
-    // 两行固定显示；内网控制没有自动优选组，只收起第一行。
     // 注意：这些元素有 class 上的 display，单靠 hidden 属性会被 CSS 盖掉，必须改 style.display
-    var oneipMode = state.mode === 'oneip';
     var rrRowEl = $('rr-row');
     var lbRowEl = $('lb-row');
     if (rrRowEl && lbRowEl) {
-      rrRowEl.style.display = oneipMode ? 'none' : '';
-      rrRowEl.style.visibility = '';
-      lbRowEl.style.display = '';
-      lbRowEl.style.visibility = '';
-      // 该策略当前没生效时只禁用勾选，行本身固定保留
-      var rrDisabled = oneipMode || !smartOn;
-      var lbDisabled = !groupOn;
-      $('auto-round-robin').disabled = rrDisabled;
-      $('lb-round-robin').disabled = lbDisabled;
-      rrRowEl.classList.toggle('disabled', rrDisabled);
-      lbRowEl.classList.toggle('disabled', lbDisabled);
+      if (fixedStrategy) {
+        rrRowEl.style.display = '';
+        lbRowEl.style.display = '';
+        var rrDisabled = !smartOn;
+        var lbDisabled = !groupOn;
+        $('auto-round-robin').disabled = rrDisabled;
+        $('lb-round-robin').disabled = lbDisabled;
+        rrRowEl.classList.toggle('disabled', rrDisabled);
+        lbRowEl.classList.toggle('disabled', lbDisabled);
+      } else {
+        // 只有负载均衡组时只显示这一行，不把智能选择占位带回来
+        rrRowEl.style.display = 'none';
+        lbRowEl.style.display = groupOn ? '' : 'none';
+        $('auto-round-robin').disabled = true;
+        $('lb-round-robin').disabled = !groupOn;
+        rrRowEl.classList.add('disabled');
+        lbRowEl.classList.toggle('disabled', !groupOn);
+      }
     }
     var hintEl = $('strategy-hint');
-    if (hintEl) hintEl.style.display = '';
+    if (hintEl) hintEl.style.display = (fixedStrategy || groupOn) ? '' : 'none';
     // 一机一IP 没有「默认出口」，网格只留给策略格；两格都藏时整块也收起来
     var showDefault = state.mode !== 'oneip';
     var roleGrid = $('node-role-grid');

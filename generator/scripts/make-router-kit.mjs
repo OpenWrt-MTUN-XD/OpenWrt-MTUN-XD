@@ -263,7 +263,7 @@ rmSync(APP, { recursive: true, force: true });
 //     内容一变 URL 就变，浏览器不可能再给旧的；版本号按内容算，内容没变就是同一个 URL（照样命中缓存）。
 let genHtml = lf(readFileSync(join(GEN, 'index.html'), 'utf8'))
   .replace(/((?:href|src)=")app\//g, '$1')
-  .replace(/((?:href|src)=")([^":?]+\.(?:js|css))"/g, function (m, pre, file) {
+  .replace(/((?:href|src)=")([^":?]+\.(?:js|css))(?:\?[^"]*)?"/g, function (m, pre, file) {
     const p = join(GEN, file);
     if (!existsSync(p)) return m;
     return pre + file + '?v=' + createHash('md5').update(readFileSync(p)).digest('hex').slice(0, 8) + '"';

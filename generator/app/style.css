@@ -805,3 +805,7 @@ body:has(#node-list .node-empty) #rules-card { margin-bottom: 0; }
 @media (max-width: 1023px) {
   #strategy-title { margin-top: 0 !important; }
 }
+
+/* 出口策略和成员说明的最后一句话贴底对齐 */
+#strategy-field #strategy-hint { margin-top: auto; }
+#auto-pool-field > p.hint { margin-top: auto; }

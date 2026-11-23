@@ -787,29 +787,21 @@
     poolBox.hidden = !(state.autoSelect && isMulti());
     poolBox.style.width = '';
     list.textContent = '';
-    // 两行互斥：
-    //   智能选择打开、且自定义规则没勾成组 → 只显示「智能选择」
-    //   自定义规则勾了 2 个以上节点           → 只显示「负载均衡」
+    // 两行按需显示：只给真正生效的策略留位置，不再用 visibility 占空行。
+    //   自动优选组存在 → 显示「自动优选」
+    //   自定义规则勾了 2 个以上节点 → 显示「负载均衡」
+    //   内网控制没有自动优选组，直接收起第一行。
     var rrRow = $('auto-round-robin');
     var lbRow = $('lb-round-robin');
     // 注意：这些元素有 class 上的 display，单靠 hidden 属性会被 CSS 盖掉，必须改 style.display
-    // 精准分流：两行固定占位，不显示时用 visibility，避免整块跳动。
-    // 内网控制：没有自动优选组，直接收起第一行，让「负载均衡」对住常用规则第一项。
     var oneipMode = state.mode === 'oneip';
     var rrRowEl = $('rr-row');
     var lbRowEl = $('lb-row');
     if (rrRowEl && lbRowEl) {
-      if (oneipMode) {
-        rrRowEl.style.display = 'none';
-        rrRowEl.style.visibility = '';
-        lbRowEl.style.display = groupOn ? '' : 'none';
-        lbRowEl.style.visibility = '';
-      } else {
-        rrRowEl.style.display = '';
-        lbRowEl.style.display = '';
-        rrRowEl.style.visibility = smartOn ? '' : 'hidden';
-        lbRowEl.style.visibility = groupOn ? '' : 'hidden';
-      }
+      rrRowEl.style.display = (!oneipMode && smartOn) ? '' : 'none';
+      rrRowEl.style.visibility = '';
+      lbRowEl.style.display = groupOn ? '' : 'none';
+      lbRowEl.style.visibility = '';
     }
     // 两个勾都不显示时，「同组同IP出口」那行提示也别占位
     var hintEl = $('strategy-hint');
@@ -868,10 +860,8 @@
       list.appendChild(item);
     });
     alignPoolWidth();
-    alignStrategyBottom();
     // 这一帧里列表刚铺好，某些浏览器量出来的行宽还是旧的 —— 下一帧再贴一次
     root.requestAnimationFrame(alignPoolWidth);
-    root.requestAnimationFrame(alignStrategyBottom);
   }
 
   /**
@@ -891,26 +881,6 @@
     var right = range.getBoundingClientRect().right;
     var left = field.getBoundingClientRect().left;
     if (right > left) field.style.width = Math.round(right - left) + 'px';
-  }
-
-  /**
-   * 出口策略整块贴底：让「不勾：…」最后一行和右边成员说明底边对齐。
-   * 只调整标题的上边距，块内行距保持 2px，不产生新的空行。
-   */
-  function alignStrategyBottom() {
-    var title = $('strategy-title');
-    var hint = $('strategy-hint');
-    var poolField = $('auto-pool-field');
-    var poolHint = poolField && !poolField.hidden
-      ? document.querySelector('#auto-pool-field p.hint') : null;
-    if (!title || !hint || !poolHint) return;
-    title.style.marginTop = '';
-    if (getComputedStyle(hint).display === 'none' || poolField.hidden) return;
-    var delta = poolHint.getBoundingClientRect().bottom - hint.getBoundingClientRect().bottom;
-    if (Math.abs(delta) < 1) return;
-    var fieldTop = $('strategy-field').getBoundingClientRect().top;
-    if (title.getBoundingClientRect().top + delta < fieldTop) return;
-    title.style.marginTop = Math.round(delta) + 'px';
   }
 
   function closeRuleMenu() {
@@ -1776,7 +1746,6 @@
     // 设置页之前藏着的时候量不到宽度，切过来以后补一次
     root.requestAnimationFrame(function () {
       if (!$('auto-pool-field').hidden) alignPoolWidth();
-      alignStrategyBottom();
     });
   }
 
@@ -2087,7 +2056,6 @@
     // 视口宽度变了，「Loyalsoldier」那行字的右端也跟着变 —— 重新贴一次节点框的右边
     on(root, 'resize', function () {
       if (!$('auto-pool-field').hidden) alignPoolWidth();
-      alignStrategyBottom();
     });
     bindInput('keep-alive-idle', 'keepAliveIdle');
     bindInput('keep-alive-interval', 'keepAliveInterval');

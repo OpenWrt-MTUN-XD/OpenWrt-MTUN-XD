@@ -421,7 +421,7 @@ def changelog_section(ver):
     except OSError:
         return ''
     # 标题可能带后缀（`## 2026.11.05（未发布）`）：只按版本号精确匹配会把整节吞掉
-    m = re.search(r'^## %s[^\n]*\n(.*?)(?=^## |\Z)' % re.escape(ver), text, re.M | re.S)
+    m = re.search(r'^## %s[^\n]*\n(.*?)(?=^## |^# |\Z)' % re.escape(ver), text, re.M | re.S)
     return m.group(1).strip() if m else ''
 
 

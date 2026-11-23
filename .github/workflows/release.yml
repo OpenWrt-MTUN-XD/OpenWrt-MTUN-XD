@@ -42,9 +42,9 @@ jobs:
           #    只看 Release 的话：Release 建好了、dist 没提交成功（推送被拒/半路失败），
           #    之后再怎么推都判「发过」→ 永远补不回来（2026-10-26 审出来）。
           DIST=$(git show HEAD:dist/latest.txt 2>/dev/null | tr -d '\r\n')
-          # 本地抢跑：dist 已是这版，但 Release 还没建 → 禁止发布
-          if [ "$DIST" = "v$V" ] && ! gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::dist 已经是 v$V，但 Release 不存在：dist 被本地抢跑，禁止发布"
+          # 本地抢跑：dist 已是这版但 Release 还没建 → 禁止发布；force 例外
+          if [ "${{ inputs.force }}" != "true" ] && [ "$DIST" = "v$V" ] && ! gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::dist 已是 v$V 但 Release 不存在（本地抢跑）。确需重建 Release，请 workflow_dispatch + force=true"
             exit 1
           fi
           DONE=0
@@ -196,14 +196,23 @@ jobs:
           echo "## 人工强制重跑" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           BODY=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)
-          BODY_SHA=$(printf '%s' "$BODY" | sha256sum | awk '{print $1}')
           EXPECTED_BODY=$(python3 -c 'import build,glob; print(build.release_body(sorted(glob.glob("luci-app-mtun-xd*"))),end="")')
-          EXPECTED_SHA=$(printf '%s' "$EXPECTED_BODY" | sha256sum | awk '{print $1}')
-          ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | sort)
-          EXPECTED_ASSETS=$(ls luci-app-mtun-xd-*.apk luci-app-mtun-xd_*.ipk | sort)
+          # 统一 LF 并 rstrip 尾随空白后再比；GitHub 回读可能丢尾随换行
+          BODY_NORM=$(printf '%s' "$BODY" | python3 -c 'import sys; print(sys.stdin.read().replace("\r\n","\n").replace("\r","\n").rstrip(),end="")')
+          EXPECTED_NORM=$(printf '%s' "$EXPECTED_BODY" | python3 -c 'import sys; print(sys.stdin.read().replace("\r\n","\n").replace("\r","\n").rstrip(),end="")')
+          BODY_SHA=$(printf '%s' "$BODY_NORM" | sha256sum | awk '{print $1}')
+          EXPECTED_SHA=$(printf '%s' "$EXPECTED_NORM" | sha256sum | awk '{print $1}')
+          ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | LC_ALL=C sort)
+          EXPECTED_ASSETS=$(ls luci-app-mtun-xd-*.apk luci-app-mtun-xd_*.ipk | LC_ALL=C sort)
           ASSET_COUNT=$(printf '%s\n' "$ASSETS" | sed '/^$/d' | wc -l | tr -d ' ')
           if [ "$BODY_SHA" != "$EXPECTED_SHA" ]; then
             echo "::error::强制重跑正文 sha 不一致：release=$BODY_SHA expected=$EXPECTED_SHA"
+            echo "::group::release body first 5 lines"
+            printf '%s\n' "$BODY_NORM" | head -n 5
+            echo "::endgroup::"
+            echo "::group::expected body first 5 lines"
+            printf '%s\n' "$EXPECTED_NORM" | head -n 5
+            echo "::endgroup::"
             exit 1
           fi
           if [ "$ASSETS" != "$EXPECTED_ASSETS" ]; then

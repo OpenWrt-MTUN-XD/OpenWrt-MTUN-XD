@@ -809,3 +809,6 @@ body:has(#node-list .node-empty) #rules-card { margin-bottom: 0; }
 /* 出口策略和成员说明的最后一句话贴底对齐 */
 #strategy-field #strategy-hint { margin-top: auto; }
 #auto-pool-field > p.hint { margin-top: auto; }
+
+/* 当前不可用的策略行固定显示但灰掉，避免误以为可以勾 */
+#strategy-field .strat-row.disabled { opacity: .55; }

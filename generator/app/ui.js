@@ -783,31 +783,32 @@
     // 成员框只要开着智能选择就留着 —— 组里只剩 1 个成员时还得能把它加回去
     var smartOn = state.autoSelect && isMulti() && smartPoolNow.length >= 2;
     var groupOn = ruleActions.length >= 2;
-    box.hidden = !((state.autoSelect && isMulti()) || groupOn);
+    // 固定显示：只要是多节点，就让这两行一直在；当前用不上的那行禁用勾选，
+    // 不再按策略来回收起，避免整块忽高忽低。
+    box.hidden = !isMulti();
     poolBox.hidden = !(state.autoSelect && isMulti());
     poolBox.style.width = '';
     list.textContent = '';
-    // 两行按需显示：只给真正生效的策略留位置，不再用 visibility 占空行。
-    //   自动优选组存在 → 显示「自动优选」
-    //   自定义规则勾了 2 个以上节点 → 显示「负载均衡」
-    //   内网控制没有自动优选组，直接收起第一行。
-    var rrRow = $('auto-round-robin');
-    var lbRow = $('lb-round-robin');
+    // 两行固定显示；内网控制没有自动优选组，只收起第一行。
     // 注意：这些元素有 class 上的 display，单靠 hidden 属性会被 CSS 盖掉，必须改 style.display
     var oneipMode = state.mode === 'oneip';
     var rrRowEl = $('rr-row');
     var lbRowEl = $('lb-row');
     if (rrRowEl && lbRowEl) {
-      rrRowEl.style.display = (!oneipMode && smartOn) ? '' : 'none';
+      rrRowEl.style.display = oneipMode ? 'none' : '';
       rrRowEl.style.visibility = '';
-      lbRowEl.style.display = groupOn ? '' : 'none';
+      lbRowEl.style.display = '';
       lbRowEl.style.visibility = '';
+      // 该策略当前没生效时只禁用勾选，行本身固定保留
+      var rrDisabled = oneipMode || !smartOn;
+      var lbDisabled = !groupOn;
+      $('auto-round-robin').disabled = rrDisabled;
+      $('lb-round-robin').disabled = lbDisabled;
+      rrRowEl.classList.toggle('disabled', rrDisabled);
+      lbRowEl.classList.toggle('disabled', lbDisabled);
     }
-    // 两个勾都不显示时，「同组同IP出口」那行提示也别占位
     var hintEl = $('strategy-hint');
-    if (hintEl) hintEl.style.display = (smartOn || groupOn) ? '' : 'none';
-    // 只剩成员框时把这一格的上留白也去掉，不然上面空着一块
-    if (box) box.style.paddingTop = (smartOn || groupOn) ? '' : '0';
+    if (hintEl) hintEl.style.display = '';
     // 一机一IP 没有「默认出口」，网格只留给策略格；两格都藏时整块也收起来
     var showDefault = state.mode !== 'oneip';
     var roleGrid = $('node-role-grid');

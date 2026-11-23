@@ -97,7 +97,7 @@ curl -fsSL https://mtun-xd.wxcircle.top/install.sh -o /tmp/mtun-xd-install.sh &&
 - 仓库：https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD
 - 发布页：https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/releases
 - 国内镜像：https://mtun-xd.wxcircle.top/
-- 讨论群：https://t.me/+Kdxyw8yLTz85ODg5
+- 讨论群：https://t.me/mtunxd
 
 协议：套件本体 MIT，配置生成器 GPL-3.0。
 

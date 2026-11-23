@@ -174,7 +174,7 @@ the core and dashboard come from their respective upstream releases.
 
 [GitHub](https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD) ·
 [Releases](https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/releases) ·
-[Telegram](https://t.me/+Kdxyw8yLTz85ODg5) ·
+[Telegram](https://t.me/mtunxd) ·
 [Security](https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/blob/main/SECURITY.md) ·
 [Contributing](https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/blob/main/CONTRIBUTING.md) ·
 [Release checklist](https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/blob/main/docs/RELEASE-CHECKLIST.md) ·

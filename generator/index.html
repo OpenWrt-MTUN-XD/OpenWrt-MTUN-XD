@@ -218,17 +218,16 @@
       </div>
     </div>
 
-    <details class="adv" id="adv-panel">
+    <details class="adv" id="basic-panel">
       <summary class="adv-head">
-        <span class="adv-title">进阶参数</span>
-        <span class="adv-hint">TUN / DNS / 嗅探</span>
-        <span class="adv-badge" id="adv-badge" hidden></span>
+        <span class="adv-title">基础设置</span>
+        <span class="adv-hint">密码 / 端口 / 日志</span>
       </summary>
 
     <div class="card" id="general-card">
       <div class="grid">
         <div class="field">
-          <label class="field-label" for="secret">面板密码</label>
+          <label class="field-label" for="secret">密码</label>
           <div class="input-row">
             <input class="field-input" id="secret" type="text" autocomplete="off" spellcheck="false">
             <button class="btn" id="secret-gen" type="button" title="生成一串随机密码">随机</button>
@@ -294,6 +293,15 @@
         </div>
       </div>
     </div>
+
+    </details>
+
+    <details class="adv" id="adv-panel">
+      <summary class="adv-head">
+        <span class="adv-title">进阶参数</span>
+        <span class="adv-hint">TUN / DNS / 嗅探</span>
+        <span class="adv-badge" id="adv-badge" hidden></span>
+      </summary>
 
     <div class="card">
 

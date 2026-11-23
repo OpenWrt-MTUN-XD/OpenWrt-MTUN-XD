@@ -658,14 +658,19 @@
     var clearBtn = $('clear-nodes');
     if (clearBtn) clearBtn.hidden = !state.nodes.length;
 
-    // 没节点时展开进阶参数，免得页面空；导入第一个节点后自动收起。
+    // 没节点时展开基础设置；导入第一个节点后基础/进阶都收起。
     // 之后不再干预，用户自己展开/收起都保留。
-    var adv = $('adv-panel');
-    if (adv) {
-      var hadNodes = adv.dataset.hadNodes === '1';
-      if (!state.nodes.length) adv.open = true;
-      else if (!hadNodes) adv.open = false;
-      adv.dataset.hadNodes = state.nodes.length ? '1' : '0';
+    var basic = $('basic-panel'), adv = $('adv-panel');
+    if (basic) {
+      var hadNodes = basic.dataset.hadNodes === '1';
+      if (!state.nodes.length) {
+        basic.open = root.matchMedia('(min-width: 1024px)').matches;
+        if (adv) adv.open = false;
+      } else if (!hadNodes) {
+        basic.open = false;
+        if (adv) adv.open = false;
+      }
+      basic.dataset.hadNodes = state.nodes.length ? '1' : '0';
     }
 
     var badge = $('step-badge-0');

@@ -772,7 +772,8 @@ body.headerless #status-version { display: none; }
 /* 参数设置：规则方案按内容高度，进阶参数压到底部 */
 .step[data-step="1"].active { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .step[data-step="1"].active > #rules-card { flex: 0 0 auto; margin-bottom: 14px; }
-.step[data-step="1"].active > #adv-panel { flex: 0 0 auto; margin-top: auto; margin-bottom: 14px; }
+.step[data-step="1"].active > #basic-panel { flex: 0 0 auto; }
+.step[data-step="1"].active > #adv-panel { flex: 0 0 auto; margin-top: 0; margin-bottom: 14px; }
 
 
 /* 未导入节点时：顶部四项铺满四列；导入节点后恢复五列。 */
@@ -798,8 +799,6 @@ body:has(#node-list .node-empty) #rules-card .rules-main > p.hint:not(.rules-emp
 }
 body:has(#node-list .node-empty) #rules-card .rules-empty-hint { display: block; }
 
-body:has(#node-list .node-empty) #adv-panel { margin-top: 14px; }
-body:has(#node-list .node-empty) #rules-card { margin-bottom: 0; }
 
 /* 窄屏：清掉桌面贴底时留下的标题 margin-top，避免默认出口与出口策略之间空一大块 */
 @media (max-width: 1023px) {

@@ -658,6 +658,16 @@
     var clearBtn = $('clear-nodes');
     if (clearBtn) clearBtn.hidden = !state.nodes.length;
 
+    // 没节点时展开进阶参数，免得页面空；导入第一个节点后自动收起。
+    // 之后不再干预，用户自己展开/收起都保留。
+    var adv = $('adv-panel');
+    if (adv) {
+      var hadNodes = adv.dataset.hadNodes === '1';
+      if (!state.nodes.length) adv.open = true;
+      else if (!hadNodes) adv.open = false;
+      adv.dataset.hadNodes = state.nodes.length ? '1' : '0';
+    }
+
     var badge = $('step-badge-0');
     badge.textContent = String(state.nodes.length);
     badge.classList.toggle('show', state.nodes.length > 0);

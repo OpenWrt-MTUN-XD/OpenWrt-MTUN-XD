@@ -425,10 +425,36 @@ def changelog_section(ver):
     return m.group(1).strip() if m else ''
 
 
-def release_body():
-    """Release 页的说明：更新内容 + 版本 + 包列表 + 一键安装。"""
+def _release_package_rows(made):
+    """按实际附件生成 Packages List 行，不预写尚未上传的 -r1 行。"""
+    rows = []
+    for p in made:
+        fn = os.path.basename(str(p))
+        shell = tool = None
+        m = None
+        if fn.startswith(NAME + '-') and fn.endswith('.apk'):
+            shell, tool = 'APK', 'apk'
+            m = re.match(r'^%s-(.+)\.apk$' % re.escape(NAME), fn)
+        elif fn.startswith(NAME + '_') and fn.endswith('_all.ipk'):
+            shell, tool = 'IPK', 'opkg'
+            m = re.match(r'^%s_(.+)_all\.ipk$' % re.escape(NAME), fn)
+        if not shell:
+            continue
+        ver = m.group(1) if m else VERSION
+        if ver.endswith('-r1'):
+            purpose = ('固件集成编译（OpenWrt 25.12 SDK）' if shell == 'APK'
+                       else '固件集成编译（OpenWrt 24.10 SDK）')
+        else:
+            purpose = '手动安装（%s 固件）' % tool
+        rows.append('| 🧊 %s | `%s` | %s |' % (shell, ver, purpose))
+    return rows
+
+
+def release_body(made):
+    """Release 页的说明：更新内容 + 版本 + 实际附件列表 + 一键安装。"""
     ver = VERSION
     changes = changelog_section(ver) or '- 维护性更新（详见 CHANGELOG.md）'
+    rows = _release_package_rows(made)
     return '\n'.join([
         '## 📣 更新内容',
         '',
@@ -442,12 +468,33 @@ def release_body():
         '',
         '| 包 | 版本 | 用途 |',
         '| --- | --- | --- |',
-        '| 🧊 APK | `%s` | 手动安装（apk 固件） |' % ver,
-        '| 🧊 IPK | `%s` | 手动安装（opkg 固件） |' % ver,
-        '| 🧊 APK | `%s-r1` | 固件集成编译（OpenWrt 25.12 SDK） |' % ver,
-        '| 🧊 IPK | `%s-r1` | 固件集成编译（OpenWrt 24.10 SDK） |' % ver,
+    ] + rows + [
+        '',
+        '-r1 固件包由 SDK 构建，完成后自动追加到本 Release 附件列表',
         '',
     ])
+
+
+def _release_body_digest(body):
+    """正文落临时文件后读回：U+FFFD 必须为 0，并输出 sha256 供对账。"""
+    tmp = tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False)
+    try:
+        tmp.write(body)
+        tmp.close()
+        with io.open(tmp.name, encoding='utf-8') as f:
+            readback = f.read()
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+    bad = readback.count('\ufffd')
+    if bad:
+        print('✘ Release 正文含 U+FFFD %d 个，拒绝建 Release' % bad)
+        return None
+    digest = hashlib.sha256(readback.encode('utf-8')).hexdigest()
+    print('Release 正文 sha256=%s' % digest)
+    return digest
 
 
 def publish_release(made):
@@ -462,7 +509,9 @@ def publish_release(made):
         print('⚠️ 没发 GitHub Release（GCM 里没有 GitHub 凭据）—— 不影响本地和 CF')
         return False
     tag = 'v%s' % VERSION
-    body = release_body()
+    body = release_body(made)
+    if not _release_body_digest(body):
+        return False
 
     def api(url, data=None, method=None, ctype='application/json'):
         r = urllib.request.Request(url, data=data, method=method)

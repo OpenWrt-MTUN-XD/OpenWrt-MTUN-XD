@@ -95,7 +95,7 @@ git diff --check
 - **CGI 抽检**：`mihomo-apply` 不在 ipk/apk 内（由生成器 kit 安装），包检只能查 `usr/sbin/mtun-xd`；装完必须在真机 `/www/cgi-bin/mihomo-apply` 抽查一次 —— 无 `docker` / `CONTAINER` / `pidof` / `'/mihomo/'`，且判活委托 `mtun-xd core-state`。
 - 提交前确认没有把版本号顺手改掉（`git diff generator/app/state.js` 应为空，除非本次就是发版）。
 - **`dist/` 里的任何文件都算线上产物**：改动落进 `dist/` 就等于部署（CF Workers 随 push 自动发布）。只能在发版提交里出现，且必须先拿到明确「发」。
-- **禁止手工往 `dist/` copy 文件**。同步只能走 `python build.py` / `build.py dist` / CI 流水线；本地 build 跑不动（缺另一种外壳的包等）时，**不许绕**——把 `dist/` 的同步留给发版那一步。
+- **禁止手工往 `dist/` copy 文件**。正式发版的 `dist/` 由 release workflow 写入；滚动 kit 只能走 `make-router-kit` → `build.py kit` 的既定流程。
 - **改动单里出现「`dist/` 与根文件一致」这类验收时**，若本地无法用构造脚本达成，一律视为「本提交不做同步」，不是「手工同步」。
 - 推送本身也会触发 CF 重新部署一次（即使 `dist/` 没变）；推文档时默认会走一趟部署，别顺手带别的改动。
 - 保持 LF。Windows 下的 CRLF 会直接破坏路由器 shell 脚本执行。
@@ -260,18 +260,22 @@ HAProxy 方案必须：
 
 ## 发布流程
 
-1. 完成代码和测试。
-2. 更新 `APP_VERSION`、`openwrt/Makefile` 的 `PKG_VERSION`（去掉前导 v，必须与之一致）、
-   `CHANGELOG.md` 和必要文档。`PKG_VERSION` 漏改会让 `tests/test_package.py` 直接失败，
-   也会让固件包版本和 Release 对不上。
-3. 本地运行 `python tests/test_package.py`。
-4. 提交并推送 `main`。
-5. 等待 CI 与 Release 工作流成功。
-6. `git pull --ff-only` 同步 bot 生成的 `dist:` 提交。
-7. 验证 GitHub Release、线上 `latest.txt`、`/gh-api/`。
-8. 核对同源：`sha256(install.sh)` == `sha256(dist/install.sh)` == `sha256(CF install.sh)`；
-   `dist/latest.txt` == CF `latest.txt` == 版本号。
-9. 用户要求真机验收时，升级目标设备并验证状态。
+1. 本地只更新 `generator/app/state.js` 的 `APP_VERSION`、`openwrt/Makefile` 的
+   `PKG_VERSION`（去掉前导 v，必须一致）、`CHANGELOG.md`，然后提交 release commit 并推 `main`。
+   **本地不产出 dist、不建 tag、不建 Release、不传附件。**
+2. 推 `main` 后由 `.github/workflows/release.yml` 完成：prepare → test → 造 ipk/apk →
+   更新/提交 dist → 建 Release（含 tag）→ Telegram 通知。
+3. `prepare` 的硬闸门：若 `dist/latest.txt` 已是本次版本、但 GitHub Release 不存在，
+   判定为「dist 被本地抢跑」，直接失败，禁止继续发布。
+4. Release 正文只由 `build.py release_body(made)` 生成；Packages List 必须来自实际附件，
+   不预写未上传的 `-r1` 行；生成后校验 U+FFFD = 0 并输出正文 sha256。
+5. Telegram 步骤必须解析 Telegram 返回值：`ok == true` 且拿到 `message_id` 才算成功；
+   secret 缺失打 `::warning::`，接口失败打 `::error::` 并带 `error_code` / `description`。
+6. 出现 skipped / 已存在 / 跳过判定，先停下报告，不得自行补跑；`force` 补跑必须经用户同意，
+   且 job summary 要记录「人工强制重跑」并核对正文 sha、附件数量、CF 三方。
+7. `git pull --ff-only` 同步 bot 生成的 `dist:` 提交，核对 `dist`、Release、CF、
+   `latest.txt` 与摘要一致；不要手工补 tag / Release / 附件。
+8. 用户要求真机验收时，升级目标设备并验证状态。
 
 不要手工跳过失败的 Actions，也不要在 `dist/` 与 Release 不一致时宣称发布完成。
 

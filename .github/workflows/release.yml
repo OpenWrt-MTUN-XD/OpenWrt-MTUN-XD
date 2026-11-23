@@ -42,6 +42,11 @@ jobs:
           #    只看 Release 的话：Release 建好了、dist 没提交成功（推送被拒/半路失败），
           #    之后再怎么推都判「发过」→ 永远补不回来（2026-10-26 审出来）。
           DIST=$(git show HEAD:dist/latest.txt 2>/dev/null | tr -d '\r\n')
+          # 本地抢跑：dist 已是这版，但 Release 还没建 → 禁止发布
+          if [ "$DIST" = "v$V" ] && ! gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::dist 已经是 v$V，但 Release 不存在：dist 被本地抢跑，禁止发布"
+            exit 1
+          fi
           DONE=0
           if [ "$DIST" = "v$V" ] && gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             DONE=1
@@ -179,8 +184,60 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 build.py release
 
+      - name: 强制重跑对账
+        if: inputs.force == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          CF_BASE="https://mtun-xd.wxcircle.top"
+          echo "## 人工强制重跑" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          BODY=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)
+          BODY_SHA=$(printf '%s' "$BODY" | sha256sum | awk '{print $1}')
+          EXPECTED_BODY=$(python3 -c 'import build,glob; print(build.release_body(sorted(glob.glob("luci-app-mtun-xd*"))),end="")')
+          EXPECTED_SHA=$(printf '%s' "$EXPECTED_BODY" | sha256sum | awk '{print $1}')
+          ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | sort)
+          EXPECTED_ASSETS=$(ls luci-app-mtun-xd-*.apk luci-app-mtun-xd_*.ipk | sort)
+          ASSET_COUNT=$(printf '%s\n' "$ASSETS" | sed '/^$/d' | wc -l | tr -d ' ')
+          if [ "$BODY_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::强制重跑正文 sha 不一致：release=$BODY_SHA expected=$EXPECTED_SHA"
+            exit 1
+          fi
+          if [ "$ASSETS" != "$EXPECTED_ASSETS" ]; then
+            echo "::error::强制重跑附件列表不一致"
+            printf 'release:\n%s\nexpected:\n%s\n' "$ASSETS" "$EXPECTED_ASSETS"
+            exit 1
+          fi
+          CF_LATEST=""
+          CF_SUM=""
+          LOCAL_SUM=$(cat dist/SHA256SUMS)
+          for i in $(seq 1 18); do
+            CF_LATEST=$(curl -fsSL --max-time 20 "$CF_BASE/latest.txt" || true)
+            CF_SUM=$(curl -fsSL --max-time 20 "$CF_BASE/SHA256SUMS" || true)
+            if [ "$CF_LATEST" = "v$VERSION" ] && [ "$CF_SUM" = "$LOCAL_SUM" ]; then
+              break
+            fi
+            sleep 10
+          done
+          if [ "$CF_LATEST" != "v$VERSION" ]; then
+            echo "::error::CF latest.txt 不一致：$CF_LATEST"
+            exit 1
+          fi
+          if [ "$CF_SUM" != "$LOCAL_SUM" ]; then
+            echo "::error::CF SHA256SUMS 与 dist 不一致"
+            exit 1
+          fi
+          echo "- 正文 sha256: \`$BODY_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 附件数量: \`$ASSET_COUNT\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- CF latest.txt: \`$CF_LATEST\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- CF SHA256SUMS 与 dist: 一致" >> "$GITHUB_STEP_SUMMARY"
+          echo "强制重跑对账通过"
+
       - name: 通知 Telegram 群
-        # TG 挂了不能把发版变红
+        # 通知失败不拖红发版，但不许静默：缺 secret / HTTP / ok / message_id 都要告警
         continue-on-error: true
         env:
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -188,8 +245,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          # 没配 secrets 就安静跳过（不刷红叉）
-          [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] || { echo '未配置 TELEGRAM_*，跳过'; exit 0; }
+          set -euo pipefail
+          missing=""
+          [ -n "${TG_TOKEN:-}" ] || missing="${missing} TELEGRAM_BOT_TOKEN"
+          [ -n "${TG_CHAT:-}" ] || missing="${missing} TELEGRAM_CHAT_ID"
+          if [ -n "$missing" ]; then
+            echo "::warning::未配置 Actions secrets:${missing}，跳过 Telegram 通知"
+            exit 0
+          fi
 
           TAG="v${VERSION}"
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
@@ -222,8 +285,24 @@ jobs:
           # Telegram 上限 4096，留余量
           MSG=$(printf '%s' "$MSG" | head -c 3800)
 
-          curl -sS -m 30 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+          RESP="$(mktemp)"
+          trap 'rm -f "$RESP"' EXIT
+          set +e
+          HTTP=$(curl -sS --fail-with-body -m 30 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             -d "chat_id=${TG_CHAT}" \
             --data-urlencode "text=${MSG}" \
             -d "parse_mode=HTML" \
-            -d "disable_web_page_preview=false"
+            -d "disable_web_page_preview=false" \
+            -o "$RESP" -w '%{http_code}')
+          CURL_RC=$?
+          set -e
+          cat "$RESP" 2>/dev/null || true
+          OK=$(jq -r '.ok // false' "$RESP" 2>/dev/null || echo false)
+          MID=$(jq -r '.result.message_id // empty' "$RESP" 2>/dev/null || true)
+          ERR_CODE=$(jq -r '.error_code // empty' "$RESP" 2>/dev/null || true)
+          ERR_DESC=$(jq -r '.description // empty' "$RESP" 2>/dev/null || true)
+          if [ "$CURL_RC" -ne 0 ] || [ "$OK" != "true" ] || [ -z "$MID" ]; then
+            echo "::error::Telegram 发送失败 HTTP=${HTTP:-?} curl=${CURL_RC} ok=${OK:-?} error_code=${ERR_CODE:-?} description=${ERR_DESC:-?}"
+            exit 1
+          fi
+          echo "Telegram 通知成功 message_id=$MID"

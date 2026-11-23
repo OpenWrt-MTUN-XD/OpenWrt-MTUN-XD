@@ -57,19 +57,23 @@ node tools/check-copy-integrity.mjs # 复制完整性 4 项
 - [ ] 如本次修改涉及 shell，检查并处理 `tools/check-shell.sh` 报告的问题；
       若因规则差异暂不处理，记录原因。
 
-### 1.3 构建产物
+### 1.3 构建产物（由 release workflow 完成）
 
-```sh
-python3 build.py
-```
+本地不执行 `python3 build.py` 来产出发布物，不建 tag、不建 Release、不传附件。
+本地只允许跑校验；APK / IPK、dist、tag、Release、附件和通知全部由
+`.github/workflows/release.yml` 在推 `main` 后完成。
 
-- [ ] APK / IPK 构建成功。
-- [ ] 包内版本号、文件清单、权限和菜单入口正确。
-- [ ] `SHA256SUMS` 已生成，摘要与最终发布附件对应。
-- [ ] Release 附件、CF 镜像文件与官方摘要一致（可用 `tools/verify-kit-digest.sh` 核对 kit）。
-- [ ] 确认没有误提交临时文件、测试产物或旧版本附件。
+- [ ] 本地只确认 `APP_VERSION`、`openwrt/Makefile` 的 `PKG_VERSION`、`CHANGELOG.md` 已提交。
+- [ ] `prepare` 未报「dist 被本地抢跑，禁止发布」。
+- [ ] test / build-ipk / build-apk / publish 各 job 均为 success，没有 skipped。
+- [ ] Release 的 Packages List 与附件逐个对应；未上传的 `-r1` 不出现在表中。
+- [ ] Release 正文由 `release_body()` 生成，U+FFFD = 0，正文 sha256 已记录。
+- [ ] `SHA256SUMS`、tar/zip、CF、genkit 同批一致；`latest.txt` 与版本号一致。
+- [ ] Telegram 返回 `ok:true` 且有 `message_id`；缺失 secret 有 `::warning::`。
+- [ ] 若发生过 `force` 补跑，job summary 有「人工强制重跑」并完成正文 sha、附件数量、CF 对账。
 
 > 本项目 Release 由推送 `main` 的 CI 自动创建，不需要手工建 tag / Release。
+> 本地抢跑 dist（dist 已是本版但 Release 不存在）会被 `prepare` 直接判失败。
 > **`dist/` 的处理分两种，不要一刀切：**
 >
 > - **本次没有主动更新配置工具包（kit）**：确认 `dist/` 没有意外改动；若有，先查明来源，

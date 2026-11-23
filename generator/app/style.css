@@ -763,32 +763,24 @@ body.headerless #status-version { display: none; }
 
 
 /* 节点来源标题与「上传文件 / 粘贴链接」标签同字号 */
-.card h2.node-source-title { font-size: 12.5px; font-weight: 600; }
+.card h2.node-source-title { font-size: 13px; font-weight: 600; }
 
 /* 选择文件按钮收小一点 */
-#file-btn { padding: 4px 9px; font-size: 11.5px; }
+#file-btn { padding: 4px 9px; font-size: 12px; }
 
 
-/* adv-bottom-marker 参数设置：规则方案吃满剩余高度，进阶参数压到底部 */
+/* 参数设置：规则方案按内容高度，进阶参数压到底部 */
 .step[data-step="1"].active { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
-.step[data-step="1"].active > #rules-card { flex: 1 1 auto; margin-bottom: 14px; }
-.step[data-step="1"].active > #adv-panel { flex: 0 0 auto; margin-top: 0; margin-bottom: 14px; }
+.step[data-step="1"].active > #rules-card { flex: 0 0 auto; margin-bottom: 14px; }
+.step[data-step="1"].active > #adv-panel { flex: 0 0 auto; margin-top: auto; margin-bottom: 14px; }
 
 
-/* nonodes-layout-marker 未导入节点时：顶部四项铺满四列，底部自定义规则与本地出口铺满整行。
-   导入节点后 #node-role-grid 显示，本条自动失效，保持原来的五列。 */
+/* 未导入节点时：顶部四项铺满四列；导入节点后恢复五列。 */
 @media (min-width: 960px) {
   body:has(#node-list .node-empty) #rules-card #role-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  body:has(#node-list .node-empty) #rules-card #rules-split.no-common {
-    grid-template-columns: minmax(0, 1fr) 190px;
-  }
 }
-
-/* nonodes-align-marker 未导入节点时本地出口不左移 */
-
-body:has(#node-list .node-empty) #rules-card #rules-local { transform: none; }
 
 /* nonodes-local-hide：未导入节点时不显示本地出口 */
 body:has(#node-list .node-empty) #rules-card #rules-local { display: none !important; }
@@ -806,7 +798,7 @@ body:has(#node-list .node-empty) #rules-card .rules-main > p.hint:not(.rules-emp
 }
 body:has(#node-list .node-empty) #rules-card .rules-empty-hint { display: block; }
 
-/* mobile-strategy-gap-marker */
+body:has(#node-list .node-empty) #adv-panel { margin-top: 14px; }
 
 /* 窄屏：清掉桌面贴底时留下的标题 margin-top，避免默认出口与出口策略之间空一大块 */
 @media (max-width: 1023px) {

@@ -2091,6 +2091,7 @@
     // 视口宽度变了，「Loyalsoldier」那行字的右端也跟着变 —— 重新贴一次节点框的右边
     on(root, 'resize', function () {
       if (!$('auto-pool-field').hidden) alignPoolWidth();
+      alignStrategyBottom();
     });
     bindInput('keep-alive-idle', 'keepAliveIdle');
     bindInput('keep-alive-interval', 'keepAliveInterval');

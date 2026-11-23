@@ -45,9 +45,15 @@
 
     <div class="card">
       <div class="card-head">
-        <h2>节点来源</h2>
+        <h2 class="node-source-title">节点来源</h2>
         <p class="card-desc">节点解析完全在本地进行，不会上传至任何服务器。</p>
       </div>
+
+      <label class="field-label" for="file-input">上传文件</label>
+      <input type="file" id="file-input" accept=".txt,.yaml,.yml,.json,.conf" hidden>
+      <button class="btn" id="file-btn" type="button">选择文件</button>
+      <p class="hint">支持 TXT、YAML、YML、JSON 格式文件，以及节点分享链接和 Base64 订阅内容。</p>
+      <p class="hint" id="file-note"></p>
 
       <label class="field-label" for="links-input">粘贴链接</label>
       <p class="hint">每行填写一条节点链接，支持 Base64 订阅内容。</p>
@@ -57,12 +63,6 @@
           placeholder="vless://uuid@example.com:443?type=ws&security=tls&sni=example.com#节点名称"></textarea>
         <button class="btn" id="links-add" type="button">添加</button>
       </div>
-
-      <label class="field-label">上传节点文件</label>
-      <p class="hint">支持 TXT、YAML、YML、JSON 格式文件，以及节点分享链接和 Base64 订阅内容。</p>
-      <input type="file" id="file-input" accept=".txt,.yaml,.yml,.json,.conf" hidden>
-      <button class="btn" id="file-btn" type="button">选择文件</button>
-      <p class="hint" id="file-note"></p>
     </div>
 
     <div class="card" id="list-card">
@@ -82,76 +82,6 @@
   </section>
 
   <section class="step" data-step="1">
-
-    <div class="card" id="general-card">
-      <div class="grid">
-        <div class="field">
-          <label class="field-label" for="secret">面板密码</label>
-          <div class="input-row">
-            <input class="field-input" id="secret" type="text" autocomplete="off" spellcheck="false">
-            <button class="btn" id="secret-gen" type="button" title="生成一串随机密码">随机</button>
-          </div>
-          <p class="hint">默认 <code>123456</code>。可以点「随机」换一个。</p>
-        </div>
-        <div class="field">
-          <label class="field-label" for="port">UI 端口</label>
-          <input class="field-input" id="port" type="number" min="1" max="65535" step="1">
-          <p class="hint">控制面板监听端口，默认 9090。</p>
-        </div>
-        <div class="field">
-          <label class="field-label" for="controller-listen">监听地址</label>
-          <input class="field-input" id="controller-listen" type="text"
-                 autocomplete="off" spellcheck="false">
-          <p class="hint">本机 <code>127.0.0.1</code>，全开 <code>0.0.0.0</code></p>
-        </div>
-        <div class="field">
-          <label class="field-label" for="log-level">日志级别</label>
-          <select class="field-input" id="log-level">
-            <option value="silent">silent</option>
-            <option value="error">error</option>
-            <option value="warning">warning</option>
-            <option value="info">info</option>
-            <option value="debug">debug</option>
-          </select>
-          <p class="hint">仅在排查问题时调整，默认 <code>info</code></p>
-        </div>
-        <div class="field">
-          <label class="field-label" for="find-process-mode">进程匹配</label>
-          <select class="field-input" id="find-process-mode">
-            <option value="off">off</option>
-            <option value="strict">strict</option>
-            <option value="always">always</option>
-          </select>
-          <p class="hint">按进程名称进行流量匹配，默认 <code>off</code></p>
-        </div>
-        <div class="field">
-          <label class="field-label" for="keep-alive-idle">保活空闲</label>
-          <input class="field-input" id="keep-alive-idle" type="number" min="1" max="65535" step="1">
-          <p class="hint">空闲连接超时时间，默认 <code>60</code> 秒</p>
-        </div>
-        <div class="field">
-          <label class="field-label" for="keep-alive-interval">保活间隔</label>
-          <input class="field-input" id="keep-alive-interval" type="number" min="1" max="65535" step="1">
-          <p class="hint">TCP 保活探测间隔，默认 <code>30</code> 秒</p>
-        </div>
-        <div class="field">
-          <label class="field-label" for="unified-delay">统一延迟</label>
-          <div class="check"><input type="checkbox" id="unified-delay"> 启用</div>
-          <p class="hint">握手与请求合为一次，测出来的延迟更接近真实</p>
-        </div>
-        <div class="field">
-          <label class="field-label" for="tcp-concurrent">TCP 并发</label>
-          <div class="check"><input type="checkbox" id="tcp-concurrent"> 启用</div>
-          <p class="hint">同一域名解析出多个 IP 时并发连接，取最快的那个</p>
-        </div>
-
-        <div class="field" id="ipv6-field">
-          <label class="field-label" for="ipv6">IPv6</label>
-          <div class="check"><input type="checkbox" id="ipv6"> 启用 IPv6</div>
-          <p class="hint">解析与出站都走 IPv6</p>
-        </div>
-      </div>
-    </div>
 
     <div class="card" id="rules-card">
 
@@ -253,6 +183,7 @@
         <div class="rules-main">
           <h3 class="group-title">自定义规则</h3>
           <p class="card-desc">目标支持域名或 IP。动作可指定代理节点或直连，优先级高于内置规则。</p>
+          <p class="hint rules-empty-hint">导入节点后可添加自定义规则。</p>
           <div class="input-row">
             <input class="field-input" id="rule-target" type="text" placeholder="example.com 或 10.0.0.0/8" spellcheck="false">
             <div class="ms" id="rule-action">
@@ -293,6 +224,76 @@
         <span class="adv-hint">TUN / DNS / 嗅探</span>
         <span class="adv-badge" id="adv-badge" hidden></span>
       </summary>
+
+    <div class="card" id="general-card">
+      <div class="grid">
+        <div class="field">
+          <label class="field-label" for="secret">面板密码</label>
+          <div class="input-row">
+            <input class="field-input" id="secret" type="text" autocomplete="off" spellcheck="false">
+            <button class="btn" id="secret-gen" type="button" title="生成一串随机密码">随机</button>
+          </div>
+          <p class="hint">默认 <code>123456</code>。可以点「随机」换一个。</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="port">UI 端口</label>
+          <input class="field-input" id="port" type="number" min="1" max="65535" step="1">
+          <p class="hint">控制面板监听端口，默认 9090。</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="controller-listen">监听地址</label>
+          <input class="field-input" id="controller-listen" type="text"
+                 autocomplete="off" spellcheck="false">
+          <p class="hint">本机 <code>127.0.0.1</code>，全开 <code>0.0.0.0</code></p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="log-level">日志级别</label>
+          <select class="field-input" id="log-level">
+            <option value="silent">silent</option>
+            <option value="error">error</option>
+            <option value="warning">warning</option>
+            <option value="info">info</option>
+            <option value="debug">debug</option>
+          </select>
+          <p class="hint">仅在排查问题时调整，默认 <code>info</code></p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="find-process-mode">进程匹配</label>
+          <select class="field-input" id="find-process-mode">
+            <option value="off">off</option>
+            <option value="strict">strict</option>
+            <option value="always">always</option>
+          </select>
+          <p class="hint">按进程名称进行流量匹配，默认 <code>off</code></p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="keep-alive-idle">保活空闲</label>
+          <input class="field-input" id="keep-alive-idle" type="number" min="1" max="65535" step="1">
+          <p class="hint">空闲连接超时时间，默认 <code>60</code> 秒</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="keep-alive-interval">保活间隔</label>
+          <input class="field-input" id="keep-alive-interval" type="number" min="1" max="65535" step="1">
+          <p class="hint">TCP 保活探测间隔，默认 <code>30</code> 秒</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="unified-delay">统一延迟</label>
+          <div class="check"><input type="checkbox" id="unified-delay"> 启用</div>
+          <p class="hint">握手与请求合为一次，测出来的延迟更接近真实</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="tcp-concurrent">TCP 并发</label>
+          <div class="check"><input type="checkbox" id="tcp-concurrent"> 启用</div>
+          <p class="hint">同一域名解析出多个 IP 时并发连接，取最快的那个</p>
+        </div>
+
+        <div class="field" id="ipv6-field">
+          <label class="field-label" for="ipv6">IPv6</label>
+          <div class="check"><input type="checkbox" id="ipv6"> 启用 IPv6</div>
+          <p class="hint">解析与出站都走 IPv6</p>
+        </div>
+      </div>
+    </div>
 
     <div class="card">
 
@@ -412,9 +413,6 @@
       </div>
     </div>
     </details>
-
-    <div class="step-foot">
-    </div>
 
   </section>
 

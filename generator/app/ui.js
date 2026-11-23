@@ -565,11 +565,7 @@
     var smartPool = state.mode === 'split' && state.autoSelect && multi
       ? MH.SplitEngine.smartPool(state.nodes, state.autoSelectExclude) : [];
     var smartGroup = smartPool.length >= 2;
-    $('auto-select-hint').textContent = state.autoSelect
-      ? (smartGroup ? '已开启：没被规则命中的流量由这组自动挑最快的节点'
-        : (smartPool.length ? '已开启：成员只剩一个，直接用它'
-          : '已开启：成员全部取消，默认直连'))
-      : '勾上：没被规则命中的流量由这组自动挑最快的节点';
+    $('auto-select-hint').textContent = '勾选：已知节点自动创建自动选优组';
     // 成员框跟着一起刷新（藏/显、节点增减、黑名单清理都在里面）
     renderAutoPool();
 

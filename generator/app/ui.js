@@ -590,11 +590,11 @@
     if (showRoles) {
       // ⚠️ 这一列只有 194px 宽（跟上排五列对齐）—— 文案必须短到能一行放下，
       //    长了会折成两行、把整排撑高。
-      $('default-node-hint').textContent = !multi
+      $('default-node-hint').innerHTML = !multi
         ? '只有一个节点，所有流量走它'
         : (state.autoSelect
           ? (smartGroup
-            ? '自动：跟随自动优选组'
+            ? '自动：跟随自动优选组<br>各网站独立节点故障自切'
             : (smartPool.length
               ? '成员只剩一个，直接用它'
               : '成员全取消，默认直连'))

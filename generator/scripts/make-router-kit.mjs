@@ -54,12 +54,15 @@ function guardOut(dir) {
 // 参数一错就别先跑 build（build.mjs 每次都会 rm -rf dist 重建）
 guardOut(OUT);
 /**
- * KIT_NO_PUBLISH=1：只生成本地包，**不上传 genkit、也不动 dist**。
+ * 默认只生成本地包（不上传 genkit、也不动 dist）；要发 genkit 得显式 KIT_PUBLISH=1（CI 用）。
  * 预览（把 kit 推给路由器看效果）必须用它 —— 否则 dist 会被这次生成覆盖，
  * 而 GitHub 上的 genkit 又已经换了新包，两边摘要对不上，套件的校验就会报错
  * （2026-11-18 就是这么踩的）。
  */
+// 发布开关（2026.11.30 之后反转默认）：**默认不发** genkit，只有显式 KIT_PUBLISH=1 才上传。
+// 本机误发会让 dist 与 genkit 不同源，用户点「工具升级」就校验失败；日常一律只写 OUT。
 const NO_PUBLISH = String(process.env.KIT_NO_PUBLISH || '') === '1';
+const PUBLISH = String(process.env.KIT_PUBLISH || '') === '1' && !NO_PUBLISH;
 
 /** 路由器上的 shell 不认 CRLF，写过去的一律转成 LF。 */
 const lf = (s) => String(s).replace(/\r\n/g, '\n');
@@ -440,8 +443,8 @@ async function publishKit(files) {
 // ⑥′ 把 kit 产物写进 OUT（不直接动套件仓库的 dist/）。
 //    dist/ 由 `python build.py kit <OUT>` 复制并重算 SHA256SUMS —— 发版纪律要求
 //    「dist 只能由构造脚本写入」，make-router-kit 自己不再越权改 dist/。
-if (NO_PUBLISH) {
-  console.log('  KIT_NO_PUBLISH=1：只写本地 OUT，不进 dist/、不发 genkit');
+if (!PUBLISH) {
+  console.log('  默认只写本地 OUT：不发 genkit、不动 dist/（要发用 KIT_PUBLISH=1，CI 里设这个）');
 }
 writeFileSync(join(OUT, ZIP_NAME), zipBuf);
 writeFileSync(join(OUT, TAR_NAME), tarBuf);
@@ -451,17 +454,20 @@ console.log('  kit 产物：' + OUT);
 console.log('  进套件 dist/：python build.py kit ' + OUT);
 
 let KIT_URL = '';
-if (NO_PUBLISH) {
-  console.log('  KIT_NO_PUBLISH=1：跳过 genkit 发布（只生成本地包）');
-} else try {
-  KIT_URL = await publishKit([
-    { name: ZIP_NAME, data: zipBuf },
-    { name: TAR_NAME, data: tarBuf },
-    { name: 'generator.sh', data: Buffer.from(lf(readFileSync(join(DEPLOY, 'generator.sh'), 'utf8'))) },
-  ]);
-} catch (e) {
-  console.log(`  ⚠️ 没发上 GitHub（${e.message}）`);
-  console.log(`     dist/ 已是新版、genkit 还是上一版 —— 重跑一次本脚本补齐（发布顺序故意的：先本地后远端）`);
+if (!PUBLISH) {
+  console.log('  跳过 genkit 发布（默认不发；CI 发版时会置 KIT_PUBLISH=1）');
+} else {
+  try {
+    KIT_URL = await publishKit([
+      { name: ZIP_NAME, data: zipBuf },
+      { name: TAR_NAME, data: tarBuf },
+      { name: 'generator.sh', data: Buffer.from(lf(readFileSync(join(DEPLOY, 'generator.sh'), 'utf8'))) },
+    ]);
+  } catch (e) {
+    // ⚠️ 显式要求发布时失败必须炸：静默继续会让 dist 换新、genkit 停旧版，
+    //    用户点「工具升级」直接校验失败。原来「失败只警告」只适合本机随手预览。
+    throw new Error('genkit 发布失败：' + e.message);
+  }
 }
 
 function updateSums(dir, names) {
@@ -483,5 +489,5 @@ console.log(`  里头就一个目录 config/（平铺）—— 整个丢进 /etc
 console.log(`  config/index.html     入口（页面本身是公开的，见文件头）`);
 console.log(`  config/mihomo-apply   写盘 CGI（认 mihomo 的 secret）`);
 console.log(`  ⚠️ 没登录就没有「载入配置文件」按钮；硬 POST 也是 403`);
-console.log(`  发布到 GitHub     ${KIT_URL || (NO_PUBLISH ? '(已跳过 —— KIT_NO_PUBLISH=1)' : '(没发上 —— 见上面的警告)')}`);
+console.log(`  发布到 GitHub     ${KIT_URL || (PUBLISH ? '(没发上 —— 见上面的警告)' : '(本地默认不发)')}`);
 console.log(`  套件 dist/ 那份   随仓库发布（GitHub Releases）`);

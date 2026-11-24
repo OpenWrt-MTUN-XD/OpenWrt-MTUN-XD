@@ -174,9 +174,9 @@ git diff --check
 ## 配置工具包（kit）发布纪律
 
 - 配置工具包的滚动 release 在**独立仓库** `OpenWrt-MTUN-XD/genkit`（tag `genkit`），主仓库的 releases 只放正式版。
-- 预览用 `KIT_NO_PUBLISH=1 bun scripts/make-router-kit.mjs` —— 只生成到本地 OUT，**不上传 genkit、不动 `dist/`**。
-- `make-router-kit` 只写 OUT（桌面 `mihomo-deploy/`），**不再直接改 `dist/`**。正式发 kit 的路径只有一条：
-  不带开关跑脚本（发 genkit）→ `python build.py kit <OUT>`（复制进 `dist/` + 重算 `SHA256SUMS`）→ 提交 `dist/`。
+- 本地跑 `bun scripts/make-router-kit.mjs` **默认只写 OUT**（不上传 genkit、不动 `dist/`）；发 genkit 必须显式 `KIT_PUBLISH=1`，日常只有 CI 会设。
+- 正式发版的 kit 由 CI 一条链跑完：生成 OUT → 发 genkit（`KIT_PUBLISH=1` + `GENKIT_TOKEN`）→
+  `python build.py kit <OUT>` → `python build.py dist` → `check-kit-dist` + `check-kit-sync` 双闸门 → 提交 `dist/`。
 - kit 里只允许 LF，且归一必须排在算 `?v=` 内容指纹之前（否则指纹随 CRLF 变、index.html 差一行）；打包末尾另有 `\r` 断言兜底。
 - **禁止手工 cp kit 进 `dist/`**。CI 在提交 `dist/` 前会跑
   `python tools/check-kit-dist.py /tmp/mihomo-deploy dist v<版本>`：解 `dist/mihomo-deploy.tar.gz`
@@ -184,8 +184,9 @@ git diff --check
 - 发布前或排查此类问题，跑 `sh tools/check-kit-sync.sh`（比对 `dist/`）或 `--remote`（比对 CDN）确认同源。
 - **tag 只承诺复现 `install.sh` 与两种包，不承诺复现 kit。** kit 是滚动产物，`dist/` 里的 kit 会随配置工具更新，不随 tag 冻结。
 - 组名滚动改名：配置工具默认组名由「智能选择」改为「自动优选」；旧名在解析器里保留兼容。kit 更新后，设备需重新「生成配置文件」才会写出新组名；`install.sh`、apk/ipk、tag 均不受影响。
-- **只改配置工具（`generator/`）时不需要发版**：跑 `make-router-kit` → `python build.py kit <OUT>`
-  重发 kit 即可，用户点「更新配置工具」（`mtun-xd tool`）或跑 `console` 就拿到。
+- **只改配置工具（`generator/`）时不需要发版**：本机 `KIT_PUBLISH=1` 跑 `make-router-kit` →
+  `python build.py kit <OUT>`，**genkit 与 `dist/` 必须同批更新、一起提交**（只做一半，用户点「更新配置工具」
+  就会校验失败）。不想手动就走一次正式发版，让 CI 跑上面那条链。
   但 `dist/` 变更仍按部署纪律走：推送即上线，必须明确授权。
   发版只用于 `package/`、`install.sh`、`control/`、`deploy/` 或套件脚本的改动。
 

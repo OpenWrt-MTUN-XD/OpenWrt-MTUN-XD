@@ -143,20 +143,24 @@ jobs:
           name: apk
           path: .
 
-      - name: 出配置工具 kit（只做闸门对照，不进 dist）
+      - name: 出配置工具 kit（并发 genkit）
         working-directory: generator
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ⚠️ 必须 KIT_NO_PUBLISH=1：
-          #    - kit 的滚动包在独立仓库，CI token 写不了那边；
-          #    - tar.gz 字节依赖 zlib 版本，CI 重新生成与本地不同，不能拿去发布/进 dist。
-          #    → 只把源码拍平成一份临时 kit，供下一步校验 dist 是否与源码同源。
-          KIT_NO_PUBLISH: '1'
-        run: bun scripts/make-router-kit.mjs /tmp/mihomo-deploy
+          # GENKIT_TOKEN 只对 genkit 仓库有 Contents 写权限 —— 默认 GITHUB_TOKEN 写不了别的仓库。
+          GH_TOKEN: ${{ secrets.GENKIT_TOKEN }}
+          KIT_PUBLISH: '1'
+        run: |
+          # kit 必须由 CI 一次生成、同时落到 genkit 与 dist/：
+          #   · tar.gz 字节依赖 zlib 版本，本地与 CI 打出来的不同 ⇒ 只能同批同源；
+          #   · 套件的「工具升级」拿 CF 文件对 genkit 摘要，两边必须是同一批字节。
+          bun scripts/make-router-kit.mjs /tmp/mihomo-deploy
 
       # ⚠️ 顺序：**先提交 dist、再建 Release**。
       #    反过来的话，Release 建好了、提交被拒（non-fast-forward / 临时网络）⇒
       #    线上还是旧包，而后面每次跑都判「发过」直接跳过（2026-10-26 审出来）。
+      - name: kit 拷进 dist
+        run: python3 build.py kit /tmp/mihomo-deploy
+
       - name: 更新 dist / SHA256SUMS
         run: python3 build.py dist
 
@@ -164,6 +168,10 @@ jobs:
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: python3 tools/check-kit-dist.py /tmp/mihomo-deploy dist "v$VERSION"
+
+      - name: 同源闸门（dist ↔ genkit）
+        # 不一致就别提交、别建 Release：宁可这版红着，也不要让用户点「工具升级」拿不到包。
+        run: sh tools/check-kit-sync.sh
 
       - name: 提交 dist 和 install.sh
         env:

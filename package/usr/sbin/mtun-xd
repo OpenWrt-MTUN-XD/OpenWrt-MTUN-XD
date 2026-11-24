@@ -866,14 +866,14 @@ upgrade_ui() {
     src=''
     rm -rf "$raw" "$TMP/ui"
     mkdir -p "$raw"
-    tar -xzf "$TMP/ui.tgz" -C "$raw" 2>/dev/null || { say "✘ 解压失败"; return 1; }
+    tar -xzf "$TMP/ui.tgz" -C "$raw" 2>>"$LOG" || { say "✘ 解压失败"; rm -rf "$raw"; return 1; }
     for idx in "$raw/index.html" "$raw"/*/index.html "$raw"/*/*/index.html; do
         [ -f "$idx" ] || continue
         src=${idx%/index.html}
         break
     done
-    [ -n "$src" ] || { say "✘ 解压出来没有 index.html，放弃（别把面板弄坏）"; return 1; }
-    mv "$src" "$TMP/ui" || { say "✘ 面板：暂存目录移动失败"; return 1; }
+    [ -n "$src" ] || { say "✘ 解压出来没有 index.html，放弃（别把面板弄坏）"; rm -rf "$raw"; return 1; }
+    mv "$src" "$TMP/ui" || { say "✘ 面板：暂存目录移动失败"; rm -rf "$raw"; return 1; }
     rm -rf "$raw"
     # 版本对不上 = 下到的不是这一版（镜像缓存错 / 半截包）→ 别换，保住现成的。
     got=$(sed -n 's/.*appVersion:"\([^"]*\)".*/\1/p' "$TMP/ui/index.html" | head -1 | tr -d '\r')

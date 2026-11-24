@@ -2,10 +2,10 @@
 # iStoreOS 24.10 等固件的 uhttpd 没有原始流代理：
 # 用 HAProxy 在 80 做路径分流 —— /ui、/version 等给 mihomo，其余继续给 LuCI。
 #
-# ImmortalWrt / 自编译固件常见「PassWall 的 HAProxy 已经在跑」：
-# 不能覆盖 /etc/haproxy.cfg，也不能停掉别人的实例。
-# 这里改成 MTUN-XD 自己的配置 + 自己的 PID + 自己的 init 脚本，
-# 只接管 80；PassWall 的 HAProxy 继续跑它自己的端口。
+# ImmortalWrt / 自编译固件常见 uhttpd 不带原始流代理，需要 HAProxy。
+# 系统/其他插件也可能已有 HAProxy 实例：不能覆盖 /etc/haproxy.cfg，也不能停掉别人的实例。
+# 这里使用 MTUN-XD 自己的配置 + 自己的 PID + 自己的 init 脚本，
+# 只接管 80；外部 HAProxy 继续跑它自己的端口。
 set -u
 
 STATE=/etc/mtun-xd.haproxy

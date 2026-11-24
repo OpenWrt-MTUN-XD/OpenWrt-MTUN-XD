@@ -107,7 +107,7 @@ EXPOSE_STATE=/etc/mtun-xd.expose-state
 # backend 配置和 uhttpd 的原始监听备份由部署脚本落在这里，expose off / uninstall 可还原。
 HAPROXY_STATE=/etc/mtun-xd.haproxy
 HAPROXY_UHTTPD_BAK=/etc/mtun-xd.haproxy-uhttpd.bak
-# MTUN-XD 自己的 HAProxy 实例：不碰 PassWall / 系统原有的 /etc/haproxy.cfg。
+# MTUN-XD 自己的 HAProxy 实例：不碰外部 / 系统原有的 /etc/haproxy.cfg。
 HAPROXY_CFG=/etc/mtun-xd-haproxy.cfg
 HAPROXY_PID=/var/run/mtun-xd-haproxy.pid
 HAPROXY_INIT=/etc/init.d/mtun-xd-haproxy
@@ -1743,7 +1743,7 @@ expose_off() {
         if [ -x "$HAPROXY_HELPER" ] && sh "$HAPROXY_HELPER" off >/dev/null 2>&1; then
             changed=1
         else
-            # 绝不能在这里 stop/disable 系统的 haproxy：那可能是 PassWall 的实例。
+            # 绝不能在这里 stop/disable 系统的 haproxy：那可能是外部实例。
             failed=1
         fi
     fi

@@ -131,7 +131,7 @@ install.sh
 | --- | --- |
 | uhttpd 支持原始流代理（`Proxy raw stream`） | 直接用 uhttpd 的 `proxy_prefix` |
 | 80 被 nginx 占用 | `mihomo-kwrt-nginx.sh` 生成 locations |
-| uhttpd 不支持且 80 空闲/外部 HAProxy 在其他端口 | `mihomo-haproxy.sh` 启动独立 HAProxy 实例（自有 cfg / PID / init）接管 80；已有 PassWall 等外部 HAProxy 时共存，不覆盖其配置 |
+| uhttpd 不支持且 80 空闲/外部 HAProxy 在其他端口 | `mihomo-haproxy.sh` 启动独立 HAProxy 实例（自有 cfg / PID / init）接管 80；已有外部 HAProxy 时共存，不覆盖其配置 |
 | 以上都不可用 | 明确提示直连 `:9090`，不会误报「已挂载」 |
 
 已知固件差异：

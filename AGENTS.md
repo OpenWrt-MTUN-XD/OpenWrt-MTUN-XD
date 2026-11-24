@@ -204,7 +204,7 @@ git diff --check
 - 彻底删除使用 `mtun-xd uninstall --purge`。
 - 包管理器直接卸载（`apk del` / `opkg remove`）也必须保留用户配置。
 - 卸载输出固定为 1/4 到 4/4；包管理器输出收进日志。
-- 卸载时会还原 MTUN-XD 自己接管的 80 与 uhttpd 监听；PassWall / 系统的 HAProxy 实例和 /etc/haproxy.cfg 不动。
+- 卸载时会还原 MTUN-XD 自己接管的 80 与 uhttpd 监听；外部 / 系统的 HAProxy 实例和 /etc/haproxy.cfg 不动。
 
 ## 80 端口路由规则
 
@@ -212,7 +212,7 @@ git diff --check
 
 1. uhttpd 支持 `Proxy raw stream`：使用原生 `proxy_prefix`。
 2. nginx 已占 80：使用 `deploy/mihomo-kwrt-nginx.sh`。
-3. uhttpd 不支持且 80 可用：`deploy/mihomo-haproxy.sh` 启动**独立的** HAProxy 实例（独立 cfg / PID / init），mihomo 路径转 9090，其余 LuCI 转 uhttpd:8080；已有 PassWall 等外部 HAProxy 时共存，不覆盖其配置。
+3. uhttpd 不支持且 80 可用：`deploy/mihomo-haproxy.sh` 启动**独立的** HAProxy 实例（独立 cfg / PID / init），mihomo 路径转 9090，其余 LuCI 转 uhttpd:8080；已有外部 HAProxy 时共存，不覆盖其配置。
 4. 都无法使用：明确提示直连 mihomo 端口，不能误报“已挂载”。
 
 已知固件差异：

@@ -275,13 +275,13 @@
       return;
     }
     if (!currentHash()) {
-      ask('配置工具还没初始化（没有工具密码哈希）：在路由器上跑 mtun-xd tool');
+      ask('还没设置密码：在路由器上跑 mtun-xd tool 设一个');
       return;
     }
     if (!isTool(toolPw)) {
       wrongTries++;
       if (wrongTries >= WRONG_LIMIT) { rotateOnWrong(); return; }
-      ask('工具密码不对');
+      ask('密码不对');
       return;
     }
     wrongTries = 0;                       // 输对了就清零
@@ -342,7 +342,7 @@
     if (!old || !root.MHApply || typeof root.MHApply.rotate !== 'function') {
       // 手里没有面板密码（或 apply.js 没加载）→ 换不动，就当普通输错。
       // 注意：不要退回去「用面板密码放行」，那跟「只有面板密码不开门」直接冲突。
-      ask('工具密码不对');
+      ask('密码不对');
       return;
     }
     setBusy(true);
@@ -358,7 +358,7 @@
       open();
     }, function () {
       // 换失败（够不着写盘口 / 认证不过）→ 就是「工具密码不对」，不放行
-      ask('工具密码不对');
+      ask('密码不对');
     });
   }
 

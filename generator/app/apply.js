@@ -154,7 +154,7 @@
         }
 
         if (res.status === 401 || res.status === 403) {
-          toast('载入失败：密码不对（' + res.status + '）—— 面板里这台的密码填对了没', 'err');
+          toast('载入失败：面板密码不对（' + res.status + '）—— 在 mihomo 面板里核对这台的密码', 'err');
           return;
         }
 
@@ -282,8 +282,8 @@
       if (b0) {
         var t0 = PAGE_DOC.createElement('span');
         t0.style.cssText = 'font-size:13px; line-height:1.6; color:#8a93a0;';
-        t0.textContent = '没拿到面板密码，所以没有「载入配置文件」——'
-          + '到面板登录一次，或从面板绿点重新进入本页。';
+        t0.textContent = '还没从面板登录，所以没有「载入配置文件」——'
+          + '到 mihomo 面板登录一次，或点面板左下角的绿点重新进入本页。';
         b0.parentNode.insertBefore(t0, b0);
       }
       return;

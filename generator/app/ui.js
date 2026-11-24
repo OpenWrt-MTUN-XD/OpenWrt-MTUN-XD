@@ -654,6 +654,10 @@
     var box = $('node-list');
     box.textContent = '';
     $('node-count').textContent = String(state.nodes.length);
+    // 未导入节点时规则卡按「空状态」收起。原先是 CSS `body:has(#node-list .node-empty)`，
+    // 老内核（Chrome <105 / Firefox <121 / 老 WebView）不认 :has() 会把整条规则丢掉 ——
+    // 这里改由 body 类驱动，跟列表渲染同一处切换，状态与原来等价。
+    doc.body.classList.toggle('no-nodes', state.nodes.length === 0);
     // 「清空」只在有节点时出现
     var clearBtn = $('clear-nodes');
     if (clearBtn) clearBtn.hidden = !state.nodes.length;
@@ -1854,7 +1858,7 @@
     //    点一下就把他发出去的工具密码作废了。先问一句（取消 = 什么都不做，参数照样抹掉）。
     var go = true;
     try {
-      if (root.confirm) go = root.confirm('要通过链接更换工具密码？' + String.fromCharCode(10, 10) + '换完，发出去的旧密码立刻作废。');
+      if (root.confirm) go = root.confirm('要通过链接更换密码？' + String.fromCharCode(10, 10) + '换完，发出去的旧密码立刻作废。');
     } catch (e) { go = true; }
     try {
       var clean = q.replace(/[?&]rotate=1(&|$)/g, '&').replace(/^&/, '?').replace(/[?&]$/, '');
@@ -1893,7 +1897,7 @@
       // ⚠️ 换回来的是工具密码（不是面板密码），所以只更新本机记着的那把工具密码（好让这台继续
       //    过门），面板密码和生成器那格一律不动；别人手里那把旧的当场作废，要发新的去 `sh -s p` 看。
       try { root.localStorage.setItem('mihomo-gen-tool', fresh); } catch (e) { /* 存不下就算了 */ }
-      say('成了 —— 工具密码已换成新的一把（旧的那把作废了，面板不受影响）', 'ok');
+      say('成了 —— 密码已换成新的一把（旧的那把作废了，mihomo 面板不受影响）', 'ok');
     }, function (e) {
       say('没成：' + ((e && e.message) || e), 'err');
     });

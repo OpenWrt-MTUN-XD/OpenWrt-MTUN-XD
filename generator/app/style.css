@@ -778,26 +778,26 @@ body.headerless #status-version { display: none; }
 
 /* 未导入节点时：顶部四项铺满四列；导入节点后恢复五列。 */
 @media (min-width: 960px) {
-  body:has(#node-list .node-empty) #rules-card #role-grid {
+  body.no-nodes #rules-card #role-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
 /* nonodes-local-hide：未导入节点时不显示本地出口 */
-body:has(#node-list .node-empty) #rules-card #rules-local { display: none !important; }
-body:has(#node-list .node-empty) #rules-card #rules-split.no-common {
+body.no-nodes #rules-card #rules-local { display: none !important; }
+body.no-nodes #rules-card #rules-split.no-common {
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
 /* nonodes-custom-hint：未导入节点时自定义规则只留一句提示 */
 .rules-empty-hint { display: none; margin: 8px 0 0; }
-body:has(#node-list .node-empty) #rules-card .rules-main > .card-desc,
-body:has(#node-list .node-empty) #rules-card .rules-main > .input-row,
-body:has(#node-list .node-empty) #rules-card .rules-main > #rule-list,
-body:has(#node-list .node-empty) #rules-card .rules-main > p.hint:not(.rules-empty-hint) {
+body.no-nodes #rules-card .rules-main > .card-desc,
+body.no-nodes #rules-card .rules-main > .input-row,
+body.no-nodes #rules-card .rules-main > #rule-list,
+body.no-nodes #rules-card .rules-main > p.hint:not(.rules-empty-hint) {
   display: none !important;
 }
-body:has(#node-list .node-empty) #rules-card .rules-empty-hint { display: block; }
+body.no-nodes #rules-card .rules-empty-hint { display: block; }
 
 
 /* 窄屏：清掉桌面贴底时留下的标题 margin-top，避免默认出口与出口策略之间空一大块 */

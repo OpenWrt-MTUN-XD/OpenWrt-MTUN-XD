@@ -1557,7 +1557,7 @@ expose_live() {
     # HAProxy 路径由 helper 自己按 bind 地址探测；这里不能再写死 127.0.0.1。
     if [ -f "$HAPROXY_STATE" ]; then
         if [ ! -x "$HAPROXY_HELPER" ]; then
-            say "⚠️ 找不到可执行的 HAProxy 适配脚本：$HAPROXY_HELPER"
+            printf '⚠️ 找不到可执行的 HAProxy 适配脚本：%s\n' "$HAPROXY_HELPER" >&2
             return 1
         fi
         sh "$HAPROXY_HELPER" status >/dev/null 2>&1
@@ -2075,11 +2075,16 @@ setup() {
     # ⚠️ 最后核一眼内核真在跑没有：上面任何一步"看起来成功"都不代表它起来了
     #    （配置坏 / 端口被占 / 缺 GEO 都会让进程秒退）。
     # ⚠️ 开机 5 分钟内启动内核会先等 40 秒（init 脚本里的开机延迟）→ 最多等 60 秒。
+    # 开机 5 分钟内内核有 40 秒延迟；60 秒窗口不够，按 boot-delay 标记加 40 秒。
+    wait_max=60
+    if [ ! -f /var/run/mihomo-boot-delay.done ] && [ "$(cut -d. -f1 /proc/uptime 2>/dev/null)" -lt 300 ]; then
+        wait_max=100
+    fi
     i=0
-    while [ "$i" -lt 60 ]; do
+    while [ "$i" -lt "$wait_max" ]; do
         core_alive && break
         i=$((i + 1))
-        [ "$i" -lt 60 ] && sleep 1
+        [ "$i" -lt "$wait_max" ] && sleep 1
     done
     core_alive || { say "⚠️ 核心：没在跑（/etc/init.d/mihomo restart 看输出）"; ok=0; }
     core_alive && date +%s > "$START_STAMP" 2>/dev/null
@@ -2153,7 +2158,7 @@ uninstall_all() {
     # 也是我们装上去的，一并收掉（不然留一条每分钟跑一次的孤儿）。
     rm -f /usr/bin/mihomo-gen-pull
     # uhttpd 上挂的那些口子（expose on 挂上去的）—— 也收掉，别留一堆指向死端口的孤儿
-    expose_purge
+    expose_purge || { say "✘ 80 端口还原失败，已中止卸载；先修 uhttpd 再重试"; return 1; }
     if [ -f /etc/crontabs/root ] && grep -q 'mihomo-gen-pull' /etc/crontabs/root 2>/dev/null; then
         grep -v 'mihomo-gen-pull' /etc/crontabs/root > /etc/crontabs/root.tmp 2>/dev/null
         mv /etc/crontabs/root.tmp /etc/crontabs/root

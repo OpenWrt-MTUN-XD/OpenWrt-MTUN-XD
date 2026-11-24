@@ -33,6 +33,21 @@ uhttpd_listens() {
     printf '0.0.0.0:80\n[::]:80\n'
 }
 
+current_listens() {
+    uci -q get uhttpd.main.listen_http 2>/dev/null
+}
+
+# 只看当前 uci，不看快照 —— 快照回退会把「当前已经 8080」误判成还在 80。
+current_has_http80() {
+    local v
+    for v in $(current_listens); do
+        case "$v" in
+            80|*:80) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 has_http80() {
     local v
     for v in $(uhttpd_listens); do
@@ -97,8 +112,17 @@ restore_uhttpd() {
     return "$rc"
 }
 
+# 进程活着且不是僵尸（kill -0 对僵尸也成功）。
+pid_alive() {
+    local st
+    kill -0 "$1" 2>/dev/null || return 1
+    st=$(sed -n 's/^[0-9]*[[:space:]]*([^)]*)[[:space:]]*\([^ ]*\).*/\1/p' "/proc/$1/stat" 2>/dev/null)
+    [ "$st" = 'Z' ] && return 1
+    return 0
+}
+
 stop_haproxy() {
-    local d p pids='' seen='' cmd='' i=0
+    local d p pids='' seen='' cmd='' i=0 alive=''
     # 只收 cmdline 含本配置的进程（防重复 install 留下两个实例）。
     # 不直接信 PID 文件：陈旧 PID 可能已经被别的进程复用。
     for d in /proc/[0-9]*; do
@@ -123,13 +147,13 @@ stop_haproxy() {
         i=$((i + 1))
         alive=''
         for p in $seen; do
-            kill -0 "$p" 2>/dev/null && alive="$alive $p"
+            pid_alive "$p" && alive="$alive $p"
         done
         [ -z "$alive" ] && break
         sleep 1
     done
     for p in $seen; do
-        kill -0 "$p" 2>/dev/null || continue
+        pid_alive "$p" || continue
         kill -9 "$p" 2>/dev/null || true
     done
     i=0
@@ -137,13 +161,13 @@ stop_haproxy() {
         i=$((i + 1))
         alive=''
         for p in $seen; do
-            kill -0 "$p" 2>/dev/null && alive="$alive $p"
+            pid_alive "$p" && alive="$alive $p"
         done
         [ -z "$alive" ] && break
         sleep 1
     done
     for p in $seen; do
-        kill -0 "$p" 2>/dev/null && return 1
+        pid_alive "$p" && return 1
     done
     rm -f "$PID"
     return 0
@@ -305,15 +329,20 @@ install_all() {
     if [ ! -f "$STATE" ]; then
         # 初始安装：uhttpd 必须在 80，否则不能安全接管。
         [ -f "$UHTTPD_BAK" ] || cp -p /etc/config/uhttpd "$UHTTPD_BAK" || die '备份 uhttpd 失败'
-        if ! has_http80; then
+        if ! current_has_http80; then
             die 'uhttpd 未监听 80，拒绝接管（可能是非标准端口配置）'
         fi
         if [ "$(uci -q get uhttpd.main.enabled 2>/dev/null)" = 0 ]; then
             die 'uhttpd 主服务是停用的 —— 不能走 HAProxy 分流（先把 LuCI 恢复）'
         fi
         install_haproxy || die 'HAProxy 安装失败（检查软件源/网络）'
+    elif current_has_http80; then
+        # 固件升级/手动改回 80 后，旧快照已过期；当前还在 80 时刷新一次。
+        cp -p /etc/config/uhttpd "$UHTTPD_BAK" || die '刷新 uhttpd 快照失败'
     fi
 
+    # 先腾 80 再动 uhttpd：失败就停手，不能留下「新配置 + 旧实例」的半截状态。
+    stop_haproxy || die '旧 HAProxy 实例停不下来（保留状态，不覆盖）'
     write_cfg "$tgt" || { rollback; die 'HAProxy 配置生成或校验失败'; }
     move_uhttpd || { rollback; die '修改 uhttpd 监听失败'; }
     /etc/init.d/uhttpd restart >/dev/null 2>&1 || { rollback; die 'uhttpd 重启失败'; }
@@ -321,7 +350,6 @@ install_all() {
     printf '%s\n' "$tgt" > "$STATE" || { rollback; die '写 HAProxy 状态失败'; }
     install_init || { rollback; die '安装 HAProxy 启动脚本失败'; }
 
-    stop_haproxy || die '旧 HAProxy 实例停不下来（保留状态，不覆盖）'
     "$INIT" enable >/dev/null 2>&1 || true
     "$INIT" start >/dev/null 2>&1 || { rollback; die 'HAProxy 启动失败'; }
 
@@ -340,6 +368,14 @@ install_all() {
     done
     [ "$ok" = 1 ] || { rollback; die "/ui 或 /version 健康检查失败（$root_code/$ui_code/$ver_code）"; }
     printf 'on\n'
+}
+
+uhttpd_has_8080() {
+    local v
+    for v in $(uci -q get uhttpd.main.listen_http 2>/dev/null); do
+        case "$v" in 8080|*:8080) return 0 ;; esac
+    done
+    return 1
 }
 
 off() {
@@ -361,12 +397,25 @@ off() {
         sleep 1
     done
     if [ "$failed" = 1 ] || ! netstat -lnt 2>/dev/null | grep -q ':80 '; then
-        if [ -x "$INIT" ]; then
-            "$INIT" enable >/dev/null 2>&1 || true
-            "$INIT" start >/dev/null 2>&1 || true
+        # 只有在 uhttpd 还被我们留在 8080 时才把 HAProxy 拉回；
+        # 否则先把 uhttpd 的 listen 退回安装前，再决定。
+        if uhttpd_has_8080; then
+            [ -x "$INIT" ] && "$INIT" enable >/dev/null 2>&1 || true
+            [ -x "$INIT" ] && "$INIT" start >/dev/null 2>&1 || true
+            printf '✘ 80 端口没恢复 —— 已把 MTUN-XD HAProxy 拉回；快照保留在 %s，修好后再跑一次 off\n' "$UHTTPD_BAK" >&2
+            return 1
         fi
-        printf '✘ 80 端口没恢复 —— 已尝试把 MTUN-XD HAProxy 拉回；快照保留在 %s，修好后再跑一次 off\n' "$UHTTPD_BAK" >&2
-        return 1
+        restore_uhttpd >/dev/null 2>&1 || true
+        /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+        i=0
+        while [ "$i" -lt 10 ]; do
+            netstat -lnt 2>/dev/null | grep -q ':80 ' && break
+            i=$((i + 1)); sleep 1
+        done
+        if ! netstat -lnt 2>/dev/null | grep -q ':80 '; then
+            printf '✘ 80 端口没恢复，uhttpd 也回不到安装前；快照保留在 %s，先修 uhttpd 再 off\n' "$UHTTPD_BAK" >&2
+            return 1
+        fi
     fi
     # 只有确认 80 已由 uhttpd 接管，才允许关闭自启和删文件。
     [ -x "$INIT" ] && "$INIT" disable >/dev/null 2>&1 || true

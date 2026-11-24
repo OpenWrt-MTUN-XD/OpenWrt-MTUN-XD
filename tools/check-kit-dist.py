@@ -25,6 +25,24 @@ import tarfile
 import zipfile
 
 
+EXT_TEXT = (".js", ".html", ".css", ".json", ".sh", ".txt", ".md")
+
+
+def check_lf(files, label):
+    """config/ 里文本文件只允许 LF：CRLF 会让本地与 CI 打出的 kit 字节不同。"""
+    bad = []
+    for name, raw in files.items():
+        if not name.lower().endswith(EXT_TEXT):
+            continue
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if b"\r" in raw:
+            bad.append("%s: %s（含 CRLF）" % (label, name))
+    return bad
+
+
 def read_tree(root):
     """flattened config 树 -> {相对路径: bytes}（忽略目录条目）。"""
     out = {}
@@ -119,6 +137,9 @@ def main():
     bad = []
     bad += diff_trees(fresh, tar_cfg, "tar.gz")
     bad += diff_trees(fresh, zip_cfg, "zip")
+    bad += check_lf(fresh, "fresh")
+    bad += check_lf(tar_cfg, "tar.gz")
+    bad += check_lf(zip_cfg, "zip")
 
     if open(fresh_gen_path, "rb").read() != open(gen_path, "rb").read():
         bad.append("generator.sh（与源码不一致）")

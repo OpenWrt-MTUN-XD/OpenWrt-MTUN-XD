@@ -177,6 +177,7 @@ git diff --check
 - 预览用 `KIT_NO_PUBLISH=1 bun scripts/make-router-kit.mjs` —— 只生成到本地 OUT，**不上传 genkit、不动 `dist/`**。
 - `make-router-kit` 只写 OUT（桌面 `mihomo-deploy/`），**不再直接改 `dist/`**。正式发 kit 的路径只有一条：
   不带开关跑脚本（发 genkit）→ `python build.py kit <OUT>`（复制进 `dist/` + 重算 `SHA256SUMS`）→ 提交 `dist/`。
+- kit 里只允许 LF：打包前统一转 LF，仍有 `\r` 直接失败；别拿 CRLF 的 Windows 工作区打 kit（2026.11.27 踩过）。
 - **禁止手工 cp kit 进 `dist/`**。CI 在提交 `dist/` 前会跑
   `python tools/check-kit-dist.py /tmp/mihomo-deploy dist v<版本>`：解 `dist/mihomo-deploy.tar.gz`
   与当前源码拍平目录逐文件比对，并要求 `config/state.js` 的 `APP_VERSION` 等于本次版本号；不一致直接 fail。

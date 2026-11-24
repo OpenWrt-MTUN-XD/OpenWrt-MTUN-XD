@@ -300,6 +300,25 @@ if (/(?:href|src)="app\//.test(appHtml)) throw new Error('index.html 里还有 a
 // 不该再有指向 /cgi-bin/ 的资源（那是上一版「搬出去 + CGI 发」留下的，现在入口是静态的）
 if (/(?:href|src)="\/cgi-bin\//.test(appHtml)) throw new Error('index.html 里的资源还挂在 /cgi-bin/ 上');
 
+// ⑤‴ 行尾归一：kit 里只允许 LF，跟跑在哪个平台无关。
+//   Windows 工作区被 autocrlf 洗成 CRLF 时，像 state.js 这种「原样 cp」的文件会带 CRLF 进 kit，
+//   CI 用 LF 源码重算就对不上（2026.11.27 踩过一次）。
+//   这里在打包前统一转 LF，转换后仍有 \\r 就直接炸，别带病出门。
+{
+  const TEXT = /\.(js|html|css|json|sh|txt|md)$/i;
+  const norm = (dir) => {
+    for (const n of readdirSync(dir)) {
+      const full = join(dir, n);
+      if (lstatSync(full).isDirectory()) { norm(full); continue; }
+      if (!TEXT.test(n)) continue;
+      const raw = readFileSync(full, 'utf8');
+      if (raw.includes('\r\n')) writeFileSync(full, lf(raw));
+      if (readFileSync(full, 'utf8').includes('\r')) throw new Error('kit 里仍有 CR：' + full);
+    }
+  };
+  norm(GEN);
+}
+
 // ⑥ 网页版那份 zip —— 桌面这份原样打包。
 //    ⚠️ 包里已经没有任何密钥（写盘认证走 mihomo 自己的 secret），所以不用挑文件排除、也不用
 //    把 mihomo-apply 换成模板：谁下到它都只能得到一个「生成 YAML 的网页」。里面不放说明文件。

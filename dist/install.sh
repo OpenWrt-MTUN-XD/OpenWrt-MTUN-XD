@@ -68,6 +68,27 @@ ensure_curl() {
 }
 ensure_curl
 
+# 固件没有 uhttpd 原始流代理时，80 端口需要 HAProxy；在包安装前先装，
+# 避免包 postinst 在 apk/opkg 事务里再嵌套安装同一个包管理器。
+ensure_haproxy() {
+    command -v haproxy >/dev/null 2>&1 && return 0
+    command -v uhttpd >/dev/null 2>&1 || return 0
+    uhttpd -h 2>&1 | grep -q 'Proxy raw stream' && return 0
+    if command -v nginx >/dev/null 2>&1 && pidof nginx >/dev/null 2>&1; then
+        return 0
+    fi
+    say "→ 安装器：当前固件需要 HAProxy，先安装"
+    if command -v apk >/dev/null 2>&1; then
+        apk update >/dev/null 2>&1 || true
+        apk add haproxy >/dev/null 2>&1 || say "⚠️ HAProxy 安装失败；80 端口可能需要手动处理"
+    elif command -v opkg >/dev/null 2>&1; then
+        opkg update >/dev/null 2>&1 || true
+        opkg install haproxy >/dev/null 2>&1 || say "⚠️ HAProxy 安装失败；80 端口可能需要手动处理"
+    fi
+    return 0
+}
+ensure_haproxy
+
 # ── 后台模式：下载后 `sh /tmp/mtun-xd-install.sh bg` ────────────────
 # 隧道 SSH 装到一半掉线 → 安装跟着死，界面还留个 404。
 # 这里把自己重新拉一份到 /tmp、脱离终端跑，日志落盘；**断线不影响安装**。

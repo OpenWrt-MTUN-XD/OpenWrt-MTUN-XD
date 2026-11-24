@@ -51,6 +51,23 @@ case "${1:-}" in pkg|--pkg|-p) ONLY_PKG=1 ;; esac
 
 [ "$(id -u)" = 0 ] || die "要用 root 跑（SSH 上去直接跑就行）"
 
+# ── 安装器自己依赖 curl（wget 只能把脚本拉下来，后面查版本/下包都用 curl）──
+ensure_curl() {
+    command -v curl >/dev/null 2>&1 && return 0
+    say "→ 安装器：缺少 curl，先安装"
+    if command -v apk >/dev/null 2>&1; then
+        apk update >/dev/null 2>&1 || true
+        apk add curl >/dev/null 2>&1 || die "安装 curl 失败（apk add curl）"
+    elif command -v opkg >/dev/null 2>&1; then
+        opkg update >/dev/null 2>&1 || true
+        opkg install curl >/dev/null 2>&1 || die "安装 curl 失败（opkg install curl）"
+    else
+        die "安装器需要 curl，但系统没有 apk/opkg；请先手动安装 curl"
+    fi
+    command -v curl >/dev/null 2>&1 || die "curl 装了但 PATH 里仍找不到"
+}
+ensure_curl
+
 # ── 后台模式：下载后 `sh /tmp/mtun-xd-install.sh bg` ────────────────
 # 隧道 SSH 装到一半掉线 → 安装跟着死，界面还留个 404。
 # 这里把自己重新拉一份到 /tmp、脱离终端跑，日志落盘；**断线不影响安装**。

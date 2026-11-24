@@ -171,6 +171,9 @@ jobs:
 
       - name: 同源闸门（dist ↔ genkit）
         # 不一致就别提交、别建 Release：宁可这版红着，也不要让用户点「工具升级」拿不到包。
+        env:
+          # 匿名调 GitHub API 只有 60 次/小时，runner 共享 IP 会 403；带上 token 才稳。
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sh tools/check-kit-sync.sh
 
       - name: 提交 dist 和 install.sh

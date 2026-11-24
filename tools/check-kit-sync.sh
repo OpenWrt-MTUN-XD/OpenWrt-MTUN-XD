@@ -18,7 +18,19 @@ API=https://api.github.com/repos/OpenWrt-MTUN-XD/genkit/releases/tags/genkit
 MODE=${1:-local}
 
 # ⚠️ 直连 api.github.com：匿名配额只有 60 次/小时，撞上就取不到（拿不到只报错，不误判）。
-meta=$(curl -fsSL -m 30 -H 'Accept: application/vnd.github+json' "$API" 2>/dev/null)
+#    有 GITHUB_TOKEN / GH_TOKEN 就带上 —— CI runner 是共享 IP，不带很容易 403 把发版卡红。
+api_get() {
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        curl -fsSL -m 30 -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GITHUB_TOKEN" "$1" 2>/dev/null
+    elif [ -n "${GH_TOKEN:-}" ]; then
+        curl -fsSL -m 30 -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" "$1" 2>/dev/null
+    else
+        curl -fsSL -m 30 -H 'Accept: application/vnd.github+json' "$1" 2>/dev/null
+    fi
+}
+meta=$(api_get "$API")
 [ -n "$meta" ] || { echo "✘ 取不到 genkit Release 元数据（网络？）"; exit 1; }
 printf '%s' "$meta" | grep -q '"digest"' || { echo "✘ 元数据里没有 digest"; exit 1; }
 

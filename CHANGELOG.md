@@ -1,5 +1,15 @@
 # 变更记录
 
+## 2026.11.25
+
+### 修复
+
+- 80 端口适配（ImmortalWrt 等 uhttpd 无原始流代理的固件）：改用独立 HAProxy 实例（自有配置 / PID / init），不再读写 `/etc/haproxy.cfg`、不再停用系统或外部的 HAProxy；`off` / 卸载只停自己并还原 uhttpd，还原失败保留快照
+- `bind` 按 uhttpd 原始 `listen_http` 生成，不再擅自扩大到 `0.0.0.0` / `[::]`；健康检查按实际 bind 地址探测；uhttpd 被改到非 80/8080 端口时拒绝接管
+- 安装：`haproxy` 改为包依赖，干净设备首次 `apk add` 不再因嵌套事务失败；配置工具增加落盘校验（`index.html` / `core/render.js` / `ui.js` / `mihomo-apply`），铺半截会明确报错并补一次
+- 安装输出：包内 `setup` 在开机延迟窗口内把等待内核的时间从 60 秒放宽到 100 秒，postinst 不再误报「安装未完成」
+- 回滚：`stop_haproxy` 按配置路径识别自有进程并检查僵尸，PID 文件不再作为唯一依据；重复安装会清掉多余实例
+
 ## 2026.11.24
 
 ### 变更

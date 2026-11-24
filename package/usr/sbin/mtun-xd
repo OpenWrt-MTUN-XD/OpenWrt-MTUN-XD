@@ -2070,8 +2070,14 @@ setup() {
             wait_max=100
         fi
         t0=$(date +%s)
+        said=0
         while ! expose_probe "$(expose_addr)" \
             && [ $(( $(date +%s) - t0 )) -lt "$wait_max" ]; do
+            # 100 秒窗口里不吭声，看起来就是卡死 —— 超过 5 秒先打一行
+            if [ "$said" = 0 ] && [ $(( $(date +%s) - t0 )) -ge 5 ]; then
+                say "… 80 端口：等内核 API 应答（最多 ${wait_max} 秒）"
+                said=1
+            fi
             sleep 1
         done
         if expose_on; then expose_ok=1; fi

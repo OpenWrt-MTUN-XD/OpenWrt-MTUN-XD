@@ -395,7 +395,7 @@ def main():
           '开机自检补装时先下载再执行')
 
     # 装完先等 API 真应答，再挂 80 —— core_alive 只证明进程在，不证明 9090 能答
-    _i_wait = cli.find('while core_alive && ! expose_probe "$(expose_addr)"')
+    _i_wait = cli.find('while ! expose_probe "$(expose_addr)"')
     _i_on = cli.find('if expose_on; then expose_ok=1; fi')
     check(_i_wait != -1 and _i_on != -1 and _i_wait < _i_on,
           'setup 先等单点 expose_probe 应答再挂 80')

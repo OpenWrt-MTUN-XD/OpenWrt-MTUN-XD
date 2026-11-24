@@ -404,13 +404,15 @@ if [ "$ONLY_PKG" = 1 ]; then
     if [ "$PM" = apk ]; then
         # ⚠️ apk 退出码不能全信：手工装过非仓库版包（如 Argon 3.1.0-r1）的机器每次都会多报
         #    「1 error」（apk fix 里是 APK unavailable），包其实装好了 ⇒ 下面用版本/文件判定。
-        pm apk add --no-scripts --allow-untrusted --force-reinstall "$TMP/$FILE" || true
+        pm apk add --no-scripts --allow-untrusted --force-reinstall "$TMP/$FILE" \
+            >"$TMP/pm.log" 2>&1 || true
     elif [ "$cur" = "$latest" ]; then
         ipk_overlay "$TMP/$FILE" || die "套件：换包失败（铺文件出错）"
     else
         : > "$MARK"
         MARK_OWNED=1
-        pm opkg install "$TMP/$FILE" || { mark_clear; die "套件：安装失败"; }
+        pm opkg install "$TMP/$FILE" >"$TMP/pm.log" 2>&1 \
+            || { mark_clear; die "套件：安装失败"; }
     fi
     mark_clear
     # 版本为准（apk 的退出码可能是环境噪音，见上面那段注释）
@@ -418,6 +420,9 @@ if [ "$ONLY_PKG" = 1 ]; then
     # 换完验一遍文件在不在（包坏了 / 被别的包删过都得能看出来）
     bad=$(missing)
     [ -z "$bad" ] || die "套件：包换了但文件还缺：$bad"
+    # ⚠️ 11.26 的 haproxy 是包依赖，升到 11.27 时 apk/opkg 会把它当孤儿删掉；
+    #    没有 uhttpd 原始流代理的固件必须在这里补回来，否则 expose ensure 会把 80 退回 uhttpd。
+    ensure_haproxy
     # LuCI 的菜单缓存里还记着**旧版页面文件名** —— 不清掉，当前会话点菜单还是旧界面
     #（文件已经换了，只会 404 / 吃浏览器缓存）。清这个不会踢人下线。
     rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null

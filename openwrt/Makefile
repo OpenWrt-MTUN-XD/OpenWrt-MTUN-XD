@@ -99,6 +99,14 @@ define Package/$(PKG_NAME)/prerm
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 [ "$${1:-}" = "upgrade" ] && exit 0
+# 卸载前先把 MTUN-XD 自己接管的 80 还回去；失败就中止卸载，保留快照。
+if [ -f /usr/share/mtun-xd/mihomo-haproxy.sh ]; then
+    if ! sh /usr/share/mtun-xd/mihomo-haproxy.sh off; then
+        echo "✘ MTUN-XD 80 端口还原失败，已中止卸载。请先恢复 uhttpd/80，再重试；快照保留在 /etc/mtun-xd.haproxy-uhttpd.bak" >&2
+        exit 1
+    fi
+fi
+rm -f /etc/init.d/mtun-xd-haproxy /etc/rc.d/S99mtun-xd-haproxy
 /etc/init.d/mtun-xd-firstboot disable >/dev/null 2>&1 || true
 /etc/init.d/mtun-xd-selfcheck disable >/dev/null 2>&1 || true
 /etc/init.d/mihomo stop >/dev/null 2>&1 || true

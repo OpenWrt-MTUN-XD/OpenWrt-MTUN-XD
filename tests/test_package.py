@@ -411,8 +411,11 @@ def main():
           'doctor 的挂载判据覆盖 uhttpd / HAProxy / nginx')
     check('已挂载，但 /ui/ 打不开' in cli,
           '已挂载但 /ui/ 失败时按 core_alive 归因')
-    check('[ -f "$HAPROXY_PID" ]' in cli and 'kill -0' in cli
-          and '[ -f "$NGINX_LOC" ]' in cli,
+    _m_start = cli.find('expose_mounted() {')
+    _m_end = cli.find('\n}\n', _m_start)
+    _m = cli[_m_start:_m_end + 3] if _m_start != -1 and _m_end != -1 else ''
+    check('[ -f "$HAPROXY_PID" ]' in _m and 'kill -0' in _m
+          and '[ -f "$NGINX_LOC" ]' in _m,
           '挂载判据校验自有 HAProxy PID / nginx 挂载点')
     # 行为断言：API 全失败时函数应安静返回，不能把 unbound 漏到 stderr
     _fn_start = cli.find('panel_latest_ver() {')

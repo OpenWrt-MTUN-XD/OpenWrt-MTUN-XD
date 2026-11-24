@@ -204,7 +204,7 @@ git diff --check
 - 彻底删除使用 `mtun-xd uninstall --purge`。
 - 包管理器直接卸载（`apk del` / `opkg remove`）也必须保留用户配置。
 - 卸载输出固定为 1/4 到 4/4；包管理器输出收进日志。
-- 卸载时会恢复 HAProxy / uhttpd 的原始 80 监听状态。
+- 卸载时会还原 MTUN-XD 自己接管的 80 与 uhttpd 监听；PassWall / 系统的 HAProxy 实例和 /etc/haproxy.cfg 不动。
 
 ## 80 端口路由规则
 
@@ -212,7 +212,7 @@ git diff --check
 
 1. uhttpd 支持 `Proxy raw stream`：使用原生 `proxy_prefix`。
 2. nginx 已占 80：使用 `deploy/mihomo-kwrt-nginx.sh`。
-3. uhttpd 不支持且 80 可用：`deploy/mihomo-haproxy.sh` 按需安装 HAProxy，mihomo 路径转 9090，其余 LuCI 转 uhttpd:8080。
+3. uhttpd 不支持且 80 可用：`deploy/mihomo-haproxy.sh` 启动**独立的** HAProxy 实例（独立 cfg / PID / init），mihomo 路径转 9090，其余 LuCI 转 uhttpd:8080；已有 PassWall 等外部 HAProxy 时共存，不覆盖其配置。
 4. 都无法使用：明确提示直连 mihomo 端口，不能误报“已挂载”。
 
 已知固件差异：
@@ -223,11 +223,12 @@ git diff --check
 
 HAProxy 方案必须：
 
-- 备份原 uhttpd 与 HAProxy 配置。
-- 健康检查 `/`、`/ui/`、`/version`。
-- 失败自动回滚，不能把 LuCI 锁死。
-- HAProxy 已被其他配置占用时拒绝覆盖。
-- `expose off` / 卸载时停用并恢复。
+- 备份原 uhttpd 监听；HAProxy 使用独立配置，不备份也不覆盖 `/etc/haproxy.cfg`。
+- 按原始 `listen_http` 生成 bind，不擅自扩大到 `0.0.0.0` / `[::]`。
+- 健康检查 `/`、`/ui/`、`/version`，并按实际 bind 地址探测。
+- 失败自动回滚；回滚后确认 80 恢复，失败则保留快照。
+- 已有外部 HAProxy 时走独立实例共存；80 被外部实例占用则拒绝接管。
+- `expose off` / 卸载只停自己的实例并还原 uhttpd，外部 HAProxy 不动。
 
 开机已有 `/etc/init.d/mtun-xd-selfcheck`，每次只运行一次 `selfcheck`。不要在 `expose ensure` 外层再新增第二个开机定时器。自检中 80 路由收敛必须幂等，并尊重 `expose off` 标记。
 

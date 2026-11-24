@@ -13,14 +13,24 @@ UHTTPD_BAK=/etc/mtun-xd.haproxy-uhttpd.bak
 CFG=/etc/mtun-xd-haproxy.cfg
 PID=/var/run/mtun-xd-haproxy.pid
 INIT=/etc/init.d/mtun-xd-haproxy
-PKG_MARK=/etc/mtun-xd.haproxy-package
 MARK='# mtun-xd managed HAProxy frontend'
 
 say() { printf '%s\n' "$1"; }
 die() { printf '✘ %s\n' "$1" >&2; exit 1; }
 
 uhttpd_listens() {
-    sed -n "s/.*listen_http[[:space:]]*'\([^']*\)'.*/\1/p" "$UHTTPD_BAK" 2>/dev/null
+    local cur snap
+    # 当前配置还有 80 就以当前为准；已经挪到 8080 才回看安装前快照。
+    cur=$(uci -q get uhttpd.main.listen_http 2>/dev/null | tr '\n' ' ')
+    case " $cur " in
+        *":80 "*|*" 80 "*) printf '%s\n' $cur; return ;;
+    esac
+    snap=$(sed -n "s/.*listen_http[[:space:]]*'\([^']*\)'.*/\1/p" "$UHTTPD_BAK" 2>/dev/null)
+    if [ -n "$snap" ]; then
+        printf '%s\n' $snap
+        return
+    fi
+    printf '0.0.0.0:80\n[::]:80\n'
 }
 
 has_http80() {
@@ -44,6 +54,7 @@ listen_binds() {
             *) continue ;;
         esac
         [ -n "$addr" ] || addr=0.0.0.0
+        [ "$addr" = '*' ] && addr=0.0.0.0
         case " $seen " in *" $addr "*) continue ;; esac
         seen="$seen $addr"
         out="${out}    bind ${addr}:80
@@ -60,7 +71,7 @@ probe_host() {
     for v in $(uhttpd_listens); do
         case "$v" in
             \[*\]:80) h=${v%:*}; [ "$h" = '[::]' ] && h='[::1]'; printf '%s' "$h"; return ;;
-            *:80) h=${v%:*}; [ "$h" = 0.0.0.0 ] && h=127.0.0.1; printf '%s' "$h"; return ;;
+            *:80) h=${v%:*}; case "$h" in 0.0.0.0|'*') h=127.0.0.1 ;; esac; printf '%s' "$h"; return ;;
             80) printf '127.0.0.1'; return ;;
         esac
     done
@@ -87,20 +98,42 @@ restore_uhttpd() {
 }
 
 stop_haproxy() {
-    local p='' i=0
-    [ -f "$PID" ] && p=$(cat "$PID" 2>/dev/null)
-    if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
-        kill "$p" 2>/dev/null || true
+    local p='' i=0 cmd=''
+    [ -f "$PID" ] || return 0
+    p=$(cat "$PID" 2>/dev/null)
+    [ -n "$p" ] || { rm -f "$PID"; return 0; }
+    if [ ! -r "/proc/$p/cmdline" ]; then
+        rm -f "$PID"
+        return 0
+    fi
+    # 只杀自己的实例；陈旧 PID 可能是别的进程（尤其 PassWall 的 HAProxy）。
+    cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
+    case "$cmd" in
+        *mtun-xd-haproxy.cfg*) ;;
+        *) return 1 ;;
+    esac
+    kill "$p" 2>/dev/null || true
+    while [ "$i" -lt 10 ] && kill -0 "$p" 2>/dev/null; do
+        i=$((i + 1))
+        sleep 1
+    done
+    if kill -0 "$p" 2>/dev/null; then
+        kill -9 "$p" 2>/dev/null || true
+        i=0
         while [ "$i" -lt 10 ] && kill -0 "$p" 2>/dev/null; do
             i=$((i + 1))
             sleep 1
         done
     fi
+    if kill -0 "$p" 2>/dev/null; then
+        return 1
+    fi
     rm -f "$PID"
+    return 0
 }
 
 rollback() {
-    stop_haproxy
+    stop_haproxy || { printf '✘ 自有 HAProxy 停不下来，保留状态，不继续回滚\n' >&2; return 1; }
     restore_uhttpd || true
     /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
     # 回滚也必须确认 80 真的有人听；验证失败则保留快照，不能把退路删掉。
@@ -114,7 +147,7 @@ rollback() {
         printf '✘ 回滚后 80 没恢复；保留 %s，修好后再处理\n' "$UHTTPD_BAK" >&2
         return 1
     fi
-    rm -f "$CFG" "$INIT" "$PID" "$STATE" "$UHTTPD_BAK" "$PKG_MARK"
+    rm -f "$CFG" "$INIT" "$PID" "$STATE" "$UHTTPD_BAK"
     [ -L /etc/rc.d/S99mtun-xd-haproxy ] && rm -f /etc/rc.d/S99mtun-xd-haproxy
     return 0
 }
@@ -144,7 +177,6 @@ install_haproxy() {
         return 1
     fi
     command -v haproxy >/dev/null 2>&1 || return 1
-    : > "$PKG_MARK"
 }
 
 # LuCI（uhttpd）后端地址：只取原始 80 监听；IPv6-only 也返回 IPv6 回环/原地址。
@@ -272,7 +304,7 @@ install_all() {
     printf '%s\n' "$tgt" > "$STATE" || { rollback; die '写 HAProxy 状态失败'; }
     install_init || { rollback; die '安装 HAProxy 启动脚本失败'; }
 
-    stop_haproxy
+    stop_haproxy || die '旧 HAProxy 实例停不下来（保留状态，不覆盖）'
     "$INIT" enable >/dev/null 2>&1 || true
     "$INIT" start >/dev/null 2>&1 || { rollback; die 'HAProxy 启动失败'; }
 
@@ -300,12 +332,11 @@ off() {
         printf 'off\n'
         return 0
     fi
-    stop_haproxy
-    [ -x "$INIT" ] && "$INIT" disable >/dev/null 2>&1 || true
+    stop_haproxy || { printf '✘ 自有 HAProxy 停不下来，保持原样\n' >&2; return 1; }
     restore_uhttpd || failed=1
     /etc/init.d/uhttpd restart >/dev/null 2>&1 || failed=1
 
-    # 还原完确认 80 真的恢复；失败则保留快照，不能把退路删掉。
+    # 还原完确认 80 真的恢复；失败则把我们的实例拉回原样，不能停在半关状态。
     i=0
     while [ "$i" -lt 10 ]; do
         netstat -lnt 2>/dev/null | grep -q ':80 ' && break
@@ -313,10 +344,16 @@ off() {
         sleep 1
     done
     if [ "$failed" = 1 ] || ! netstat -lnt 2>/dev/null | grep -q ':80 '; then
-        printf '✘ 80 端口没恢复（uhttpd 没起来）—— 快照保留在 %s，修好后再跑一次 off\n' "$UHTTPD_BAK" >&2
+        if [ -x "$INIT" ]; then
+            "$INIT" enable >/dev/null 2>&1 || true
+            "$INIT" start >/dev/null 2>&1 || true
+        fi
+        printf '✘ 80 端口没恢复 —— 已尝试把 MTUN-XD HAProxy 拉回；快照保留在 %s，修好后再跑一次 off\n' "$UHTTPD_BAK" >&2
         return 1
     fi
-    rm -f "$STATE" "$CFG" "$INIT" "$PID" "$UHTTPD_BAK" "$PKG_MARK"
+    # 只有确认 80 已由 uhttpd 接管，才允许关闭自启和删文件。
+    [ -x "$INIT" ] && "$INIT" disable >/dev/null 2>&1 || true
+    rm -f "$STATE" "$CFG" "$INIT" "$PID" "$UHTTPD_BAK"
     [ -L /etc/rc.d/S99mtun-xd-haproxy ] && rm -f /etc/rc.d/S99mtun-xd-haproxy
     printf 'off\n'
 }

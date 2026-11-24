@@ -1550,7 +1550,11 @@ expose_live() {
     local host='127.0.0.1' p code ports='80' v
     # HAProxy 路径由 helper 自己按 bind 地址探测；这里不能再写死 127.0.0.1。
     if [ -f "$HAPROXY_STATE" ]; then
-        [ -x "$HAPROXY_HELPER" ] && sh "$HAPROXY_HELPER" status >/dev/null 2>&1
+        if [ ! -x "$HAPROXY_HELPER" ]; then
+            say "⚠️ 找不到可执行的 HAProxy 适配脚本：$HAPROXY_HELPER"
+            return 1
+        fi
+        sh "$HAPROXY_HELPER" status >/dev/null 2>&1
         return $?
     fi
     v=$(uci -q show uhttpd.main.listen_http 2>/dev/null \
@@ -1587,6 +1591,7 @@ expose_ensure() {
 # 80 上是不是已经有我们的挂载（uhttpd / HAProxy / nginx 三套任一）。
 # doctor 不能只看 uhttpd：另两套的机器会误报「未挂载」。
 expose_mounted() {
+    local p
     [ -n "$(uhttpd_cur 2>/dev/null)" ] && return 0
     if [ -f "$HAPROXY_STATE" ] && [ -f "$HAPROXY_PID" ]; then
         p=$(cat "$HAPROXY_PID" 2>/dev/null)
@@ -1806,7 +1811,9 @@ expose_strip() {
 # ⚠️ `$EXPOSE_BAK` 是老版本（整份还原那套）留下的快照，现在只会被删；
 #    留着它会让人以为还有"整份还原"这条路。
 expose_purge() {
-    [ -f "$HAPROXY_STATE" ] && expose_off
+    if [ -f "$HAPROXY_STATE" ]; then
+        expose_off || return 1
+    fi
     if expose_strip; then
         /etc/init.d/uhttpd restart >/dev/null 2>&1
     fi

@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026.11.27
+
+### 修复
+
+- 移除 `haproxy` 硬依赖：iStoreOS 24.10.8 等软件源里没有 haproxy 的固件，升级不再报 `cannot find dependency haproxy`
+- 80 端口适配所需的 HAProxy 改由 `install.sh` 在装包前按需安装：只有固件既没有 uhttpd 原始流代理、也没有在跑的 nginx 时才装；装不上只告警，不阻断套件安装
+
 ## 2026.11.26
 
 ### 修复

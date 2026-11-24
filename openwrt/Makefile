@@ -43,7 +43,7 @@ define Package/$(PKG_NAME)
   SUBMENU:=3. Applications
   TITLE:=MTUN-XD (墨枢云境) — Mihomo management suite
   URL:=https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD
-  DEPENDS:=+luci-base +curl +ca-bundle +kmod-tun
+  DEPENDS:=+luci-base +curl +ca-bundle +kmod-tun +haproxy
   PKGARCH:=all
 endef
 

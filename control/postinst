@@ -115,6 +115,13 @@ fi
 # ⚠️ 装包这一趟不许 kit 的「顺手升级控制台」触发：postinst 这会儿包里记的版本可能还是
 #    旧的（apk/opkg 事务没提交），会误判成「套件落后于 kit」。
 MIHOMO_KIT_NO_SELFUPGRADE=1 /usr/sbin/mtun-xd setup
+# setup 里如果只铺了半截配置工具，退出码仍可能是 0；这里兜底再拉一次。
+if [ ! -f /etc/mihomo/ui/config/index.html ] \
+   || [ ! -f /etc/mihomo/ui/config/core/render.js ] \
+   || [ ! -f /etc/mihomo/ui/config/ui.js ]; then
+    echo "→ 配置工具没落盘，重试一次"
+    MIHOMO_KIT_NO_SELFUPGRADE=1 /usr/sbin/mtun-xd tool || true
+fi
 # 菜单缓存里还记着旧版页面文件名 —— 不清的话当前会话点菜单仍是旧界面
 rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
 rm -rf /tmp/luci-modulecache 2>/dev/null

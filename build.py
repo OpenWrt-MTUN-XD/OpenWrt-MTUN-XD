@@ -240,7 +240,7 @@ def build_ipk(files):
         'Maintainer: OpenWrt-MTUN-XD\n'
         'Section: luci\n'
         'Priority: optional\n'
-        'Depends: curl, luci-base, ca-bundle, kmod-tun\n'
+        'Depends: curl, luci-base, ca-bundle, kmod-tun, haproxy\n'
         'Source: %s\n'
         'SourceName: %s\n'
         'License: MIT\n'
@@ -290,7 +290,7 @@ def apk_args(out):
         '-I', 'origin:%s' % NAME,
         # 注意：依赖要写在**同一个 -I** 里、空格分隔 —— 重复的 `-I depends:` 是覆盖不是追加
         # （只留下最后一个，curl 会被 luci-base 挤掉）。
-        '-I', 'depends:curl luci-base ca-bundle kmod-tun',
+        '-I', 'depends:curl luci-base ca-bundle kmod-tun haproxy',
     ] + [
         '-F', 'root',
         '-s', 'post-install:./postinst',

@@ -1045,6 +1045,12 @@ install_tool() {
             sh "$TMP/generator.sh" i || kit_rc=$?
     fi
     if [ "$kit_rc" = 0 ]; then
+        # 生成器退出 0 不等于文件真的落盘：面板升级/重铺时可能只铺了半截。
+        if [ ! -f "$UI/config/index.html" ] || [ ! -f "$UI/config/core/render.js" ] \
+           || [ ! -f "$UI/config/ui.js" ] || [ ! -f "$UI/config/mihomo-apply" ]; then
+            say "✘ 配置工具：安装脚本返回成功，但文件没落盘"
+            return 1
+        fi
         # ⚠️ 生成器的安装脚本会把 $UI/config 整个重铺，我们那份 theme.js（面板跟随路由器主题
         #    用）就在里面 —— 不补种就没了，表现是「LuCI 亮色、面板还是黑的」。
         #    seed_panel_cfg 只写本地文件、幂等，任何调用 install_tool 的路径都该走这一下。

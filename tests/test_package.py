@@ -97,8 +97,8 @@ def main():
     check(fields.get('Version') == ver, 'Version 跟生成器一致', '%s vs %s' % (fields.get('Version'), ver))
     check(fields.get('Architecture') == ARCH, 'Architecture: all', fields.get('Architecture'))
     check(set(x.strip() for x in (fields.get('Depends') or '').split(',') if x.strip())
-          == {'curl', 'luci-base', 'ca-bundle', 'kmod-tun'},
-          'Depends 含 curl / luci-base / ca-bundle / kmod-tun', fields.get('Depends'))
+          == {'curl', 'luci-base', 'ca-bundle', 'kmod-tun', 'haproxy'},
+          'Depends 含 curl / luci-base / ca-bundle / kmod-tun / haproxy', fields.get('Depends'))
     check('\r' not in control, 'control 里没有 CRLF（路由器不认）')
 
     # acl.d 写坏了要到路由器上才发现 —— 这里先解析一遍

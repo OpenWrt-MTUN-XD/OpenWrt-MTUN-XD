@@ -98,36 +98,53 @@ restore_uhttpd() {
 }
 
 stop_haproxy() {
-    local p='' i=0 cmd=''
-    [ -f "$PID" ] || return 0
-    p=$(cat "$PID" 2>/dev/null)
-    [ -n "$p" ] || { rm -f "$PID"; return 0; }
-    if [ ! -r "/proc/$p/cmdline" ]; then
-        rm -f "$PID"
-        return 0
-    fi
-    # 只杀自己的实例；陈旧 PID 可能是别的进程（尤其 PassWall 的 HAProxy）。
-    cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
-    case "$cmd" in
-        *mtun-xd-haproxy.cfg*) ;;
-        *) return 1 ;;
-    esac
-    kill "$p" 2>/dev/null || true
-    while [ "$i" -lt 10 ] && kill -0 "$p" 2>/dev/null; do
+    local d p pids='' seen='' cmd='' i=0
+    # 只收 cmdline 含本配置的进程（防重复 install 留下两个实例）。
+    # 不直接信 PID 文件：陈旧 PID 可能已经被别的进程复用。
+    for d in /proc/[0-9]*; do
+        [ -r "$d/cmdline" ] || continue
+        p=${d##*/}
+        cmd=$(tr '\0' ' ' < "$d/cmdline" 2>/dev/null)
+        case "$cmd" in
+            *"$CFG"*) pids="$pids $p" ;;
+        esac
+    done
+    for p in $pids; do
+        case " $seen " in *" $p "*) continue ;; esac
+        seen="$seen $p"
+        [ -r "/proc/$p/cmdline" ] || continue
+        cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
+        case "$cmd" in
+            *"$CFG"*) kill "$p" 2>/dev/null || true ;;
+            *) continue ;;
+        esac
+    done
+    while [ "$i" -lt 10 ]; do
         i=$((i + 1))
+        alive=''
+        for p in $seen; do
+            kill -0 "$p" 2>/dev/null && alive="$alive $p"
+        done
+        [ -z "$alive" ] && break
         sleep 1
     done
-    if kill -0 "$p" 2>/dev/null; then
+    for p in $seen; do
+        kill -0 "$p" 2>/dev/null || continue
         kill -9 "$p" 2>/dev/null || true
-        i=0
-        while [ "$i" -lt 10 ] && kill -0 "$p" 2>/dev/null; do
-            i=$((i + 1))
-            sleep 1
+    done
+    i=0
+    while [ "$i" -lt 10 ]; do
+        i=$((i + 1))
+        alive=''
+        for p in $seen; do
+            kill -0 "$p" 2>/dev/null && alive="$alive $p"
         done
-    fi
-    if kill -0 "$p" 2>/dev/null; then
-        return 1
-    fi
+        [ -z "$alive" ] && break
+        sleep 1
+    done
+    for p in $seen; do
+        kill -0 "$p" 2>/dev/null && return 1
+    done
     rm -f "$PID"
     return 0
 }

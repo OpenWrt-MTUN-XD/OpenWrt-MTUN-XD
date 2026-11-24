@@ -244,6 +244,25 @@ const GEN = join(OUT, 'config');
 resetDir(OUT);
 mkdirSync(GEN, { recursive: true });
 cpSync(DIST, GEN, { recursive: true });
+
+// ②′ 行尾归一：kit 里只允许 LF，跟跑在哪个平台无关。
+//   ⚠️ 必须排在 ②‴ 算 `?v=` 内容指纹之前：指纹是 md5(文件原始字节)，Windows 工作区被 autocrlf
+//   洗成 CRLF 时 state.js 带 CRLF 进 kit，指纹跟着变，index.html 就差一行 ——
+//   本地与 CI 两个平台打出来的 kit 不再逐字节一致（2026.11.27 踩过）。
+//   二进制按扩展名跳过：favicon.png 里本来就有 0D 字节。
+{
+  const TEXT = /\.(js|html|css|json|sh|txt|md)$/i;
+  const norm = (dir) => {
+    for (const n of readdirSync(dir)) {
+      const full = join(dir, n);
+      if (lstatSync(full).isDirectory()) { norm(full); continue; }
+      if (!TEXT.test(n)) continue;
+      const raw = readFileSync(full, 'utf8');
+      if (raw.includes('\r\n')) writeFileSync(full, lf(raw));
+    }
+  };
+  norm(GEN);
+}
 for (const extra of ['README.md', 'LICENSE']) rmSync(join(GEN, extra), { force: true });
 
 // ②′ 拍平：把 app/ 里的东西提到 config/ 根下（就一层目录），index.html 里 href="app/xxx" /
@@ -288,6 +307,18 @@ writeFileSync(join(GEN, 'btn.js'), lf(readFileSync(join(DEPLOY, 'btn.js'), 'utf8
 
 // ⑤′ 自检：本地这份包必须是完整的。缺东西宁可在这里炸掉，也别让人拿着没写盘脚本的包去传，
 //     最后卡在「载入配置文件 403」上找半天。
+{
+  const TEXT = /\.(js|html|css|json|sh|txt|md)$/i;
+  const chk = (dir) => {
+    for (const n of readdirSync(dir)) {
+      const full = join(dir, n);
+      if (lstatSync(full).isDirectory()) { chk(full); continue; }
+      if (!TEXT.test(n)) continue;
+      if (readFileSync(full).includes(0x0d)) throw new Error('kit 里仍有 CR：' + full);
+    }
+  };
+  chk(GEN);
+}
 for (const rel of ['config/index.html', 'config/secret.js', 'config/mihomo-apply', 'config/btn.js', 'config/ui.js']) {
   if (!existsSync(join(OUT, rel))) throw new Error(`打包不完整，少了 ${rel} —— 重跑一次`);
 }
@@ -299,25 +330,6 @@ const appHtml = readFileSync(join(GEN, 'index.html'), 'utf8');
 if (/(?:href|src)="app\//.test(appHtml)) throw new Error('index.html 里还有 app/ 前缀 —— 拍平那一步没生效');
 // 不该再有指向 /cgi-bin/ 的资源（那是上一版「搬出去 + CGI 发」留下的，现在入口是静态的）
 if (/(?:href|src)="\/cgi-bin\//.test(appHtml)) throw new Error('index.html 里的资源还挂在 /cgi-bin/ 上');
-
-// ⑤‴ 行尾归一：kit 里只允许 LF，跟跑在哪个平台无关。
-//   Windows 工作区被 autocrlf 洗成 CRLF 时，像 state.js 这种「原样 cp」的文件会带 CRLF 进 kit，
-//   CI 用 LF 源码重算就对不上（2026.11.27 踩过一次）。
-//   这里在打包前统一转 LF，转换后仍有 \\r 就直接炸，别带病出门。
-{
-  const TEXT = /\.(js|html|css|json|sh|txt|md)$/i;
-  const norm = (dir) => {
-    for (const n of readdirSync(dir)) {
-      const full = join(dir, n);
-      if (lstatSync(full).isDirectory()) { norm(full); continue; }
-      if (!TEXT.test(n)) continue;
-      const raw = readFileSync(full, 'utf8');
-      if (raw.includes('\r\n')) writeFileSync(full, lf(raw));
-      if (readFileSync(full, 'utf8').includes('\r')) throw new Error('kit 里仍有 CR：' + full);
-    }
-  };
-  norm(GEN);
-}
 
 // ⑥ 网页版那份 zip —— 桌面这份原样打包。
 //    ⚠️ 包里已经没有任何密钥（写盘认证走 mihomo 自己的 secret），所以不用挑文件排除、也不用

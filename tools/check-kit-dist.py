@@ -26,13 +26,14 @@ import zipfile
 
 
 EXT_TEXT = (".js", ".html", ".css", ".json", ".sh", ".txt", ".md")
+EXT_NAME = ("mihomo-apply",)
 
 
 def check_lf(files, label):
     """config/ 里文本文件只允许 LF：CRLF 会让本地与 CI 打出的 kit 字节不同。"""
     bad = []
     for name, raw in files.items():
-        if not name.lower().endswith(EXT_TEXT):
+        if not name.lower().endswith(EXT_TEXT) and name.rsplit("/", 1)[-1] not in EXT_NAME:
             continue
         try:
             raw.decode("utf-8")

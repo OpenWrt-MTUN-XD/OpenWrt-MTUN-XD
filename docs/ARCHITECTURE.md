@@ -142,6 +142,8 @@ install.sh
 | iStoreOS 24.10.8 | 恢复原生 `Proxy raw stream`，会自动从 HAProxy 迁回 |
 | iStoreOS 25.12 | 原生能力可用 |
 
+开机 0–40 秒 `/ui` 可能返回 503：`mihomo` 开机 5 分钟内先等 40 秒才启动内核，这段时间 HAProxy 已在 80 上监听但后端未应答，属设计使然，内核起来后自动恢复。`setup` 挂载 80 前会先等内核 API 真应答（开机窗口内最多 100 秒），避免 HAProxy 健康检查拿到 503 后误回滚。
+
 适配脚本：
 
 ```text

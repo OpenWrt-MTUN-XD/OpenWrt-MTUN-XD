@@ -107,6 +107,10 @@ EXPOSE_STATE=/etc/mtun-xd.expose-state
 # backend 配置和 uhttpd 的原始监听备份由部署脚本落在这里，expose off / uninstall 可还原。
 HAPROXY_STATE=/etc/mtun-xd.haproxy
 HAPROXY_UHTTPD_BAK=/etc/mtun-xd.haproxy-uhttpd.bak
+# MTUN-XD 自己的 HAProxy 实例：不碰 PassWall / 系统原有的 /etc/haproxy.cfg。
+HAPROXY_CFG=/etc/mtun-xd-haproxy.cfg
+HAPROXY_PID=/var/run/mtun-xd-haproxy.pid
+HAPROXY_INIT=/etc/init.d/mtun-xd-haproxy
 
 # 面板左下角绿点（配置生成器 deploy/btn.js）那一行，挂在面板 config.js 末尾。
 # ⚠️ 必须跟 deploy/generator.sh 里那份一字不差（两边靠标记行整段比对 / 替换）；
@@ -1472,10 +1476,12 @@ expose_pick() {
 # 无 uhttpd 原始流代理时，可由 HAProxy 在 80 做路径分流。
 # marker 里只存内核地址；同时要求 HAProxy 真在跑、目标真能答。
 haproxy_ready() {
-    local tgt
+    local tgt p
     [ -f "$HAPROXY_STATE" ] || return 1
     command -v haproxy >/dev/null 2>&1 || return 1
-    pidof haproxy >/dev/null 2>&1 || return 1
+    [ -f "$HAPROXY_PID" ] || return 1
+    p=$(cat "$HAPROXY_PID" 2>/dev/null)
+    [ -n "$p" ] && kill -0 "$p" 2>/dev/null || return 1
     tgt=$(cat "$HAPROXY_STATE" 2>/dev/null | tr -d '\r\n')
     [ -n "$tgt" ] && expose_probe "$tgt"
 }
@@ -1541,12 +1547,23 @@ expose_status() {
 
 # 80 口上真的能打开面板吗（/ui/ 2xx/3xx）。uhttpd 的监听端口被改过时也认。
 expose_live() {
-    local p code ports='80'
-    p=$(uci -q show uhttpd.main.listen_http 2>/dev/null \
-          | sed -n "s/.*='\([^']*\)'.*/\1/p" | grep -v '^\[' | head -1 | sed 's/.*://')
+    local host='127.0.0.1' p code ports='80' v
+    # HAProxy 路径由 helper 自己按 bind 地址探测；这里不能再写死 127.0.0.1。
+    if [ -f "$HAPROXY_STATE" ]; then
+        [ -x "$HAPROXY_HELPER" ] && sh "$HAPROXY_HELPER" status >/dev/null 2>&1
+        return $?
+    fi
+    v=$(uci -q show uhttpd.main.listen_http 2>/dev/null \
+          | sed -n "s/.*='\([^']*\)'.*/\1/p" | head -1)
+    case "$v" in
+        \[*\]:*) host=${v%:*}; [ "$host" = '[::]' ] && host='[::1]' ;;
+        *:*) host=${v%:*}; [ "$host" = 0.0.0.0 ] && host=127.0.0.1 ;;
+    esac
+    p=${v##*:}
+    [ "$p" = "$v" ] && p=80
     [ -n "$p" ] && [ "$p" != 80 ] && ports="$ports $p"
     for p in $ports; do
-        code=$(curl -sL -o /dev/null -w '%{http_code}' -m 4 "http://127.0.0.1:$p/ui/" 2>/dev/null)
+        code=$(curl -sL -o /dev/null -w '%{http_code}' -m 4 "http://$host:$p/ui/" 2>/dev/null)
         case "$code" in 2??|3??) return 0 ;; esac
     done
     return 1
@@ -1571,7 +1588,10 @@ expose_ensure() {
 # doctor 不能只看 uhttpd：另两套的机器会误报「未挂载」。
 expose_mounted() {
     [ -n "$(uhttpd_cur 2>/dev/null)" ] && return 0
-    [ -f "$HAPROXY_STATE" ] && pidof haproxy >/dev/null 2>&1 && return 0
+    if [ -f "$HAPROXY_STATE" ] && [ -f "$HAPROXY_PID" ]; then
+        p=$(cat "$HAPROXY_PID" 2>/dev/null)
+        [ -n "$p" ] && kill -0 "$p" 2>/dev/null && return 0
+    fi
     [ -f "$NGINX_STATE" ] && [ -f "$NGINX_LOC" ] && return 0
     return 1
 }
@@ -1712,20 +1732,8 @@ expose_off() {
         if [ -x "$HAPROXY_HELPER" ] && sh "$HAPROXY_HELPER" off >/dev/null 2>&1; then
             changed=1
         else
-            /etc/init.d/haproxy stop >/dev/null 2>&1
-            /etc/init.d/haproxy disable >/dev/null 2>&1
-            if [ -f "$HAPROXY_UHTTPD_BAK" ]; then
-                # 还原失败就别把唯一的快照删了 —— 下次还能再试
-                cp -p "$HAPROXY_UHTTPD_BAK" /etc/config/uhttpd || failed=1
-            else
-                uci -q delete uhttpd.main.listen_http
-                uci add_list uhttpd.main.listen_http='0.0.0.0:80'
-                uci add_list uhttpd.main.listen_http='[::]:80'
-                uci commit uhttpd || failed=1
-            fi
-            /etc/init.d/uhttpd restart >/dev/null 2>&1 || failed=1
-            [ "$failed" = 1 ] || rm -f "$HAPROXY_STATE" "$HAPROXY_UHTTPD_BAK"
-            changed=1
+            # 绝不能在这里 stop/disable 系统的 haproxy：那可能是 PassWall 的实例。
+            failed=1
         fi
     fi
     # nginx 那套（Kwrt / QWRT）先摘：它会删掉 nginx 的 locations、把 uhttpd.main 的
@@ -1803,7 +1811,8 @@ expose_purge() {
         /etc/init.d/uhttpd restart >/dev/null 2>&1
     fi
     rm -f "$EXPOSE_BAK" "$EXPOSE_OFF_MARK" "$EXPOSE_ADDR_CACHE" "$EXPOSE_STATE" \
-          "$HAPROXY_STATE" "$HAPROXY_UHTTPD_BAK"
+          "$HAPROXY_STATE" "$HAPROXY_UHTTPD_BAK" "$HAPROXY_CFG" "$HAPROXY_PID" \
+          "$HAPROXY_INIT" /etc/rc.d/S99mtun-xd-haproxy
     return 0
 }
 

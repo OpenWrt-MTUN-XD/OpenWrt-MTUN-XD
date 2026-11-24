@@ -96,6 +96,8 @@ probe_host() {
 restore_uhttpd() {
     # 只还原 listen_http，不整份 cp 快照：避免抹掉用户后来加的别的 uhttpd 选项。
     local v vals='' rc=0
+    # 当前已经不在 8080（固件/用户改过端口）就不要按快照硬套；只让调用方清状态。
+    uhttpd_has_8080 || return 0
     if [ -f "$UHTTPD_BAK" ]; then
         vals=$(uhttpd_listens)
     fi
@@ -339,6 +341,8 @@ install_all() {
     elif current_has_http80; then
         # 固件升级/手动改回 80 后，旧快照已过期；当前还在 80 时刷新一次。
         cp -p /etc/config/uhttpd "$UHTTPD_BAK" || die '刷新 uhttpd 快照失败'
+    elif ! uhttpd_has_8080; then
+        die '当前 uhttpd 既不在 80 也不在 8080，拒绝按快照接管'
     fi
 
     # 先腾 80 再动 uhttpd：失败就停手，不能留下「新配置 + 旧实例」的半截状态。

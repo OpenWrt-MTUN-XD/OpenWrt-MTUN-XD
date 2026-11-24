@@ -404,20 +404,25 @@ if [ "$ONLY_PKG" = 1 ]; then
     if [ "$PM" = apk ]; then
         # ⚠️ apk 退出码不能全信：手工装过非仓库版包（如 Argon 3.1.0-r1）的机器每次都会多报
         #    「1 error」（apk fix 里是 APK unavailable），包其实装好了 ⇒ 下面用版本/文件判定。
-        pm apk add --no-scripts --allow-untrusted --force-reinstall "$TMP/$FILE" || true
+        pm apk add --no-scripts --allow-untrusted --force-reinstall "$TMP/$FILE" \
+            >"$TMP/pm.log" 2>&1 || true
     elif [ "$cur" = "$latest" ]; then
         ipk_overlay "$TMP/$FILE" || die "套件：换包失败（铺文件出错）"
     else
         : > "$MARK"
         MARK_OWNED=1
-        pm opkg install "$TMP/$FILE" || { mark_clear; die "套件：安装失败"; }
+        pm opkg install "$TMP/$FILE" >"$TMP/pm.log" 2>&1 \
+            || { mark_clear; tail -n 20 "$TMP/pm.log" >&2; die "套件：安装失败（见上面 pm.log）"; }
     fi
     mark_clear
     # 版本为准（apk 的退出码可能是环境噪音，见上面那段注释）
-    [ "$(ver_base "$(installed_ver)")" = "$(ver_base "$latest")" ] || die "套件：安装失败（版本没对上：$(installed_ver)）"
+    [ "$(ver_base "$(installed_ver)")" = "$(ver_base "$latest")" ] || { tail -n 20 "$TMP/pm.log" >&2; die "套件：安装失败（版本没对上：$(installed_ver)）"; }
     # 换完验一遍文件在不在（包坏了 / 被别的包删过都得能看出来）
     bad=$(missing)
     [ -z "$bad" ] || die "套件：包换了但文件还缺：$bad"
+    # ⚠️ 11.26 的 haproxy 是包依赖，升到 11.27 时 apk/opkg 会把它当孤儿删掉；
+    #    没有 uhttpd 原始流代理的固件必须在这里补回来，否则 expose ensure 会把 80 退回 uhttpd。
+    ensure_haproxy
     # LuCI 的菜单缓存里还记着**旧版页面文件名** —— 不清掉，当前会话点菜单还是旧界面
     #（文件已经换了，只会 404 / 吃浏览器缓存）。清这个不会踢人下线。
     rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
@@ -461,7 +466,7 @@ if [ "$PM" = apk ]; then
     apk update >/dev/null 2>&1 || say "    ⚠️ apk update 没成功，继续"
     pm apk add --allow-untrusted --no-scripts "$TMP/$FILE" >"$TMP/pm.log" 2>&1 || true
     # 同上：以实际装上的版本为准
-    [ "$(ver_base "$(installed_ver)")" = "$(ver_base "$latest")" ] || die "套件：安装失败（版本没对上：$(installed_ver)）"
+    [ "$(ver_base "$(installed_ver)")" = "$(ver_base "$latest")" ] || { tail -n 20 "$TMP/pm.log" >&2; die "套件：安装失败（版本没对上：$(installed_ver)）"; }
     # ⚠️ 跟 opkg 那边一个道理：同一个版本在装的时候，包管理器多半只会说「已经装了」然后
     #    什么都不干（postinst 也不跑）→ 缺的文件永远补不回来。装完统一验一遍，缺了就强制重装。
     bad=$(missing)
@@ -478,7 +483,7 @@ else
     opkg update >/dev/null 2>&1 || say "    ⚠️ opkg update 没成功，继续"
     : > "$MARK"
     MARK_OWNED=1
-    pm opkg install "$TMP/$FILE" >"$TMP/pm.log" 2>&1 || { mark_clear; die "套件：安装失败"; }
+    pm opkg install "$TMP/$FILE" >"$TMP/pm.log" 2>&1 || { mark_clear; tail -n 20 "$TMP/pm.log" >&2; die "套件：安装失败（见上面 pm.log）"; }
     mark_clear
     # ⚠️ opkg 对同一个版本会直接说 "…is up to date" 然后什么都不干 —— 上一次要是没装全
     #    （或者文件被别的包删过），它永远不会补回来，而且连 postinst 都不会跑。所以自己验一遍：

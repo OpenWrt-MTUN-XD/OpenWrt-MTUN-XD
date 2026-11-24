@@ -2062,10 +2062,16 @@ setup() {
         say "⚠️ 80 端口：配置里 expose=0，跳过挂载（面板仅本机 $(expose_addr) 可访问）"
     else
         # 内核刚重启时进程已在、9090 还没应答，直接 expose_on 会探测失败 → 误报「未挂载」。
-        # 等的是 API 真应答，不是进程存在；每次只探配置地址一个点（全地址 pick 一轮
-        # 要打好几次 curl，放进循环会失控），20 秒硬上限。
+        # 等的是 API 真应答，不是进程存在；每次只探配置地址一个点。
+        # ⚠️ 开机 5 分钟内 init 会先睡 40 秒才 exec 内核，20 秒窗口必然不够；
+        #    这时必须按 100 秒等，否则 HAProxy 健康检查拿到 503 后直接回滚。
+        wait_max=20
+        if [ "$(cut -d. -f1 /proc/uptime 2>/dev/null)" -lt 300 ]; then
+            wait_max=100
+        fi
         t0=$(date +%s)
-        while core_alive && ! expose_probe "$(expose_addr)" && [ $(( $(date +%s) - t0 )) -lt 20 ]; do
+        while ! expose_probe "$(expose_addr)" \
+            && [ $(( $(date +%s) - t0 )) -lt "$wait_max" ]; do
             sleep 1
         done
         if expose_on; then expose_ok=1; fi

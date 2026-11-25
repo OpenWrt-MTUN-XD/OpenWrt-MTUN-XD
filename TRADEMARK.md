@@ -1,5 +1,7 @@
 # MTUN-XD 项目声明
 
+**简体中文** | [English](TRADEMARK.en.md)
+
 本文件是 MTUN-XD（墨枢云境）关于**发布渠道**与**品牌标识**的独立声明，
 与 `README.md` 和 `LICENSE` 共同构成项目的对外约定。
 

@@ -178,6 +178,7 @@ git diff --check
 - 正式发版的 kit 由 CI 一条链跑完：生成 OUT → 发 genkit（`KIT_PUBLISH=1` + `GENKIT_TOKEN`）→
   `python build.py kit <OUT>` → `python build.py dist` → `check-kit-dist` + `check-kit-sync` 双闸门 → 提交 `dist/`。
 - kit 里只允许 LF，且归一必须排在算 `?v=` 内容指纹之前（否则指纹随 CRLF 变、index.html 差一行）；打包末尾另有 `\r` 断言兜底。
+- CI 的测试 job 不做「源码 vs dist」kit 闸门：`dist/` 只能由 CI 的 publish 产出（本地 zlib 字节不同），push 时不可能自洽；该闸门只在 publish 内（fresh kit 对刚生成的 dist）执行。
 - **禁止手工 cp kit 进 `dist/`**。CI 在提交 `dist/` 前会跑
   `python tools/check-kit-dist.py /tmp/mihomo-deploy dist v<版本>`：解 `dist/mihomo-deploy.tar.gz`
   与当前源码拍平目录逐文件比对，并要求 `config/state.js` 的 `APP_VERSION` 等于本次版本号；不一致直接 fail。

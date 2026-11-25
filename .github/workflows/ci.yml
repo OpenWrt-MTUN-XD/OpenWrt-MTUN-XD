@@ -22,6 +22,14 @@ jobs:
       - name: 生成器单测
         working-directory: generator
         run: bun test tests/unit
+      - name: 生成 kit 冒烟
+        working-directory: generator
+        env:
+          KIT_NO_PUBLISH: '1'
+        run: |
+          bun scripts/make-router-kit.mjs /tmp/mihomo-deploy-smoke --force
+          test -f /tmp/mihomo-deploy-smoke/mihomo-deploy.tar.gz
+          test -f /tmp/mihomo-deploy-smoke/mihomo-deploy.zip
       - name: shell 语法
         run: |
           # 走统一脚本：15 个 shell 全覆盖（以后加文件不用改 CI）

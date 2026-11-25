@@ -135,12 +135,16 @@ jobs:
         run: |
           if gh api "repos/${{ github.repository }}/git/ref/tags/v$VERSION" >/dev/null 2>&1; then
             echo "v$VERSION 已有 tag，按已发布处理"
-            ASSETS=$(gh api "repos/${{ github.repository }}/releases/tags/v$VERSION" --jq '[.assets[] | select(.name | test("\\.(ipk|apk)$"))] | length' 2>/dev/null || echo 0)
-            if [ "$ASSETS" -lt 2 ]; then
-              echo "::error::tag v$VERSION 存在，但 Release 或 ipk/apk 附件不齐（assets=$ASSETS），属半截状态，需人工补 Release"
+            NAMES=$(gh api "repos/${{ github.repository }}/releases/tags/v$VERSION" --jq '.assets[].name' 2>/dev/null || true)
+            MISSING=0
+            for want in "luci-app-mtun-xd-${VERSION}.apk" "luci-app-mtun-xd_${VERSION}_all.ipk"; do
+              echo "$NAMES" | grep -qx "$want" || { echo "::error::缺 $want"; MISSING=1; }
+            done
+            if [ "$MISSING" -ne 0 ]; then
+              echo "::error::tag v$VERSION 存在但核心包不全，属半截状态，需人工补 Release"
               exit 1
             fi
-            echo "附件 $ASSETS 件齐全"
+            echo "核心包齐全"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "v$VERSION 尚未发布"

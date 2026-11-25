@@ -44,7 +44,7 @@
 
       stack: 'mixed',
       ipv6: true,
-      // 单栈 IPv6 走节点出口：默认关；开着时 TUN 才分配 IPv6 并接管 IPv6 默认路由。
+      // 单栈变双栈：默认关；开着时 TUN 才分配 IPv6 并接管 IPv6 默认路由。
       ipv6ViaNode: false,
       webrtc: true,
       // 广告拦截：勾上就加 217heidai 的 rule-provider + 一条 RULE-SET（默认**不勾**）

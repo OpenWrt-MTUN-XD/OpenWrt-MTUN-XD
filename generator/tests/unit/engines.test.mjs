@@ -313,7 +313,7 @@ describe('输入校验的兜底', () => {
   });
 });
 
-describe('单栈 IPv6 走节点出口', () => {
+describe('单栈变双栈', () => {
   test('只有 IPv6 和走节点同时开启才输出 TUN IPv6 地址', () => {
     const y = makeSplit({ ipv6_enabled: true, ipv6_via_node: true }).generate();
     expect(y).toContain('  inet6-address:\n    - fdfe:dcba:9876::1/126');

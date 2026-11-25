@@ -1191,7 +1191,7 @@ describe('负载均衡组体检地址：按出口分', () => {
   });
 });
 
-describe('buildConfig：单栈 IPv6 走节点出口', () => {
+describe('buildConfig：单栈变双栈', () => {
   test('只由 IPv6 + ipv6ViaNode 两个状态共同决定', () => {
     reset({ mode: 'split', ipv6: true, ipv6ViaNode: true });
     expect(MH.ui.buildConfig()).toContain('  inet6-address:\n    - fdfe:dcba:9876::1/126');

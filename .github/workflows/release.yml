@@ -120,10 +120,30 @@ jobs:
           name: apk
           path: luci-app-mtun-xd-*.apk
 
+  published_check:
+    name: 已发布检查
+    needs: [prepare]
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.chk.outputs.skip }}
+    steps:
+      - id: chk
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          if gh api "repos/${{ github.repository }}/git/ref/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "v$VERSION 已发布，整段发布跳过"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
     name: 发布
-    needs: [prepare, test, build-ipk, build-apk]
-    if: needs.prepare.outputs.release == 'true'
+    needs: [prepare, test, build-ipk, build-apk, published_check]
+    if: needs.prepare.outputs.release == 'true' && needs.published_check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

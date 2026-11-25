@@ -134,9 +134,16 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           if gh api "repos/${{ github.repository }}/git/ref/tags/v$VERSION" >/dev/null 2>&1; then
-            echo "v$VERSION 已发布，整段发布跳过"
+            echo "v$VERSION 已有 tag，按已发布处理"
+            ASSETS=$(gh api "repos/${{ github.repository }}/releases/tags/v$VERSION" --jq '[.assets[] | select(.name | test("\\.(ipk|apk)$"))] | length' 2>/dev/null || echo 0)
+            if [ "$ASSETS" -lt 2 ]; then
+              echo "::error::tag v$VERSION 存在，但 Release 或 ipk/apk 附件不齐（assets=$ASSETS），属半截状态，需人工补 Release"
+              exit 1
+            fi
+            echo "附件 $ASSETS 件齐全"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
+            echo "v$VERSION 尚未发布"
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 

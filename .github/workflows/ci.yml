@@ -28,7 +28,13 @@ jobs:
           KIT_NO_PUBLISH: '1'
         run: bun scripts/make-router-kit.mjs /tmp/mihomo-deploy
       - name: 校验 dist kit 与源码同步
-        run: python3 tools/check-kit-dist.py /tmp/mihomo-deploy dist "v$(python3 build.py version)"
+        run: |
+          VERSION="v$(python3 build.py version)"
+          if [ "$(cat dist/latest.txt)" != "$VERSION" ]; then
+            echo "版本刚 bump 到 $VERSION，dist 由 Release workflow 更新；跳过 dist kit 闸门"
+            exit 0
+          fi
+          python3 tools/check-kit-dist.py /tmp/mihomo-deploy dist "$VERSION"
       - name: shell 语法
         run: |
           # 走统一脚本：15 个 shell 全覆盖（以后加文件不用改 CI）

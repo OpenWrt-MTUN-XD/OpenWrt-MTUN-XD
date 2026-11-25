@@ -563,22 +563,22 @@
     A('');
     // 字段顺序按官方 tun 模板：
     // enable → stack → auto-route → auto-redirect → auto-detect-interface
-    // → dns-hijack → device → mtu → strict-route
+    // → dns-hijack → device → mtu → strict-route → gso → inet6-address
     A('tun:');
     A('  enable: true');
     A('  stack: ' + this.stack);
     A('  auto-route: ' + (this.auto_route ? 'true' : 'false'));
     A('  auto-redirect: ' + (this.auto_redirect ? 'true' : 'false'));
     A('  auto-detect-interface: ' + (this.auto_detect_interface ? 'true' : 'false'));
-    if (this.ipv6_enabled && this.ipv6_via_node) {
-      A('  inet6-address:');
-      A('    - fdfe:dcba:9876::1/126');
-    }
     A('  dns-hijack:');
     var hijack = listOr(this.dns_hijack, ['any:53', 'tcp://any:53']);
     for (var hi = 0; hi < hijack.length; hi++) A('    - ' + listScalar(hijack[hi]));
     A('  mtu: ' + this.mtu);
     A('  strict-route: ' + (this.strict_route ? 'true' : 'false'));
+    if (this.ipv6_enabled && this.ipv6_via_node) {
+      A('  inet6-address:');
+      A('    - fdfe:dcba:9876::1/126');
+    }
     A('');
     A('dns:');
     A('  ipv6: ' + (this.ipv6_enabled ? 'true' : 'false'));

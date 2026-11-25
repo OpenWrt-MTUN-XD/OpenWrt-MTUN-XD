@@ -575,6 +575,10 @@
     $('ipv6-field').hidden = ipv6Off;
     $('ipv6').disabled = ipv6Off;
     $('ipv6').checked = ipv6Off ? false : state.ipv6;
+    var ipv6NodeOff = ipv6Off || !state.ipv6;
+    $('ipv6-node-field').hidden = ipv6NodeOff;
+    $('ipv6-node').disabled = ipv6NodeOff;
+    $('ipv6-node').checked = ipv6NodeOff ? false : state.ipv6ViaNode;
 
     // 区域性开关回写（精准分流面板有回国 / 全局代理；一机一IP 面板有回国 / 国内两个）
     $('return-mode').checked = state.returnMode;
@@ -1252,6 +1256,7 @@
     eng.auto_select_exclude = state.autoSelectExclude.slice();
     eng.controller_listen = listen;
     eng.ipv6_enabled = state.ipv6;
+    eng.ipv6_via_node = !!(state.ipv6 && state.ipv6ViaNode);
     eng.stack = MH.SplitEngine.STACKS.indexOf(state.stack) !== -1 ? state.stack : 'mixed';
     eng.direct_ips = rules.ips;
     eng.direct_domains = rules.domains;
@@ -2009,6 +2014,7 @@
     // 分流设置
     bindInput('stack', 'stack');
     bindCheckbox('ipv6', 'ipv6');
+    bindCheckbox('ipv6-node', 'ipv6ViaNode');
     bindCheckbox('webrtc', 'webrtc');
     bindCheckbox('blklist', 'adBlock');
     bindCheckbox('auto-select', 'autoSelect', function () {

@@ -1190,3 +1190,16 @@ describe('负载均衡组体检地址：按出口分', () => {
     expect(lbUrls(MH.ui.buildConfig())).toEqual([GSTATIC]);
   });
 });
+
+describe('buildConfig：单栈 IPv6 走节点出口', () => {
+  test('只由 IPv6 + ipv6ViaNode 两个状态共同决定', () => {
+    reset({ mode: 'split', ipv6: true, ipv6ViaNode: true });
+    expect(MH.ui.buildConfig()).toContain('  inet6-address:\n    - fdfe:dcba:9876::1/126');
+
+    reset({ mode: 'split', ipv6: false, ipv6ViaNode: true });
+    expect(MH.ui.buildConfig()).not.toContain('inet6-address:');
+
+    reset({ mode: 'oneip', ipv6: true, ipv6ViaNode: true });
+    expect(MH.ui.buildConfig()).not.toContain('inet6-address:');
+  });
+});

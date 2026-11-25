@@ -417,6 +417,8 @@
     // 广告拦截（引擎与界面出厂默认都是关；勾选后由 ui.js 显式赋 true 才会输出 provider 与规则）
     this.ad_block = false;
     this.ipv6_enabled = true;
+    // 仅 ipv6_enabled 时由 ui.js 赋值；true 才输出 tun.inet6-address 并接管 IPv6。
+    this.ipv6_via_node = false;
     this.global_mode = false;
     // 本地出口：非空时国内流量（GEOSITE,cn / GEOIP,CN）走这个节点；空 = 直连
     this.local_exit = '';
@@ -568,6 +570,10 @@
     A('  auto-route: ' + (this.auto_route ? 'true' : 'false'));
     A('  auto-redirect: ' + (this.auto_redirect ? 'true' : 'false'));
     A('  auto-detect-interface: ' + (this.auto_detect_interface ? 'true' : 'false'));
+    if (this.ipv6_enabled && this.ipv6_via_node) {
+      A('  inet6-address:');
+      A('    - fdfe:dcba:9876::1/126');
+    }
     A('  dns-hijack:');
     var hijack = listOr(this.dns_hijack, ['any:53', 'tcp://any:53']);
     for (var hi = 0; hi < hijack.length; hi++) A('    - ' + listScalar(hijack[hi]));

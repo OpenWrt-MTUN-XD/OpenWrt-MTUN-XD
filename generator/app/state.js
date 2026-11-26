@@ -12,7 +12,7 @@
 
   var MH = (root.MH = root.MH || {});
 
-  var APP_VERSION = 'v2026.12.02';
+  var APP_VERSION = 'v2026.12.03';
   /** 老版本的设置存档键 —— 打开时清一次，让老访客也别留着上次那份。 */
   var STORAGE_KEY = 'mihomo-config-web:settings:v1';
 

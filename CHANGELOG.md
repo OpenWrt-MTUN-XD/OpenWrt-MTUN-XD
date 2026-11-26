@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026.12.03
+
+### 优化
+
+- 维护中心「更新套件」与开机自检的重装脚本改为 CF → GitHub raw 兜底，CF 不可用时不再直接失败
+- 安装与升级链路统一：套件包、核心、面板、配置工具均为 CF → GitHub → ghfast.top → gh-proxy.com；版本元数据 CF `/gh-api` → `api.github.com`；官方摘要 CF → GitHub → Release digest
+
 ## 2026.12.02
 
 ### 优化

@@ -311,8 +311,8 @@ dl() {   # dl <github 路径> <落地文件> [期望 SHA-256]
         fi
     done
     for m in $MIRRORS; do
-        # 第一段已经直连过 github.com，镜像表里的同名项跳过（否则同一 URL 白试两轮）
-        [ "$m/" = "$GH/" ] && continue
+        # 前一段只试过 CF 反代；这里的 github.com 是真正的兜底，不能跳过
+        # （ghfast / gh-proxy 同时抽风时，直连是最后一条能用的路）
         if curl -fL --retry 1 --connect-timeout 15 -m 300 \
                 --user-agent "Mozilla/5.0" -o "$2" "$m/$1" >/dev/null 2>&1; then
             if [ -z "${3:-}" ]; then return 0; fi

@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026.12.02
+
+### 优化
+
+- 核心与 MetaCubeXD 改为 CF 优先：`/gh` 下载 Release 资产、`/gh-api` 获取 Release 元数据；GitHub 直连、`ghfast.top`、`gh-proxy.com` 依次兜底
+- CF Worker 仅允许 MetaCubeX 三个仓库的 Release 资产与元数据，仅放行 GET / HEAD，禁止通用 GitHub 反代
+
 ## 2026.12.01
 
 ### 优化

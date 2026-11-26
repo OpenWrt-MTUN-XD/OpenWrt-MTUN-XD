@@ -422,7 +422,7 @@ def main():
     _fn_end = cli.find('\n}\n', _fn_start)
     if _fn_start != -1 and _fn_end != -1:
         _fn = cli[_fn_start:_fn_end + 3]
-        _script = ("set -u\nGH_API='http://127.0.0.1:9'\n"
+        _script = ("set -u\nGH_API='http://127.0.0.1:9'\nCF_API='http://127.0.0.1:9'\n"
                    "curl() { return 22; }\nrelease_asset_sha() { return 1; }\n"
                    + _fn + "\npanel_latest_ver\n")
         if shutil.which('sh'):

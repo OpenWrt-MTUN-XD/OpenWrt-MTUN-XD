@@ -1383,9 +1383,16 @@ selfcheck() {
         say "⚠️ 开机自检：包登记丢了（固件升级常见）—— 重装一次"
         # ⚠️ 不能 `curl … | sh`：管道的退出码取的是后面那个 sh —— curl 失败时 sh 读到空输入
         #    照样退出 0，于是断网也打「✔ 已重装」，而且再也不重试。先落盘、确认是安装脚本，再执行。
-        if curl -fsSL --retry 1 --connect-timeout 8 -m 120 "$KIT_CF/install.sh" \
-                -o "$tmp" 2>/dev/null \
-           && [ -s "$tmp" ] && grep -q '^REPO=' "$tmp" 2>/dev/null; then
+        local s ok=0
+        for s in "$KIT_CF" "$GH_RAW"; do
+            if curl -fsSL --retry 1 --connect-timeout 8 -m 120 "$s/install.sh" \
+                    -o "$tmp" 2>/dev/null \
+               && [ -s "$tmp" ] && grep -q '^REPO=' "$tmp" 2>/dev/null; then
+                ok=1
+                break
+            fi
+        done
+        if [ "$ok" = 1 ]; then
             if sh "$tmp" >/dev/null 2>&1; then
                 say "✔ 开机自检：已重装"
             else

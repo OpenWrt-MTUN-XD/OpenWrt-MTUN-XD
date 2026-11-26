@@ -1086,19 +1086,24 @@ install_tool() {
 # 工具，核心 / 面板不碰）。⚠️ 调度已把它放进临时副本（install.sh 会原地覆盖本脚本），
 # 并用 MTUN_XD_LOCKED=1 让收尾的 `mtun-xd tool` 不再抢锁。
 upgrade_console() {
-    local i=0
+    local i src
     say "→ 控制台：升级"
-    while [ "$i" -lt 3 ]; do
-        i=$((i + 1))
-        if curl -fL --retry 1 --connect-timeout 15 -m 60 --user-agent "Mozilla/5.0" \
-                -o "$TMP/install.sh" "$KIT_CF/install.sh" >/dev/null 2>&1 \
-           && grep -q '^REPO=' "$TMP/install.sh" 2>/dev/null; then
-            MTUN_XD_LOCKED=1 MTUN_XD_CONSOLE=1 sh "$TMP/install.sh" pkg
-            return $?
-        fi
-        sleep 3
+    # 安装脚本站点：CF → GitHub raw。套件包本身由 install.sh 再按
+    # CF → GitHub → ghfast → gh-proxy 下；这里只负责先把安装器取到。
+    for src in "$KIT_CF" "$GH_RAW"; do
+        i=0
+        while [ "$i" -lt 3 ]; do
+            i=$((i + 1))
+            if curl -fL --retry 1 --connect-timeout 15 -m 60 --user-agent "Mozilla/5.0" \
+                    -o "$TMP/install.sh" "$src/install.sh" >/dev/null 2>&1 \
+               && grep -q '^REPO=' "$TMP/install.sh" 2>/dev/null; then
+                MTUN_XD_LOCKED=1 MTUN_XD_CONSOLE=1 sh "$TMP/install.sh" pkg
+                return $?
+            fi
+            sleep 3
+        done
     done
-    say "✘ 控制台：安装脚本没下来（网络？）"
+    say "✘ 控制台：安装脚本没下来（CF / GitHub 都试过了）"
     return 1
 }
 

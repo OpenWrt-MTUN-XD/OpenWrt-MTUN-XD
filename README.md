@@ -82,7 +82,7 @@ SSH 登录路由器，以 root 执行：
 curl -fsSL https://raw.githubusercontent.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/main/install.sh -o /tmp/mtun-xd-install.sh && sh /tmp/mtun-xd-install.sh
 ```
 
-国内访问 GitHub 不稳时用 CF 镜像（推荐，也是 install.sh 的首选源）：
+国内访问 GitHub 不稳时用 CF 镜像（推荐，也是 install.sh、核心和面板的首选源）：
 
 ```sh
 curl -fsSL https://mtun-xd.wxcircle.top/install.sh -o /tmp/mtun-xd-install.sh && sh /tmp/mtun-xd-install.sh

@@ -30,6 +30,8 @@ jobs:
           bun scripts/make-router-kit.mjs /tmp/mihomo-deploy
           test -f /tmp/mihomo-deploy/mihomo-deploy.tar.gz
           test -f /tmp/mihomo-deploy/mihomo-deploy.zip
+      - name: Worker 反代白名单
+        run: node worker/test.mjs
       - name: shell 语法
         run: |
           # 走统一脚本：15 个 shell 全覆盖（以后加文件不用改 CI）

@@ -86,7 +86,7 @@ SSH into the router as root:
 curl -fsSL https://raw.githubusercontent.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/main/install.sh -o /tmp/mtun-xd-install.sh && sh /tmp/mtun-xd-install.sh
 ```
 
-If GitHub is slow, use the official CF mirror (also the preferred source in `install.sh`):
+If GitHub is slow, use the official CF mirror (preferred source for `install.sh`, core, and panel):
 
 ```sh
 curl -fsSL https://mtun-xd.wxcircle.top/install.sh -o /tmp/mtun-xd-install.sh && sh /tmp/mtun-xd-install.sh

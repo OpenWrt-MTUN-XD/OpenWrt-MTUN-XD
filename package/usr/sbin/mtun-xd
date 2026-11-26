@@ -45,6 +45,8 @@ LOG=/tmp/mtun-xd.log
 DONE=/tmp/mtun-xd.done
 RAW=/tmp/mtun-xd.raw
 RC=/tmp/mtun-xd.rc
+CF_GH="https://mtun-xd.wxcircle.top/gh"
+CF_API="https://mtun-xd.wxcircle.top/gh-api"
 MIRRORS="https://github.com https://ghfast.top/https://github.com https://gh-proxy.com/https://github.com"
 # 生成器（配置工具）从独立的滚动 release 拉（OpenWrt-MTUN-XD/genkit，tag `genkit`），跟核心 /
 # 面板一样走上面那套镜像，不依赖生成器自己的网站（那只是它的线上本体）。
@@ -228,16 +230,17 @@ release_meta() {   # release_meta <owner/repo> <tag>；输出缓存文件路径
     local repo="$1" ver="$2" cache url
     cache="$TMP/release-${repo#*/}-${ver#v}.json"
     if [ ! -s "$cache" ]; then
-        url="$GH_API/repos/$repo/releases/tags/$ver"
         rm -f "$cache"
-        if ! curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
+        for url in "$CF_API/repos/$repo/releases/tags/$ver" \
+                   "$GH_API/repos/$repo/releases/tags/$ver"; do
+            curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
                 --user-agent "MTUN-XD" \
                 -H 'Accept: application/vnd.github+json' \
                 -o "$cache" "$url" >/dev/null 2>&1 \
-           || ! grep -q '"assets"' "$cache" 2>/dev/null; then
+              && grep -q '"assets"' "$cache" 2>/dev/null && break
             # 200 但不是 release JSON（网关页面 / 错误体）也别当缓存
             rm -f "$cache"
-        fi
+        done
         grep -q '"message"' "$cache" 2>/dev/null && rm -f "$cache"
     fi
     [ -s "$cache" ] || return 1
@@ -250,7 +253,7 @@ panel_latest_ver() {
     # 这里按「新 → 旧」看最近几个 tag，挑第一个真带压缩包且有 digest 的。
     local out tags='' t url
     for url in \
-        "$GH_API/repos/MetaCubeX/metacubexd/releases" \
+        "$CF_API/repos/MetaCubeX/metacubexd/releases" \
         "https://api.github.com/repos/MetaCubeX/metacubexd/releases?per_page=10"; do
         out=$(curl -fsSL --retry 1 --connect-timeout 8 -m 30 \
                 --user-agent "MTUN-XD" -H 'Accept: application/vnd.github+json' \
@@ -292,14 +295,15 @@ release_asset_sha() {   # release_asset_sha <owner/repo> <tag> <asset name>
 }
 
 dl() {   # dl <github 路径> <落地文件> [期望 SHA-256]
-    # ⚠️ 第一顺位是 GitHub 直连（/gh/ 反代已随旧项目下线）：国内直连多半
-    #    "连得上但很慢/半路断"，先试它等于点一下升级先干等十几秒；CF 第二次起直接命中边缘缓存。
+    # ⚠️ 第一顺位是自家 CF 反代（/gh，见 wrangler.jsonc → worker/index.js）：国内直连
+    #    GitHub 多半"连得上但很慢/半路断"，先走 CF，第二次起直接命中边缘缓存；
+    #    GitHub 直连与两个第三方反代留在后面兜底。
     # ⚠️ 试两次 + 连接超时 8 秒：CF 边缘偶发 5xx / 握手慢，只试一次会放弃整条路；等 15 秒又太久。
     # ⚠️ 给了第三个参数就必须逐份核对；镜像返回 200 但内容不对不算成功。
     local i m got
     for i in 1 2; do
         if curl -fL --retry 1 --connect-timeout 8 -m 300 \
-                --user-agent "Mozilla/5.0" -o "$2" "$GH/$1" >/dev/null 2>&1; then
+                --user-agent "Mozilla/5.0" -o "$2" "$CF_GH/$1" >/dev/null 2>&1; then
             if [ -z "${3:-}" ]; then return 0; fi
             got=$(sha_file "$2") || got=''
             [ "$got" = "$3" ] && return 0
@@ -321,11 +325,11 @@ dl() {   # dl <github 路径> <落地文件> [期望 SHA-256]
 }
 
 latest_tag() {   # 用 302 解析最新 tag（不吃 API 配额）
-    # ① GitHub 直连（不吃 API 配额，只解析 302）—— 试两次、连接超时 8 秒
+    # ① 先走自家 CF 反代（不吃 API 配额，只解析 302）—— 试两次、连接超时 8 秒
     local i t=''
     for i in 1 2; do
         t=$(curl -sI --connect-timeout 8 --user-agent "Mozilla/5.0" \
-                "$GH/$1/releases/latest" 2>/dev/null \
+                "$CF_GH/$1/releases/latest" 2>/dev/null \
             | sed -n 's|.*[Ll]ocation: .*/tag/\([^[:space:]]*\).*|\1|p' | tr -d '\r')
         [ -n "$t" ] && break
     done

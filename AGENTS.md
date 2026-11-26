@@ -11,7 +11,7 @@ MTUN-XD 是一个 OpenWrt / iStoreOS 管理套件，把以下内容整合进 LuC
 - 浏览器端配置生成器
 - 核心 / 面板 / 控制台安装、升级、卸载与 80 端口接入
 
-核心和面板不随包发布，安装时从 GitHub Release 获取，并校验官方 SHA-256。
+核心和面板不随包发布；安装时优先经 CF 反代从 GitHub Release 获取，并校验官方 SHA-256。
 
 ## 产品理念与工程落地
 
@@ -194,7 +194,7 @@ git diff --check
 ## 下载与安全
 
 - 核心、面板下载必须校验 GitHub Release 官方 SHA-256。
-- `/gh-api/` 只允许 Mihomo / MetaCubeXD Release 元数据，不扩大代理白名单。
+- CF Worker 的 `/gh` / `/gh-api` 只允许 MetaCubeX（mihomo / metacubexd / meta-rules-dat）Release 资产与元数据；只放行 GET / HEAD，路径限 `releases/latest`、`releases/download/...`、API `releases...`，不得扩大成通用 GitHub 反代。
 - 不得把 SSH 密码、面板密码、工具密码或 token 写入仓库、日志或命令输出。
 - 真机命令如必须使用密码，应从环境变量读取，不能记录到持久文件。
 - `config.yaml` 是用户正在运行的配置。安装、升级、修复默认不得覆盖；只有明确执行“载入配置文件”或用户要求时才修改。

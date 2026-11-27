@@ -564,6 +564,7 @@
     // 字段顺序按官方 tun 模板：
     // enable → stack → auto-route → auto-redirect → auto-detect-interface
     // → dns-hijack → device → mtu → strict-route → gso → inet6-address
+    // → route-exclude-address
     A('tun:');
     A('  enable: true');
     A('  stack: ' + this.stack);
@@ -575,10 +576,18 @@
     for (var hi = 0; hi < hijack.length; hi++) A('    - ' + listScalar(hijack[hi]));
     A('  mtu: ' + this.mtu);
     A('  strict-route: ' + (this.strict_route ? 'true' : 'false'));
+    A('  gso: true');
+    A('  gso-max-size: 65536');
     if (this.ipv6_enabled && this.ipv6_via_node) {
       A('  inet6-address:');
       A('    - fdfe:dcba:9876::1/126');
     }
+    A('  route-exclude-address:');
+    A('    - fc00::/7');
+    A('    - fe80::/10');
+    A('    - 10.0.0.0/8');
+    A('    - 172.16.0.0/12');
+    A('    - 192.168.0.0/16');
     A('');
     A('dns:');
     A('  ipv6: ' + (this.ipv6_enabled ? 'true' : 'false'));

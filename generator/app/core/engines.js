@@ -481,7 +481,9 @@
    */
   SplitEngine.AUTO_GROUP = '自动优选';
   // 输出组名：策略名 + 实例图标。界面继续用旧组名，只在生成配置时映射。
-  var GROUP_ICONS = ['⚡', '🚀', '💨', '🔥', '🏎️', '💎', '💫', '☄️', '🏁', '🌪️'];
+  var GROUP_ICONS = ['⚡', '🚀', '💨', '🔥', '🚗', '💎', '💫', '🌠', '🏁', '🌀'];
+  // 单测据此校验：每枚图标必须单码点，避免带 U+FE0F 变体选择符导致面板显示不齐。
+  SplitEngine.GROUP_ICONS = GROUP_ICONS;
   function outGroupName(strategy, index) {
     var icon = GROUP_ICONS[index] || ('·' + (index + 1));
     return (strategy === 'round-robin' ? '轮询分摊' : '目标固定') + icon;

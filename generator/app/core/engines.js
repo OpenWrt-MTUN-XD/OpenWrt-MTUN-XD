@@ -444,6 +444,8 @@
     // 「智能选择」组的调度策略：false = consistent-hashing（默认，同站固定出口），true = round-robin
     // （按连接轮流）。只在成员同 IP 出口时才有意义；只管这个组，负载均衡组各自独立。
     this.auto_group_round_robin = false;
+    // generate() 每次重建：旧组名 → 输出组名
+    this._group_name_map = Object.create(null);
     // 自定义规则生成的「负载均衡 / 负载均衡2…」组：同上，默认 hashing。
     this.lb_round_robin = false;
     this.keep_alive_idle = 60;
@@ -478,6 +480,12 @@
    * 基线里 tests/golden/bless.mjs 用本常量装配，不写字面量。
    */
   SplitEngine.AUTO_GROUP = '自动优选';
+  // 输出组名：策略名 + 实例图标。界面继续用旧组名，只在生成配置时映射。
+  var GROUP_ICONS = ['⚡', '🚀', '💨', '🔥', '🏎️', '💎', '💫', '☄️', '🏁', '🌪️'];
+  function outGroupName(strategy, index) {
+    var icon = GROUP_ICONS[index] || ('·' + (index + 1));
+    return (strategy === 'round-robin' ? '轮询分摊' : '目标固定') + icon;
+  }
 
   /**
    * 智能选择组的实际成员池 = 全部节点减去界面上勾掉的。
@@ -719,21 +727,34 @@
         groupDefs.push({
           name: SplitEngine.AUTO_GROUP,
           members: pool.map(function (p) { return p.name; }),
-          strategy: this.auto_group_round_robin ? 'round-robin' : 'consistent-hashing'
+          strategy: this.auto_group_round_robin ? 'round-robin' : 'consistent-hashing',
+          iconIndex: 0
         });
       }
     }
     // 自定义规则的多节点出口（成员已由界面 / buildConfig 校验过）
     var extraGroups = this.custom_groups || [];
+    var customIndex = 0;
     for (var gi = 0; gi < extraGroups.length; gi++) {
       var g = extraGroups[gi];
       if (!g || !g.name || !g.proxies || g.proxies.length < 2) continue;
       groupDefs.push({
         name: g.name,
         members: g.proxies.slice(),
-        strategy: this.lb_round_robin ? 'round-robin' : 'consistent-hashing'
+        strategy: this.lb_round_robin ? 'round-robin' : 'consistent-hashing',
+        // 自动组固定 ⚡；自定义组从 🚀 开始，不因自动组是否存在而改变图标
+        iconIndex: 1 + customIndex
       });
+      customIndex += 1;
     }
+    // 旧组名 → 输出组名（策略名 + 图标）；规则里的引用同步映射。
+    var groupMap = Object.create(null);
+    for (var gn = 0; gn < groupDefs.length; gn++) {
+      groupDefs[gn].outName = outGroupName(groupDefs[gn].strategy, groupDefs[gn].iconIndex);
+      groupMap[groupDefs[gn].name] = groupDefs[gn].outName;
+    }
+    this._group_name_map = groupMap;
+
     // 组体检地址：按这份配置的**出口位置**选，回国 / 国内使用国内节点 走国内检查点，
     // 其余（出国 / 全局代理）走 gstatic。详见文件顶部 HEALTH_URL_* 的注释。
     var health_url = (this.return_mode || this.mainland) ? HEALTH_URL_CN : HEALTH_URL_INTL;
@@ -755,7 +776,7 @@
       A('');
       for (var gj = 0; gj < groupDefs.length; gj++) {
         var gd = groupDefs[gj];
-        A('  - name: ' + yq(gd.name));
+        A('  - name: ' + yq(gd.outName || gd.name));
         // ⚠️ 类型是 load-balance，不是 fallback：fallback 只用第一个能用的节点（坏了才换）不叠加
         // 带宽；load-balance 让新连接在成员间轮流分，坏节点被体检剔除后不再分配。
         // 注意：它只对**新建连接**生效，已经在跑的长连接不会中途换线。
@@ -807,11 +828,19 @@
   };
 
   SplitEngine.prototype.genRules = function () {
-    var node = this.default_node;
+    var map = this._group_name_map || {};
+    var node = map[this.default_node] || this.default_node;
     var i, b;
 
     // 用户自定义规则（"选节点"的那些），永远排在最前 —— 位置即优先级
-    var custom = customRuleBlock(this.custom_rules);
+    var mappedRules = (this.custom_rules || []).map(function (r) {
+      if (!r || typeof r !== 'object') return r;
+      var c = {};
+      for (var k in r) c[k] = r[k];
+      c.action = map[r.action] || r.action;
+      return c;
+    });
+    var custom = customRuleBlock(mappedRules);
 
     // ===== 全局代理（全部流量走代理）=====
     // 界面上是精准分流面板里的一个勾选框，不是独立方案。勾上就只剩三块：自定义规则 → 直连块 →
@@ -1050,8 +1079,14 @@
     // 自定义规则（"选节点"的那部分）：三档方案里都排在最前，一机一IP 也不例外。
     // ⚠️ 一机一IP 只按源 IPv4 分流（ipv6_enabled = false），IPv6 目标写进来也永远匹配不上，
     //    所以在这一层直接滤掉 —— 界面那边会先提示，这里是不让手滑绕过去。
+    var map = this._group_name_map || {};
     var custom = customRuleBlock((this.custom_rules || []).filter(function (r) {
       return r && !MH.isV6Target(r.target);
+    }).map(function (r) {
+      var c = {};
+      for (var k in r) c[k] = r[k];
+      c.action = map[r.action] || r.action;
+      return c;
     }));
     if (custom) {
       L.push.apply(L, custom);
@@ -1174,6 +1209,7 @@
       if (this[sf] !== undefined) eng[sf] = this[sf];
     }
     var L = eng._skeleton();
+    this._group_name_map = eng._group_name_map;
     L.push.apply(L, this.genRules(allocation));
     return L.join('\n');
   };

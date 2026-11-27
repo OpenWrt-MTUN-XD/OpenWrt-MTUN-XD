@@ -588,6 +588,8 @@
     A('  strict-route: ' + (this.strict_route ? 'true' : 'false'));
     A('  gso: true');
     A('  gso-max-size: 65536');
+    // 这个值与 mihomo DefaultRawConfig 的默认 inet6-address 完全相同，
+    // 显式写出只为阅读清楚；不写内核也会补同一个地址
     if (this.ipv6_enabled && this.ipv6_via_node) {
       A('  inet6-address:');
       A('    - fdfe:dcba:9876::1/126');

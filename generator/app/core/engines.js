@@ -593,6 +593,8 @@
       A('    - fdfe:dcba:9876::1/126');
     }
     A('  route-exclude-address:');
+    // mihomo 的 parseIPV6() 在 ipv6: false 时会把 tun 的 inet6-address 清成 nil，
+    // 下面两段 v6 排除没有接管对象可排，输出只是噪音
     if (this.ipv6_enabled) {
       A('    - fc00::/7');
       A('    - fe80::/10');

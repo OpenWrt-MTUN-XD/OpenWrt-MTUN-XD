@@ -2057,8 +2057,8 @@ setup() {
     if [ "${TOOL_JUST_DONE:-0}" != 1 ]; then
         install_tool || { say "⚠️ 配置工具：没对齐（网络？）—— 之后重跑 mtun-xd setup"; [ -f "$UI/config/index.html" ] || ok=0; }
     fi
-    [ -f "$UI/config/mihomo-apply" ] && { chmod +x "$UI/config/mihomo-apply" 2>/dev/null; mkdir -p /www/cgi-bin; ln -sf "$UI/config/mihomo-apply" "$CGI"; }
-    [ -f "$UI/config/mihomo-sub" ] && { chmod +x "$UI/config/mihomo-sub" 2>/dev/null; mkdir -p /www/cgi-bin; ln -sf "$UI/config/mihomo-sub" "$SUBCGI"; }
+    [ -f "$UI/config/mihomo-apply" ] && { chmod 755 "$UI/config/mihomo-apply" 2>/dev/null; mkdir -p /www/cgi-bin; ln -sf "$UI/config/mihomo-apply" "$CGI"; }
+    [ -f "$UI/config/mihomo-sub" ] && { chmod 755 "$UI/config/mihomo-sub" 2>/dev/null; mkdir -p /www/cgi-bin; ln -sf "$UI/config/mihomo-sub" "$SUBCGI"; }
     # ⚠️ 生成器的安装脚本会把 $UI/config 整个重铺一遍（我们那份 theme.js 也在里面），
     #    所以铺完再种一次 —— 不然刚装完 theme.js 就没了。
     seed_panel_cfg

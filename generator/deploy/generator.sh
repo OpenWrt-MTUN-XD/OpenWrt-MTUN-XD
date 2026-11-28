@@ -480,8 +480,8 @@ install_gen(){
 
     # 写盘 CGI 得有执行位（zip 里存了权限，但解压器不一定认；
     # ⚠️ 少了这个 chmod，uhttpd 会给 403，写盘永远失败）
-    chmod +x "$W/config/mihomo-apply"
-    chmod +x "$W/config/mihomo-sub"
+    chmod 755 "$W/config/mihomo-apply"
+    chmod 755 "$W/config/mihomo-sub"
 
     # ── 先铺到暂存目录，机器相关的补丁也打在这儿，最后一步才换名 ──────────────
     # 不原地铺（rm -rf $G 再铺的话中间那段目录是半新半旧的，撞上就 404/白屏，断电还留残目录）：

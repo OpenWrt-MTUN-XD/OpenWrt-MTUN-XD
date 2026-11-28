@@ -219,29 +219,40 @@ set -- -sS -L $COMPRESSED_OPT \
     -H 'Cache-Control: no-cache'
 
 if [ "$route" = 'direct' ]; then
-    # 系统 DNS 被 fake-ip 接管；必须用指定 resolver 取真实 IPv4。
-    ip=''
-    for dns in 223.5.5.5 119.29.29.29; do
-        ip=$(nslookup "$host" "$dns" 2>/dev/null | awk '
-            /^Name:/ { found=1; next }
-            found && /^Address: / { print $2; exit }
-        ')
-        [ -n "$ip" ] && break
-    done
-    # 去掉 IPv6 结果；直连这里只处理 IPv4。
-    case "$ip" in *:*) ip='' ;; esac
-    # mihomo 的 DNS 劫持会把 nslookup 也变成 fake-ip；198.18/198.19 不能拿去直连。
-    case "$ip" in 198.18.*|198.19.*|0.0.0.0) ip='' ;; esac
-
+    # 直连跳的 DNS 必须绕开 mihomo 的 fake-ip：nslookup 走 UDP/53 会被劫持，
+    # 只过滤 198.18/198.19 又会被自定义 fake-ip 段绕过。先走 WAN 上的 DoH，
+    # 拿不到再退回 nslookup（并过滤 fake-ip）。
     wan=$(ip -4 route show table main 2>/dev/null | awk '$1 == "default" { for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
-    case "$wan" in *tun*|*Tun*|*TUN*|Meta) wan='' ;; esac
-    # nslookup 被 fake-ip 接管时，改用 WAN 上的 DoH 取真实 IPv4。
-    if [ -n "$wan" ] && [ -z "$ip" ]; then
+    case "$wan" in *tun*|*Tun*|*TUN*|Meta|*mihomo*) wan='' ;; esac
+
+    ip=''
+    if [ -n "$wan" ]; then
         doh=$(curl -4 -sS -m 8 --interface "$wan" -k \
             "https://223.5.5.5/resolve?name=$host&type=A" 2>/dev/null)
-        ip=$(printf '%s' "$doh" | sed -n 's/.*"type":1,"data":"\([0-9][0-9.]*\)".*/\1/p' | head -1)
+        ip=$(printf '%s' "$doh" | sed -n 's/.*"type":1[^}]*"data":"\([0-9][0-9.]*\)".*/\1/p' | head -1)
+        if [ -z "$ip" ]; then
+            ip=$(curl -4 -sS -m 8 --interface "$wan" \
+                "http://119.29.29.29/d?dn=$host&type=a" 2>/dev/null | sed 's/;.*//;s/[^0-9.].*$//')
+            case "$ip" in ''|*[!0-9.]*) ip='' ;; esac
+        fi
     fi
-
+    if [ -z "$ip" ]; then
+        for dns in 223.5.5.5 119.29.29.29; do
+            ip=$(nslookup "$host" "$dns" 2>/dev/null | awk '
+                /^Name:/ { found=1; next }
+                found && /^Address: / { print $2; exit }
+            ')
+            [ -n "$ip" ] && break
+        done
+        case "$ip" in *:*) ip='' ;; esac
+        case "$ip" in 198.18.*|198.19.*|0.0.0.0) ip='' ;; esac
+    fi
+    # 解析到内网地址同样不放行：DNS 层面就能把请求引到内网
+    case "$ip" in
+        '') ;;
+        127.*|0.*|10.*|192.168.*|169.254.*) fail '400 Bad Request' '订阅域名解析到内网地址' 'ssrf' ;;
+        172.1[6-9].*|172.2[0-9].*|172.3[01].*) fail '400 Bad Request' '订阅域名解析到内网地址' 'ssrf' ;;
+    esac
     if [ -z "$ip" ] || [ -z "$wan" ]; then
         fail '409 Conflict' '直连不可用（解析或 WAN 接口缺失）' 'direct-unavailable'
     fi
@@ -307,6 +318,7 @@ esac
 size=$(wc -c < "$SUB_TMP" | tr -d ' ')
 [ "$size" -gt "$MAX_BYTES" ] && fail '413 Payload Too Large' '订阅内容超过 4 MiB' 'too-large'
 [ "$size" -eq 0 ] && fail '502 Bad Gateway' '订阅返回空内容' 'empty'
+grep -q '^<' "$SUB_TMP" && fail '502 Bad Gateway' '订阅站返回网页而不是订阅内容（可能需要 IP 白名单、登录或浏览器验证）' 'html'
 
 printf 'Status: 200 OK\r\n'
 printf 'X-Sub-Route: %s\r\n' "$ROUTE"

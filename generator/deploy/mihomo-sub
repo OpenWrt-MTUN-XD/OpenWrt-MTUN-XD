@@ -230,9 +230,18 @@ if [ "$route" = 'direct' ]; then
     done
     # 去掉 IPv6 结果；直连这里只处理 IPv4。
     case "$ip" in *:*) ip='' ;; esac
+    # mihomo 的 DNS 劫持会把 nslookup 也变成 fake-ip；198.18/198.19 不能拿去直连。
+    case "$ip" in 198.18.*|198.19.*|0.0.0.0) ip='' ;; esac
 
     wan=$(ip -4 route show table main 2>/dev/null | awk '$1 == "default" { for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
     case "$wan" in *tun*|*Tun*|*TUN*|Meta) wan='' ;; esac
+    # nslookup 被 fake-ip 接管时，改用 WAN 上的 DoH 取真实 IPv4。
+    if [ -n "$wan" ] && [ -z "$ip" ]; then
+        doh=$(curl -4 -sS -m 8 --interface "$wan" -k \
+            "https://223.5.5.5/resolve?name=$host&type=A" 2>/dev/null)
+        ip=$(printf '%s' "$doh" | sed -n 's/.*"type":1,"data":"\([0-9][0-9.]*\)".*/\1/p' | head -1)
+    fi
+
     if [ -z "$ip" ] || [ -z "$wan" ]; then
         fail '409 Conflict' '直连不可用（解析或 WAN 接口缺失）' 'direct-unavailable'
     fi

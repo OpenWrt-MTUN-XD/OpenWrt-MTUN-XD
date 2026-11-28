@@ -95,6 +95,11 @@ class H(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'slow')
             return
+        if self.path.startswith('/403'):
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(b'forbidden')
+            return
         if self.path.startswith('/redirect'):
             self.send_response(302)
             self.send_header('Location', 'ftp://example.com/x')
@@ -183,5 +188,14 @@ assert_status '200 OK'
 call_cgi "$TMP/config-good" 'Bearer test-secret' 'http://no-such-host.invalid/' direct
 assert_status '409 Conflict'
 assert_reason 'direct-unavailable'
+
+# 11. 四段域名不得落入 ssrf
+call_cgi "$TMP/config-good" 'Bearer test-secret' 'https://sub.example.co.uk/x' direct
+[ "$(reason_of "$TMP/out")" != 'ssrf' ] || fail 'four-segment domain incorrectly marked ssrf'
+
+# 12. 上游 403 必须映射为 forbidden
+call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/403" tun
+assert_status '502 Bad Gateway'
+assert_reason 'forbidden'
 
 echo "✔ subscription CGI tests passed"

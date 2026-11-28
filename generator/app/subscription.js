@@ -113,6 +113,7 @@
     if (reason === 'ssrf') return '不支持内网或本机地址';
     if (reason === 'no-space') return '路由器临时空间不足';
     if (reason === 'direct-unavailable') return '直连不可用（DNS 解析或 WAN 接口取不到），只能经 mihomo';
+    if (reason === 'forbidden') return '订阅站返回 403：CDN/WAF 拦截或 token 失效。需要浏览器验证的订阅，本工具拉不到，请向机场索取直连订阅地址';
     if (reason === 'no-curl') return '路由器没有 curl，请先安装 curl 和 ca-bundle';
     if (status === 401) return '还没从面板登录';
     if (status === 403) return msg || '订阅接口拒绝访问';

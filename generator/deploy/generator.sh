@@ -540,6 +540,8 @@ install_gen(){
     # /www/cgi-bin/ 下留着悬空链接。
     # ⚠️ 目录不存在就建：没有这条链接，「载入配置文件」永远 403，而屏幕上还打着「已就位」。
     mkdir -p /www/cgi-bin 2>/dev/null
+    command -v curl >/dev/null 2>&1 || \
+        echo "⚠️ 没有 curl，配置工具的「拉取订阅」会失败（opkg install curl ca-bundle）" >&2
     ln -sf "$G/mihomo-apply" /www/cgi-bin/mihomo-apply 2>/dev/null
     ln -sf "$G/mihomo-sub" /www/cgi-bin/mihomo-sub 2>/dev/null
     # ⚠️ 链接建不上（/www 只读、overlay 满）不能当成功：页面一切正常、只有「载入配置文件」

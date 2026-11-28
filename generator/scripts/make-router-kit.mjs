@@ -326,7 +326,7 @@ writeFileSync(join(GEN, 'btn.js'), lf(readFileSync(join(DEPLOY, 'btn.js'), 'utf8
   };
   chk(GEN);
 }
-for (const rel of ['config/index.html', 'config/secret.js', 'config/mihomo-apply', 'config/mihomo-sub', 'config/btn.js', 'config/ui.js']) {
+for (const rel of ['config/index.html', 'config/secret.js', 'config/mihomo-apply', 'config/mihomo-sub', 'config/subscription.js', 'config/btn.js', 'config/ui.js']) {
   if (!existsSync(join(OUT, rel))) throw new Error(`打包不完整，少了 ${rel} —— 重跑一次`);
 }
 // ⚠️ **这两样是「没登录就 404」的命根子**，缺一个整道门就白做：

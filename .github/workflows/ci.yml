@@ -37,6 +37,8 @@ jobs:
           # 走统一脚本：15 个 shell 全覆盖（以后加文件不用改 CI）
           # -S error 是硬门禁；warning（如 SC3043 local）只打印，不阻塞
           sh tools/check-shell.sh
+          sh -n generator/deploy/mihomo-sub
+          sh generator/tests/cgi/subscription.test.sh
           # 发出去的四个前端文件必须能过语法检查
           node --check package/www/luci-static/resources/mtun-xd/common.js
           node --check package/www/luci-static/resources/view/mtun-xd/panel.js

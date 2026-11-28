@@ -12,16 +12,35 @@
   if (!PAGE_DOC) return;
 
   var CGI_PATH = '/cgi-bin/mihomo-sub';
-  var MAX_WAIT = 60000;
+  var MAX_WAIT = 45000;
+  var TEMP_NOTE_MS = 8000;
+  var inFlight = false;
+  var hintText = '';
+  var noteTimer = null;
 
   function toast(msg, kind) {
     if (root.MH && root.MH.ui && root.MH.ui.toast) root.MH.ui.toast(msg, kind);
     else if (root.console && root.console.log) root.console.log('[sub] ' + msg);
   }
 
-  function note(msg) {
+  /**
+   * 常驻说明只在 boot 时读一次；拉取过程中的所有结果都走临时提示，
+   * 8 秒后恢复 HINT，不能把常驻文案永久改掉。
+   */
+  function rememberHint() {
     var el = PAGE_DOC.getElementById('sub-note');
-    if (el) el.textContent = msg;
+    hintText = el ? el.textContent : '';
+  }
+
+  function showNote(msg) {
+    var el = PAGE_DOC.getElementById('sub-note');
+    if (!el) return;
+    el.textContent = msg;
+    if (noteTimer) root.clearTimeout(noteTimer);
+    noteTimer = root.setTimeout(function () {
+      var cur = PAGE_DOC.getElementById('sub-note');
+      if (cur) cur.textContent = hintText;
+    }, TEMP_NOTE_MS);
   }
 
   function readSecret() {
@@ -58,19 +77,30 @@
     });
   }
 
-  function errorText(status, text) {
+  function errorText(status, text, reason) {
     var msg = String(text || '').trim();
     if (status === 401) return '还没从面板登录，无法拉取订阅';
-    if (status === 403) return '面板密码不对，无法拉取订阅';
-    if (status === 413) return msg || '订阅内容超过 10 MiB';
+    if (status === 403) {
+      if (reason === 'no-secret') return 'mihomo 配置里没有 secret，订阅接口不可用';
+      if (reason === 'bad-secret') return '面板密码不对，无法拉取订阅';
+      return msg || '订阅接口拒绝访问';
+    }
+    if (status === 413) return msg || '订阅内容超过 4 MiB';
+    if (status === 504) return '订阅拉取超时';
+    if (status === 507) return '路由器临时空间不足';
     if (status === 502) return msg || '订阅拉取失败';
     return msg || ('订阅拉取失败（HTTP ' + status + '）');
+  }
+
+  function nodeCount() {
+    var st = root.MH && root.MH.ui && root.MH.ui.state;
+    return (st && Array.isArray(st.nodes)) ? st.nodes.length : 0;
   }
 
   function startFetch() {
     var input = PAGE_DOC.getElementById('sub-url');
     var btn = PAGE_DOC.getElementById('sub-fetch');
-    if (!input || !btn || btn.disabled) return;
+    if (!input || !btn || btn.disabled || inFlight) return;
 
     var url = String(input.value || '').trim();
     if (!url) {
@@ -89,14 +119,18 @@
     }
 
     var label = btn.textContent;
+    inFlight = true;
     btn.disabled = true;
     btn.textContent = '拉取中…';
-    note('正在拉取订阅…');
+    showNote('正在拉取订阅…');
 
     function done() {
+      inFlight = false;
       btn.disabled = false;
       btn.textContent = label;
     }
+
+    var before = nodeCount();
 
     findCgi().then(function (endpoint) {
       if (!endpoint) {
@@ -119,43 +153,58 @@
       }).then(function (r) {
         return r.text().then(function (text) {
           if (timer) root.clearTimeout(timer);
-          return { ok: r.ok, status: r.status, text: text };
+          return {
+            ok: r.ok,
+            status: r.status,
+            text: text,
+            reason: r.headers && r.headers.get ? (r.headers.get('X-Sub-Reason') || '') : ''
+          };
         });
       }).then(function (res) {
         done();
-        if (!res.ok) throw new Error(errorText(res.status, res.text));
+        if (!res.ok) throw new Error(errorText(res.status, res.text, res.reason));
         if (!res.text) throw new Error('订阅返回空内容');
         if (!root.MH || !root.MH.ui || typeof root.MH.ui.importText !== 'function') {
           throw new Error('导入模块未加载');
         }
         var ph = root.MH.placeholderHint ? root.MH.placeholderHint(res.text) : '';
         if (ph) {
-          note(ph);
+          showNote(ph);
           toast(ph, 'err');
           return;
         }
         var ok = root.MH.ui.importText(res.text, '订阅');
-        note(ok ? '订阅已拉取并导入。' : '订阅已拉取，但没有导入有效节点。');
+        var after = nodeCount();
+        if (ok && after > before) {
+          var added = after - before;
+          input.value = '';
+          showNote('已新增 ' + added + ' 个节点。');
+        } else if (ok && after === before) {
+          showNote('没有新增节点（订阅里这些节点都已存在）。');
+        } else {
+          showNote('订阅已拉取，但没有可导入的节点。');
+        }
       }).catch(function (e) {
         done();
         if (timer) root.clearTimeout(timer);
         if (e && (e.name === 'AbortError' || /abort/i.test(String(e.message || '')))) {
-          note('订阅拉取超时。');
-          toast('订阅拉取超时（60 秒）', 'err');
+          showNote('订阅拉取超时。');
+          toast('订阅拉取超时（45 秒）', 'err');
           return;
         }
         var msg = (e && e.message) ? e.message : '订阅拉取失败';
-        note(msg);
+        showNote(msg);
         toast(msg, 'err');
       });
     }).catch(function (e) {
       done();
-      note(e.message || '订阅拉取失败');
+      showNote(e.message || '订阅拉取失败');
       toast(e.message || '订阅拉取失败', 'err');
     });
   }
 
   function boot() {
+    rememberHint();
     var btn = PAGE_DOC.getElementById('sub-fetch');
     var input = PAGE_DOC.getElementById('sub-url');
     if (btn) btn.addEventListener('click', startFetch);

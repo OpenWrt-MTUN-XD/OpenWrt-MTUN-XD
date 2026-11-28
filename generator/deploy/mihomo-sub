@@ -10,16 +10,17 @@
 #       body: 订阅 URL
 #
 # 边界：
-#   - 只允许 http/https
+#   - 只允许 http/https，且重定向也必须是 http/https
 #   - URL 请求体最多 4 KiB
-#   - 响应最多 10 MiB
+#   - 响应最多 4 MiB
 #   - 最多跟随 3 次重定向
-#   - 连接超时 10 秒，总超时 45 秒
+#   - 连接超时 8 秒，总超时 30 秒
+#   - 拒绝本机 / 内网 / 链路本地 / ULA 目标（SSRF 防护）
 #   - 不保存 URL，不写日志，不缓存内容
 #   - 认证复用 mihomo 自己的 secret，不新增钥匙
 
-CONFIG='/etc/mihomo/config.yaml'
-MAX_BYTES=10485760
+CONFIG=${MIHOMO_SUB_CONFIG:-/etc/mihomo/config.yaml}
+MAX_BYTES=4194304
 MAX_URL=4096
 SUB_TMP=''
 ERR_TMP=''
@@ -37,14 +38,26 @@ api_secret() {
 
 cors() {
     # 生成器可能跑在 :9090，这个 CGI 在 :80，跨端口必须带 CORS。
-    [ -n "$HTTP_ORIGIN" ] && printf 'Access-Control-Allow-Origin: %s\r\n' "$HTTP_ORIGIN"
+    # 只反射与 HTTP_HOST 主名相同的 Origin；不匹配就不输出该头，避免变成开放代理。
+    if [ -n "${HTTP_ORIGIN:-}" ]; then
+        oh=$(printf '%s' "$HTTP_ORIGIN" | sed 's#^[^:]*://##; s#/.*##; s#:.*##')
+        hh=$(printf '%s' "${HTTP_HOST:-}" | sed 's#:[0-9]*$##')
+        oh=$(printf '%s' "$oh" | tr 'A-Z' 'a-z')
+        hh=$(printf '%s' "$hh" | tr 'A-Z' 'a-z')
+        if [ -n "$oh" ] && [ "$oh" = "$hh" ]; then
+            printf 'Access-Control-Allow-Origin: %s\r\n' "$HTTP_ORIGIN"
+        fi
+    fi
     printf 'Access-Control-Allow-Methods: POST, OPTIONS\r\n'
     printf 'Access-Control-Allow-Headers: Content-Type, Authorization\r\n'
+    printf 'Access-Control-Expose-Headers: X-Sub-Reason\r\n'
+    printf 'X-Content-Type-Options: nosniff\r\n'
     printf 'Vary: Origin\r\n'
 }
 
 fail() {
     printf 'Status: %s\r\n' "$1"
+    [ -n "${3:-}" ] && printf 'X-Sub-Reason: %s\r\n' "$3"
     printf 'Content-Type: text/plain; charset=utf-8\r\n'
     printf 'Cache-Control: no-store\r\n'
     cors
@@ -53,21 +66,27 @@ fail() {
     exit 0
 }
 
-[ "$REQUEST_METHOD" = 'OPTIONS' ] && fail '204 No Content' ''
-[ "$REQUEST_METHOD" = 'POST' ] || fail '405 Method Not Allowed' 'only POST'
+# OPTIONS 不能走 fail()：它必须是 204、无 Content-Type、无 body。
+if [ "${REQUEST_METHOD:-}" = 'OPTIONS' ]; then
+    printf 'Status: 204 No Content\r\n'
+    cors
+    printf '\r\n'
+    exit 0
+fi
+[ "${REQUEST_METHOD:-}" = 'POST' ] || fail '405 Method Not Allowed' 'only POST'
 
 # ── 认证 ────────────────────────────────────────────────────────
 want=$(api_secret)
 if [ -z "$want" ]; then
-    fail '403 Forbidden' 'mihomo 没设 secret —— 订阅接口拒绝执行'
+    fail '403 Forbidden' 'mihomo 没设 secret' 'no-secret'
 fi
 
-given=$(printf '%s' "$HTTP_AUTHORIZATION" | sed -n 's/^[Bb]earer[[:space:]]*//p')
+given=$(printf '%s' "${HTTP_AUTHORIZATION:-}" | sed -n 's/^[Bb]earer[[:space:]]*//p')
 if [ -z "$given" ]; then
-    fail '401 Unauthorized' 'missing Authorization: Bearer <secret>'
+    fail '401 Unauthorized' 'missing Authorization' 'no-auth'
 fi
 if [ "$given" != "$want" ]; then
-    fail '403 Forbidden' 'bad secret'
+    fail '403 Forbidden' 'bad secret' 'bad-secret'
 fi
 
 # ── 读取 URL ───────────────────────────────────────────────────
@@ -92,17 +111,87 @@ case "$url" in
     *[[:space:]]*) fail '400 Bad Request' '订阅 URL 不能包含制表符或换行' ;;
 esac
 
+# ── SSRF：只允许公网主机 ──────────────────────────────────────
+host=$(printf '%s' "$url" | sed 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#[/?#].*$##; s#^.*@##')
+is_v6=0
+case "$host" in
+    \[*\]) host=${host#\[}; host=${host%\]}; is_v6=1 ;;
+esac
+if [ "$is_v6" = 0 ]; then
+    case "$host" in
+        *:*) host=${host%%:*} ;;
+    esac
+fi
+host=$(printf '%s' "$host" | tr 'A-Z' 'a-z' | sed 's/\.$//')
+[ -n "$host" ] || fail '400 Bad Request' '订阅 URL 没有主机名' 'ssrf'
+case "$host" in
+    *[!A-Za-z0-9._:-]*) fail '400 Bad Request' '订阅 URL 主机名非法' 'ssrf' ;;
+esac
+
+ssrf=0
+case "$host" in
+    localhost|localhost.localdomain) ssrf=1 ;;
+esac
+case "$host" in
+    *:*) # 只有 IPv6 才按这些前缀判，别误伤 fc.example.com
+        case "$host" in
+            ::1|0:0:0:0:0:0:0:1) ssrf=1 ;;
+            fe8*|fe9*|fea*|feb*) ssrf=1 ;;
+            fc*|fd*) ssrf=1 ;;
+        esac
+        ;;
+esac
+# IPv4 字面量；短写法（127.1）也按前缀拦。
+case "$host" in
+    127.*|10.*|192.168.*|169.254.*) ssrf=1 ;;
+esac
+if [ "$ssrf" = 0 ]; then
+    printf '%s\n' "$host" | awk -F. '
+        NF == 4 {
+            for (i=1; i<=4; i++) {
+                if ($i !~ /^[0-9]+$/ || $i < 0 || $i > 255) exit 2
+            }
+            if ($1 == 127 || $1 == 10 || ($1 == 192 && $2 == 168) || ($1 == 169 && $2 == 254)) exit 0
+            if ($1 == 172 && $2 >= 16 && $2 <= 31) exit 0
+            exit 1
+        }
+        NF != 4 { exit 1 }
+    '
+    awk_rc=$?
+    if [ "$awk_rc" = 0 ]; then
+        ssrf=1
+    elif [ "$awk_rc" = 2 ]; then
+        fail '400 Bad Request' '订阅 URL 主机名非法' 'ssrf'
+    fi
+fi
+[ "$ssrf" = 1 ] && fail '400 Bad Request' '不支持内网或本机地址' 'ssrf'
+
+# ── 临时空间 ───────────────────────────────────────────────────
+avail=$(df -k /tmp 2>/dev/null | awk 'NR == 2 { print $4; exit }')
+case "$avail" in
+    ''|*[!0-9]*) ;;
+    *) [ "$avail" -lt 8192 ] && fail '507 Insufficient Storage' '路由器临时空间不足' 'no-space' ;;
+esac
+
 # ── 拉取 ───────────────────────────────────────────────────────
+# 有些精简 libcurl 没编 zlib，--compressed 会直接 rc=2；有就启用，没就退回原样。
+COMPRESSED_OPT=''
+curl --compressed --version >/dev/null 2>&1 && COMPRESSED_OPT='--compressed'
+
 umask 077
 SUB_TMP=$(mktemp /tmp/mihomo-sub.XXXXXX 2>/dev/null) || \
     fail '500 Internal Server Error' '无法创建临时文件'
 ERR_TMP=$(mktemp /tmp/mihomo-sub-err.XXXXXX 2>/dev/null) || \
     fail '500 Internal Server Error' '无法创建临时文件'
 
-code=$(curl -sS -L --compressed \
+code=$(curl -sS -L $COMPRESSED_OPT \
+    --proto '=http,https' \
+    --proto-redir '=http,https' \
     --max-redirs 3 \
-    --connect-timeout 10 \
-    --max-time 45 \
+    --connect-timeout 8 \
+    --max-time 30 \
+    --speed-limit 10 \
+    --speed-time 20 \
     --max-filesize "$MAX_BYTES" \
     --user-agent 'mihomo/1.19.34' \
     --header 'Cache-Control: no-cache' \
@@ -110,28 +199,32 @@ code=$(curl -sS -L --compressed \
     --write-out '%{http_code}' \
     -- "$url" 2>"$ERR_TMP")
 rc=$?
+# 排障用 stderr 已经不需要了，先删掉；避免异常退出路径只清掉 SUB_TMP 的边角情况。
+rm -f "$ERR_TMP"
+ERR_TMP=''
 
 if [ "$rc" -ne 0 ]; then
     case "$rc" in
-        6)  msg='订阅域名解析失败' ;;
-        7)  msg='连接订阅服务器失败' ;;
-        28) msg='订阅拉取超时' ;;
-        35|60) msg='订阅 TLS 证书校验失败' ;;
-        22) msg='订阅返回了错误状态' ;;
-        63) msg='订阅内容超过 10 MiB' ;;
-        *)  msg="订阅拉取失败（curl $rc）" ;;
+        1)  fail '502 Bad Gateway' '订阅重定向到了不支持的协议（只允许 http/https）' 'bad-proto' ;;
+        6)  fail '502 Bad Gateway' '订阅域名解析失败' 'dns' ;;
+        7)  fail '502 Bad Gateway' '连接订阅服务器失败' 'connect' ;;
+        28) fail '504 Gateway Timeout' '订阅拉取超时' 'timeout' ;;
+        35|60) fail '502 Bad Gateway' '订阅 TLS 证书校验失败' 'tls' ;;
+        47) fail '502 Bad Gateway' '订阅重定向次数过多' 'redirect' ;;
+        63) fail '413 Payload Too Large' '订阅内容超过 4 MiB' 'too-large' ;;
+        127) fail '502 Bad Gateway' '路由器没有 curl，请先安装 curl 和 ca-bundle' 'no-curl' ;;
+        *)  fail '502 Bad Gateway' "订阅拉取失败（curl $rc）" 'curl' ;;
     esac
-    fail '502 Bad Gateway' "$msg"
 fi
 
 case "$code" in
     2??) ;;
-    *) fail '502 Bad Gateway' "订阅返回 HTTP $code" ;;
+    *) fail '502 Bad Gateway' "订阅返回 HTTP $code" 'http' ;;
 esac
 
 size=$(wc -c < "$SUB_TMP" | tr -d ' ')
-[ "$size" -gt "$MAX_BYTES" ] && fail '413 Payload Too Large' '订阅内容超过 10 MiB'
-[ "$size" -eq 0 ] && fail '502 Bad Gateway' '订阅返回空内容'
+[ "$size" -gt "$MAX_BYTES" ] && fail '413 Payload Too Large' '订阅内容超过 4 MiB' 'too-large'
+[ "$size" -eq 0 ] && fail '502 Bad Gateway' '订阅返回空内容' 'empty'
 
 printf 'Content-Type: text/plain; charset=utf-8\r\n'
 printf 'Content-Length: %s\r\n' "$size"

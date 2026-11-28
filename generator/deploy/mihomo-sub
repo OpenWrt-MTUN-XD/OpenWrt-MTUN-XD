@@ -226,12 +226,12 @@ if [ "$route" = 'direct' ]; then
     case "$wan" in *tun*|*Tun*|*TUN*|Meta|*mihomo*) wan='' ;; esac
 
     ip=''
-    if [ "${MIHOMO_SUB_DNS_DISABLED:-0}" = 1 ]; then
-        ip=''
-    else
-        if [ -n "$wan" ]; then
+    dns_off=0
+    [ "${MIHOMO_SUB_DNS_DISABLED:-0}" = 1 ] && dns_off=1
+
+    if [ "$dns_off" = 0 ] && [ -n "$wan" ]; then
         doh=$(curl -4 -sS -m 8 --interface "$wan" -k \
-            "https://223.5.5.5/resolve?name=$host&type=A" 2>/dev/null)
+            "${MIHOMO_SUB_DOH:-https://223.5.5.5/resolve}?name=$host&type=A" 2>/dev/null)
         ip=$(printf '%s' "$doh" | sed -n 's/.*"type":1[^}]*"data":"\([0-9][0-9.]*\)".*/\1/p' | head -1)
         if [ -z "$ip" ]; then
             ip=$(curl -4 -sS -m 8 --interface "$wan" \
@@ -239,7 +239,7 @@ if [ "$route" = 'direct' ]; then
             case "$ip" in ''|*[!0-9.]*) ip='' ;; esac
         fi
     fi
-    if [ -z "$ip" ]; then
+    if [ "$dns_off" = 0 ] && [ -z "$ip" ]; then
         for dns in 223.5.5.5 119.29.29.29; do
             ip=$(nslookup "$host" "$dns" 2>/dev/null | awk '
                 /^Name:/ { found=1; next }
@@ -249,7 +249,6 @@ if [ "$route" = 'direct' ]; then
         done
         case "$ip" in *:*) ip='' ;; esac
         case "$ip" in 198.18.*|198.19.*|0.0.0.0) ip='' ;; esac
-    fi
     fi
 
     # 解析到内网地址同样不放行：DNS 层面就能把请求引到内网
@@ -323,7 +322,7 @@ esac
 size=$(wc -c < "$SUB_TMP" | tr -d ' ')
 [ "$size" -gt "$MAX_BYTES" ] && fail '413 Payload Too Large' '订阅内容超过 4 MiB' 'too-large'
 [ "$size" -eq 0 ] && fail '502 Bad Gateway' '订阅返回空内容' 'empty'
-grep -q '^<' "$SUB_TMP" && fail '502 Bad Gateway' '订阅站返回网页而不是订阅内容（可能需要 IP 白名单、登录或浏览器验证）' 'html'
+head -c 16 "$SUB_TMP" | grep -q '^[[:space:]]*<' && fail '502 Bad Gateway' '订阅站返回网页而不是订阅内容（可能需要 IP 白名单、登录或浏览器验证）' 'html'
 
 printf 'Status: 200 OK\r\n'
 printf 'X-Sub-Route: %s\r\n' "$ROUTE"

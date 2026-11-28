@@ -486,7 +486,9 @@
   SplitEngine.GROUP_ICONS = GROUP_ICONS;
   function outGroupName(strategy, index) {
     var icon = GROUP_ICONS[index] || ('·' + (index + 1));
-    return (strategy === 'round-robin' ? '轮询分摊' : '目标固定') + icon;
+    var head = strategy === 'round-robin' ? '多线连接轮询' : '同一目标地址';
+    var tail = strategy === 'round-robin' ? '分摊出口' : '固定出口';
+    return head + icon + tail;
   }
 
   /**

@@ -62,13 +62,13 @@ describe('buildConfig：出厂默认', () => {
 });
 
 describe('buildConfig：模式分派', () => {
-  test('精准分流 + 目标固定⚡ → 生成 load-balance 组并作为默认出口', () => {
+  test('精准分流 + 同一目标地址⚡固定出口 → 生成 load-balance 组并作为默认出口', () => {
     const s = reset({ mode: 'split', autoSelect: true });
     const text = MH.ui.buildConfig();
-    expect(text).toContain('  # 默认 代理\n  - MATCH,目标固定⚡');
+    expect(text).toContain('  # 默认 代理\n  - MATCH,同一目标地址⚡固定出口');
     expect(text).toContain('- GEOSITE,cn,DIRECT');       // 国内照旧直连
     expect(text).toContain('proxy-groups:');
-    expect(text).toContain('  - name: "目标固定⚡"');
+    expect(text).toContain('  - name: "同一目标地址⚡固定出口"');
     // load-balance：fallback 不叠加带宽；load-balance 才有多线路分担 + 坏节点自动剔除。
     expect(text).toContain('    type: load-balance');
     expect(text).toContain('    strategy: consistent-hashing');
@@ -77,7 +77,7 @@ describe('buildConfig：模式分派', () => {
     expect(s.nodes.length).toBeGreaterThan(2);
   });
 
-  test('目标固定⚡组策略：默认 consistent-hashing，勾 round-robin 才变', () => {
+  test('同一目标地址⚡固定出口组策略：默认 consistent-hashing，勾 round-robin 才变', () => {
     reset({ mode: 'split', autoSelect: true });
     expect(MH.ui.buildConfig()).toContain('    strategy: consistent-hashing');
 
@@ -90,31 +90,31 @@ describe('buildConfig：模式分派', () => {
   test('两个 round-robin 开关各管各的组', () => {
     const s = reset({ mode: 'split', autoSelect: true, autoRoundRobin: true });
     const names = s.nodes.map((n) => n.name);
-    // 目标固定⚡成员不能进自定义规则的出口 —— 把这两个反选出去，再用它们建组
+    // 同一目标地址⚡固定出口成员不能进自定义规则的出口 —— 把这两个反选出去，再用它们建组
     s.autoSelectExclude = [names[0], names[1]];
     s.customRules = [{ target: 'example.com', actions: [names[0], names[1]] }];
     let strat = Object.fromEntries(yamlOf()['proxy-groups'].map((g) => [g.name, g.strategy]));
-    expect(strat['轮询分摊⚡']).toBe('round-robin');       // 自动组：勾了
-    expect(strat['目标固定🚀']).toBe('consistent-hashing'); // 自定义组：没勾
+    expect(strat['多线连接轮询⚡分摊出口']).toBe('round-robin');       // 自动组：勾了
+    expect(strat['同一目标地址🚀固定出口']).toBe('consistent-hashing'); // 自定义组：没勾
 
     s.autoRoundRobin = false;
     s.lbRoundRobin = true;
     strat = Object.fromEntries(yamlOf()['proxy-groups'].map((g) => [g.name, g.strategy]));
-    expect(strat['目标固定⚡']).toBe('consistent-hashing');
-    expect(strat['轮询分摊🚀']).toBe('round-robin');
+    expect(strat['同一目标地址⚡固定出口']).toBe('consistent-hashing');
+    expect(strat['多线连接轮询🚀分摊出口']).toBe('round-robin');
   });
 
-  test('目标固定⚡：成员只剩一个 → 不建组，默认出口直接指向该节点', () => {
+  test('同一目标地址⚡固定出口：成员只剩一个 → 不建组，默认出口直接指向该节点', () => {
     const s = reset({ mode: 'split', autoSelect: true });
     const names = s.nodes.map((n) => n.name);
     s.autoSelectExclude = names.slice(0, names.length - 1);
     const d = yamlOf();
     expect(d['proxy-groups']).toBeUndefined();
     expect(d.rules).toContain('MATCH,' + names[names.length - 1]);
-    expect(MH.ui.buildConfig()).not.toContain('目标固定⚡');
+    expect(MH.ui.buildConfig()).not.toContain('同一目标地址⚡固定出口');
   });
 
-  test('目标固定⚡：成员只剩一个 + 全局代理 → MATCH 直接指向该节点', () => {
+  test('同一目标地址⚡固定出口：成员只剩一个 + 全局代理 → MATCH 直接指向该节点', () => {
     const s = reset({ mode: 'split', autoSelect: true, globalProxy: true });
     const names = s.nodes.map((n) => n.name);
     s.autoSelectExclude = names.slice(0, names.length - 1);
@@ -139,7 +139,7 @@ describe('buildConfig：模式分派', () => {
     // 不展示 + 不测速：hidden 让面板不画这张卡，url 也就不需要了
     expect(g.hidden).toBe(true);
     expect(g.url).toBeUndefined();
-    expect(g.proxies).not.toContain('目标固定⚡');
+    expect(g.proxies).not.toContain('同一目标地址⚡固定出口');
   });
 
   test('没有组时不定义 GLOBAL（内置那个本来就只有节点 + 内置出站）', () => {
@@ -147,7 +147,7 @@ describe('buildConfig：模式分派', () => {
     expect(yamlOf()['proxy-groups']).toBeUndefined();
   });
 
-  test('目标固定⚡：全部取消 → 默认直连，不建组，自定义规则照常可选', () => {
+  test('同一目标地址⚡固定出口：全部取消 → 默认直连，不建组，自定义规则照常可选', () => {
     const s = reset({ mode: 'split', autoSelect: true });
     const names = s.nodes.map((n) => n.name);
     s.autoSelectExclude = names.slice();
@@ -158,7 +158,7 @@ describe('buildConfig：模式分派', () => {
     // 全部反选后，自定义规则的多选不受影响（哪些节点被引用，哪些才进配置）
     s.customRules = [{ target: 'a.com', actions: [names[0], names[1]] }];
     d = yamlOf();
-    const lb = d['proxy-groups'].find((g) => g.name === '目标固定🚀');
+    const lb = d['proxy-groups'].find((g) => g.name === '同一目标地址🚀固定出口');
     expect(lb.proxies).toEqual([names[0], names[1]]);
     expect(d.rules).toContain('MATCH,DIRECT');
   });
@@ -174,13 +174,13 @@ describe('buildConfig：模式分派', () => {
     expect(rules.join('\n')).not.toContain('geolocation-!cn');
   });
 
-  test('全局代理 + 目标固定⚡ → 出口是测速组，且不建重复的组', () => {
+  test('全局代理 + 同一目标地址⚡固定出口 → 出口是测速组，且不建重复的组', () => {
     const s = reset({ mode: 'split', globalProxy: true, autoSelect: true });
     const d = yamlOf();
     const rules = d.rules;
-    expect(rules[rules.length - 1]).toBe('MATCH,目标固定⚡');
+    expect(rules[rules.length - 1]).toBe('MATCH,同一目标地址⚡固定出口');
     expect(rules).toContain('GEOIP,LAN,DIRECT,no-resolve');
-    expect(d['proxy-groups'].map((g) => g.name)).toEqual(['GLOBAL', '目标固定⚡']);
+    expect(d['proxy-groups'].map((g) => g.name)).toEqual(['GLOBAL', '同一目标地址⚡固定出口']);
     expect(s.nodes.length).toBeGreaterThan(2);
   });
 
@@ -361,10 +361,10 @@ describe('buildConfig：选项搬运', () => {
     expect(d.rules[1]).toBe('SRC-IP-CIDR,10.0.0.0/8,' + names[0] + ',no-resolve');
   });
 
-  test('自定义规则：两种方案都生效，目标固定⚡下也不会被 MATCH 吞掉', () => {
+  test('自定义规则：两种方案都生效，同一目标地址⚡固定出口下也不会被 MATCH 吞掉', () => {
     const s = reset({ mode: 'split', autoSelect: true });
     const names = s.nodes.map((n) => n.name);
-    // 目标固定⚡下只有反选的节点能进自定义规则
+    // 同一目标地址⚡固定出口下只有反选的节点能进自定义规则
     s.autoSelectExclude = [names[0]];
     s.customRules = [
       { target: 'a.com', action: names[0] },
@@ -390,19 +390,19 @@ describe('buildConfig：选项搬运', () => {
     expect(rules).toContain('DOMAIN,b.com,DIRECT');
   });
 
-  test('自定义规则：多选节点 → 生成目标固定🚀组，规则指向组名', () => {
+  test('自定义规则：多选节点 → 生成同一目标地址🚀固定出口组，规则指向组名', () => {
     const s = reset({ mode: 'split', autoSelect: false });
     const names = s.nodes.map((n) => n.name);
     s.customRules = [{ target: 'a.com', actions: [names[0], names[1]] }];
     const d = yamlOf();
-    const lb = d['proxy-groups'].find((g) => g.name === '目标固定🚀');
+    const lb = d['proxy-groups'].find((g) => g.name === '同一目标地址🚀固定出口');
     expect(lb).toBeDefined();
     expect(lb.type).toBe('load-balance');
     expect(lb.proxies).toEqual([names[0], names[1]]);
-    expect(d.rules[0]).toBe('DOMAIN,a.com,目标固定🚀');
+    expect(d.rules[0]).toBe('DOMAIN,a.com,同一目标地址🚀固定出口');
   });
 
-  test('自定义规则：成员相同的多条规则共用一个目标固定🚀组', () => {
+  test('自定义规则：成员相同的多条规则共用一个同一目标地址🚀固定出口组', () => {
     const s = reset({ mode: 'split', autoSelect: false });
     const names = s.nodes.map((n) => n.name);
     s.customRules = [
@@ -411,33 +411,33 @@ describe('buildConfig：选项搬运', () => {
     ];
     const d = yamlOf();
     expect(d['proxy-groups'].filter((g) => g.name !== 'GLOBAL')).toHaveLength(1);
-    expect(d.rules.slice(0, 2)).toEqual(['DOMAIN,a.com,目标固定🚀', 'DOMAIN,b.com,目标固定🚀']);
+    expect(d.rules.slice(0, 2)).toEqual(['DOMAIN,a.com,同一目标地址🚀固定出口', 'DOMAIN,b.com,同一目标地址🚀固定出口']);
   });
 
-  test('自定义规则：目标固定⚡下，单选指向智能组成员的规则照常生成', () => {
+  test('自定义规则：同一目标地址⚡固定出口下，单选指向智能组成员的规则照常生成', () => {
     const s = reset({ mode: 'split', autoSelect: true });
     const names = s.nodes.map((n) => n.name);
     s.customRules = [{ target: 'a.com', action: names[0] }];
     const d = yamlOf();
     expect(d.rules).toContain('DOMAIN,a.com,' + names[0]);
     // 同一个节点：既在智能组里，也被自定义规则引用 —— 两份引用都成立
-    expect(d['proxy-groups'].find((g) => g.name === '目标固定⚡').proxies).toContain(names[0]);
+    expect(d['proxy-groups'].find((g) => g.name === '同一目标地址⚡固定出口').proxies).toContain(names[0]);
   });
 
-  test('自定义规则：目标固定⚡开着时，只有被反选的节点才能多选成组', () => {
+  test('自定义规则：同一目标地址⚡固定出口开着时，只有被反选的节点才能多选成组', () => {
     const s = reset({ mode: 'split', autoSelect: true });
     const names = s.nodes.map((n) => n.name);
-    // 两个都在"目标固定⚡成员"里被点掉 → 可以建组
+    // 两个都在"同一目标地址⚡固定出口成员"里被点掉 → 可以建组
     s.autoSelectExclude = [names[0], names[1]];
     s.customRules = [{ target: 'a.com', actions: [names[0], names[1]] }];
     let d = yamlOf();
-    expect(d['proxy-groups'].some((g) => g.name === '目标固定🚀')).toBe(true);
+    expect(d['proxy-groups'].some((g) => g.name === '同一目标地址🚀固定出口')).toBe(true);
 
     // 只反选了一个 → 不足 2 个，退回单选第一个，不建组
     s.autoSelectExclude = [names[0]];
     s.customRules = [{ target: 'b.com', actions: [names[0], names[1]] }];
     d = yamlOf();
-    expect(d['proxy-groups'].some((g) => g.name === '目标固定🚀')).toBe(false);
+    expect(d['proxy-groups'].some((g) => g.name === '同一目标地址🚀固定出口')).toBe(false);
     expect(d.rules[0]).toBe('DOMAIN,b.com,' + names[0]);
   });
 
@@ -478,10 +478,10 @@ describe('buildConfig：选项搬运', () => {
     s.customRules = [{ target: 'category-ai-!cn', type: 'geosite', actions: [names[0], names[1]] }];
     let d = yamlOf();
     let text = MH.ui.buildConfig();
-    expect(d.rules[0]).toBe('GEOSITE,category-ai-!cn,目标固定🚀');
-    expect(text).toContain('  # AI 服务\n  - GEOSITE,category-ai-!cn,目标固定🚀');
+    expect(d.rules[0]).toBe('GEOSITE,category-ai-!cn,同一目标地址🚀固定出口');
+    expect(text).toContain('  # AI 服务\n  - GEOSITE,category-ai-!cn,同一目标地址🚀固定出口');
     expect(text).not.toContain('# 定义 规则');
-    const lb = d['proxy-groups'].find((g) => g.name === '目标固定🚀');
+    const lb = d['proxy-groups'].find((g) => g.name === '同一目标地址🚀固定出口');
     expect(lb.proxies).toEqual([names[0], names[1]]);
 
     s.customRules = [{ target: 'category-ai-!cn', type: 'geosite', actions: [names[0]] }];
@@ -512,12 +512,12 @@ describe('buildConfig：选项搬运', () => {
     s.customRules = [{ preset: 'ai', target: 'category-ai-cn', type: 'geosite', actions: [names[0], names[1]] }];
 
     let text = MH.ui.buildConfig();
-    expect(text).toContain('  # AI 服务\n  - GEOSITE,category-ai-!cn,目标固定🚀');
+    expect(text).toContain('  # AI 服务\n  - GEOSITE,category-ai-!cn,同一目标地址🚀固定出口');
     expect(text).not.toContain('category-ai-cn');
 
     s.returnMode = true;
     text = MH.ui.buildConfig();
-    expect(text).toContain('  # AI 服务\n  - GEOSITE,category-ai-cn,目标固定🚀');
+    expect(text).toContain('  # AI 服务\n  - GEOSITE,category-ai-cn,同一目标地址🚀固定出口');
     expect(text).not.toContain('category-ai-!cn');
   });
 
@@ -545,8 +545,8 @@ describe('buildConfig：选项搬运', () => {
     s.customRules = [{ preset: 'tk', target: 'tiktok', type: 'geosite', actions: [names[0], names[1]] }];
     let d = yamlOf();
     let text = MH.ui.buildConfig();
-    expect(d.rules[0]).toBe('GEOSITE,tiktok,目标固定🚀');
-    expect(text).toContain('  # Tik Tok\n  - GEOSITE,tiktok,目标固定🚀');
+    expect(d.rules[0]).toBe('GEOSITE,tiktok,同一目标地址🚀固定出口');
+    expect(text).toContain('  # Tik Tok\n  - GEOSITE,tiktok,同一目标地址🚀固定出口');
     expect(text).not.toContain('# 定义 规则');
 
     s.customRules = [{ preset: 'tk', target: 'tiktok', type: 'geosite', actions: [names[0]] }];
@@ -564,11 +564,11 @@ describe('buildConfig：选项搬运', () => {
     s.customRules = [{ preset: 'tk', target: 'tiktok', type: 'geosite', actions: [names[0], names[1]] }];
 
     let text = MH.ui.buildConfig();
-    expect(text).toContain('GEOSITE,tiktok,目标固定🚀');
+    expect(text).toContain('GEOSITE,tiktok,同一目标地址🚀固定出口');
 
     s.returnMode = true;
     text = MH.ui.buildConfig();
-    expect(text).toContain('GEOSITE,tiktok,目标固定🚀');
+    expect(text).toContain('GEOSITE,tiktok,同一目标地址🚀固定出口');
     expect(text).not.toContain('category-ai-cn');
   });
 
@@ -630,23 +630,23 @@ describe('buildConfig：选项搬运', () => {
     expect(MH.ui.buildConfig()).toContain('  # TC 服务\n  - GEOSITE,tencent,' + names[0]);
   });
 
-  test('自定义规则：一机一IP 也能用多选目标固定🚀组', () => {
+  test('自定义规则：一机一IP 也能用多选同一目标地址🚀固定出口组', () => {
     const s = reset({ mode: 'oneip' });
     const names = s.nodes.map((n) => n.name);
     s.customRules = [{ target: 'a.com', actions: [names[0], names[1]] }];
     const d = yamlOf();
-    expect(d['proxy-groups'].some((g) => g.name === '目标固定🚀')).toBe(true);
-    expect(d.rules[0]).toBe('DOMAIN,a.com,目标固定🚀');
+    expect(d['proxy-groups'].some((g) => g.name === '同一目标地址🚀固定出口')).toBe(true);
+    expect(d.rules[0]).toBe('DOMAIN,a.com,同一目标地址🚀固定出口');
   });
 
-  test('自定义规则：一机一IP 不受（残留的）目标固定⚡反选限制', () => {
+  test('自定义规则：一机一IP 不受（残留的）同一目标地址⚡固定出口反选限制', () => {
     const s = reset({ mode: 'oneip', autoSelect: true });
     const names = s.nodes.map((n) => n.name);
-    // 目标固定⚡的黑名单是精准分流那边的设置，一机一IP 里不该拿来过滤自定义组
+    // 同一目标地址⚡固定出口的黑名单是精准分流那边的设置，一机一IP 里不该拿来过滤自定义组
     s.autoSelectExclude = names.slice(2);
     s.customRules = [{ target: 'a.com', actions: [names[0], names[1]] }];
     const d = yamlOf();
-    const lb = d['proxy-groups'].find((g) => g.name === '目标固定🚀');
+    const lb = d['proxy-groups'].find((g) => g.name === '同一目标地址🚀固定出口');
     expect(lb.proxies).toEqual([names[0], names[1]]);
   });
 
@@ -660,7 +660,7 @@ describe('buildConfig：选项搬运', () => {
 });
 
 describe('buildConfig：多节点时的出口推导', () => {
-  test('关掉目标固定⚡后：默认出口取第一个节点', () => {
+  test('关掉同一目标地址⚡固定出口后：默认出口取第一个节点', () => {
     const s = reset({ mode: 'split', autoSelect: false });
     const names = s.nodes.map((n) => n.name);
     const rules = yamlOf().rules.join('\n');
@@ -668,9 +668,9 @@ describe('buildConfig：多节点时的出口推导', () => {
     expect(rules).toContain('GEOSITE,geolocation-!cn,' + names[0]);
   });
 
-  test('默认状态（什么都不改）不走目标固定⚡，出口就是第一个节点', () => {
+  test('默认状态（什么都不改）不走同一目标地址⚡固定出口，出口就是第一个节点', () => {
     // reset() 会先铺一遍 defaultState()，所以这里断言的就是出厂设置。
-    // 出厂是不勾目标固定⚡：两个以上节点时，「第一个节点」就是他要的出口，不替他套一层「哪台快走哪台」。
+    // 出厂是不勾同一目标地址⚡固定出口：两个以上节点时，「第一个节点」就是他要的出口，不替他套一层「哪台快走哪台」。
     const s = reset({ mode: 'split' });
     expect(s.autoSelect).toBe(false);
     expect(s.defaultNode).toBe('');
@@ -688,14 +688,14 @@ describe('buildConfig：多节点时的出口推导', () => {
     const d = yamlOf();
     expect(d['proxy-groups']).toBeUndefined();
     expect(d.rules.some((r) => r.startsWith('MATCH,' + s.nodes[0].name))).toBe(true);
-    expect(JSON.stringify(d.rules)).not.toContain('目标固定⚡');
+    expect(JSON.stringify(d.rules)).not.toContain('同一目标地址⚡固定出口');
   });
 
   test('智能选择模式：默认出口切到测速组', () => {
     reset({ mode: 'split', autoSelect: true });
     const d = yamlOf();
-    expect(d.rules.some((r) => r.startsWith('MATCH,目标固定⚡'))).toBe(true);
-    expect(d['proxy-groups'].map((g) => g.name)).toEqual(['GLOBAL', '目标固定⚡']);
+    expect(d.rules.some((r) => r.startsWith('MATCH,同一目标地址⚡固定出口'))).toBe(true);
+    expect(d['proxy-groups'].map((g) => g.name)).toEqual(['GLOBAL', '同一目标地址⚡固定出口']);
   });
 
   test('单节点 + 遗留的「智能选择」出口名 → 回落到真实节点，不生成非法配置', () => {
@@ -711,7 +711,7 @@ describe('buildConfig：多节点时的出口推导', () => {
   });
 
   test('单节点 + 老存档里遗留的旧组名「自动选择」→ 回落到真实节点', () => {
-    // 测速组从「自动选择」改名成「目标固定⚡」之前存过档的人，defaultNode 里
+    // 测速组从「自动选择」改名成「同一目标地址⚡固定出口」之前存过档的人，defaultNode 里
     // 留的还是旧名。它既不是节点名、也不该出现在产物里。
     const s = reset({ mode: 'split', autoSelect: false, defaultNode: '自动选择' });
     s.nodes = s.nodes.slice(0, 1);
@@ -736,12 +736,12 @@ describe('buildConfig：多节点时的出口推导', () => {
     expect(d.rules.some((r) => r.startsWith('MATCH,' + s.nodes[0].name))).toBe(true);
   });
 
-  test('回国模式 + 目标固定⚡：国内走测速组，兜底直连', () => {
+  test('回国模式 + 同一目标地址⚡固定出口：国内走测速组，兜底直连', () => {
     const s = reset({ mode: 'split', autoSelect: true, returnMode: true });
     const d = yamlOf();
-    expect(d.rules).toContain('GEOIP,CN,目标固定⚡');        // 回国模式：中国走代理
+    expect(d.rules).toContain('GEOIP,CN,同一目标地址⚡固定出口');        // 回国模式：中国走代理
     expect(d.rules[d.rules.length - 1]).toBe('MATCH,DIRECT'); // 兜底直连，长尾国外不绕中国
-    expect(d['proxy-groups'].some((g) => g.name === '目标固定⚡')).toBe(true);
+    expect(d['proxy-groups'].some((g) => g.name === '同一目标地址⚡固定出口')).toBe(true);
     expect(s.nodes.length).toBeGreaterThan(2);
   });
 });
@@ -1024,7 +1024,7 @@ describe('writtenProxies：配置里到底写了几个节点', () => {
   const count = (text) => MH.ui.writtenProxies(text);
   const parsed = (text) => (MH.yamlLoad(text).proxies || []).length;
 
-  test('精准分流、没勾目标固定⚡：只写默认出口那一个', () => {
+  test('精准分流、没勾同一目标地址⚡固定出口：只写默认出口那一个', () => {
     const s = reset({ mode: 'split' });
     expect(s.nodes.length).toBeGreaterThan(3);
     const text = MH.ui.buildConfig();
@@ -1032,14 +1032,14 @@ describe('writtenProxies：配置里到底写了几个节点', () => {
     expect(parsed(text)).toBe(1);
   });
 
-  test('勾了目标固定⚡：成员全部写进去', () => {
+  test('勾了同一目标地址⚡固定出口：成员全部写进去', () => {
     const s = reset({ mode: 'split', autoSelect: true });
     const text = MH.ui.buildConfig();
     expect(count(text)).toBe(s.nodes.length);
     expect(parsed(text)).toBe(s.nodes.length);
   });
 
-  test('目标固定⚡里反选掉的节点不写', () => {
+  test('同一目标地址⚡固定出口里反选掉的节点不写', () => {
     const s = reset({ mode: 'split', autoSelect: true });
     s.autoSelectExclude = [s.nodes[0].name, s.nodes[1].name];
     const text = MH.ui.buildConfig();
@@ -1052,7 +1052,7 @@ describe('writtenProxies：配置里到底写了几个节点', () => {
     const names = s.nodes.map((n) => n.name);
     s.customRules = [{ target: 'example.com', actions: [names[1], names[2]] }];
     const text = MH.ui.buildConfig();
-    expect(text).toContain('目标固定🚀');
+    expect(text).toContain('同一目标地址🚀固定出口');
     expect(count(text)).toBe(3);
     expect(parsed(text)).toBe(3);
   });
@@ -1068,7 +1068,7 @@ describe('writtenProxies：配置里到底写了几个节点', () => {
     expect(count('')).toBe(0);
     expect(count('rules:\n  - MATCH,DIRECT')).toBe(0);
     // proxy-groups 里的 `- name:` 缩进是四格，不会被误数成节点
-    const noProxy = 'proxy-groups:\n  - name: "目标固定🚀"\n    proxies:\n      - "A"\n';
+    const noProxy = 'proxy-groups:\n  - name: "同一目标地址🚀固定出口"\n    proxies:\n      - "A"\n';
     expect(count(noProxy)).toBe(0);
   });
 });
@@ -1141,20 +1141,20 @@ describe('utf8Bytes：体积按 UTF-8 字节算', () => {
 });
 
 /**
- * 目标固定🚀组体检地址按出口位置分两套：
+ * 同一目标地址🚀固定出口组体检地址按出口位置分两套：
  *   出国（精准分流 / 全局代理）→ gstatic（内核 + 面板的默认值，海外节点就近命中）
  *   回国 / 国内使用国内节点 → 华为 204（检查点在国内）
  * 用反了的代价是「好节点被误判成坏、踢出轮换」，所以这里两种出口各钉一条。
  */
-describe('目标固定🚀组体检地址：按出口分', () => {
+describe('同一目标地址🚀固定出口组体检地址：按出口分', () => {
   const GSTATIC = 'https://www.gstatic.com/generate_204';
   const HICLOUD = 'https://connectivitycheck.platform.hicloud.com/generate_204';
   const lbUrls = (text) => (MH.yamlLoad(text)['proxy-groups'] || [])
     .filter((g) => g.type === 'load-balance')
     .map((g) => g.url);
 
-  test('出国：目标固定⚡ / 全局代理 / 自定义目标固定🚀组都是 gstatic', () => {
-    // 目标固定⚡组（成员 = 全部节点）
+  test('出国：同一目标地址⚡固定出口 / 全局代理 / 自定义同一目标地址🚀固定出口组都是 gstatic', () => {
+    // 同一目标地址⚡固定出口组（成员 = 全部节点）
     reset({ mode: 'split', autoSelect: true });
     expect(lbUrls(MH.ui.buildConfig())).toEqual([GSTATIC]);
 
@@ -1162,14 +1162,14 @@ describe('目标固定🚀组体检地址：按出口分', () => {
     reset({ mode: 'split', autoSelect: true, globalProxy: true });
     expect(lbUrls(MH.ui.buildConfig())).toEqual([GSTATIC]);
 
-    // 自定义规则的目标固定🚀组（目标固定⚡关掉，否则成员会先被智能组占住）
+    // 自定义规则的同一目标地址🚀固定出口组（同一目标地址⚡固定出口关掉，否则成员会先被智能组占住）
     const s = reset({ mode: 'split' });
     const names = s.nodes.map((n) => n.name);
     s.customRules = [{ target: 'a.com', actions: [names[0], names[1]] }];
     expect(lbUrls(MH.ui.buildConfig())).toEqual([GSTATIC]);
   });
 
-  test('回国模式：目标固定⚡ + 自定义目标固定🚀组都换成华为 204', () => {
+  test('回国模式：同一目标地址⚡固定出口 + 自定义同一目标地址🚀固定出口组都换成华为 204', () => {
     reset({ mode: 'split', autoSelect: true, returnMode: true });
     expect(lbUrls(MH.ui.buildConfig())).toEqual([HICLOUD]);
 

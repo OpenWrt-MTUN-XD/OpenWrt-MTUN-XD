@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2026.12.10
+
+### 修复
+
+- 配置工具 CGI（`mihomo-sub`、`mihomo-apply`）统一为 755：uhttpd 以非 root 执行，644 / 744 会让「拉取订阅」报「够不着订阅拉取接口」（实际是 403）
+- kit 打包按文件名授执行位时补上 `mihomo-sub`（此前只授 `mihomo-apply`，打出的 tar / zip 里是 644）
+- 安装脚本 `chmod +x` 改为 `chmod 755`（不再受 umask 影响），并对已装设备的 `$UI/config` 一并修正，点「更新配置工具」即可自愈
+- 发版闸门 `check-kit-dist` 增加 CGI 执行位断言，kit 权限与 uhttpd 要求不一致直接拦住发布
+
 ## 2026.12.09
 
 ### 新增

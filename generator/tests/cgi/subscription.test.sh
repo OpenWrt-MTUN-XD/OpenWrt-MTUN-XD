@@ -26,7 +26,7 @@ fail() {
 
 status_of() { sed -n 's/^Status: //p' "$1" | head -1 | tr -d '\r'; }
 reason_of() { sed -n 's/^X-Sub-Reason: //p' "$1" | head -1 | tr -d '\r'; }
-body_of() { sed '1,/^\r$/d' "$1"; }
+body_of() { sed '1,/^[[:space:]]*$/d' "$1" | tr -d '\r'; }
 
 assert_status() {
     got=$(status_of "$TMP/out")
@@ -142,7 +142,7 @@ fi
 call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/redirect"
 status=$(status_of "$TMP/out")
 [ "$status" = '502 Bad Gateway' ] || [ "$status" = '400 Bad Request' ] || fail "ftp redirect status: $status"
-body_of "$TMP/out" | grep -q '只允许 http/https' || fail 'ftp redirect body lacks protocol message'
+body_of "$TMP/out" | grep -q '只允许 http/https' || { body_of "$TMP/out" >&2; fail 'ftp redirect body lacks protocol message'; }
 
 # 7. SSRF
 call_cgi "$TMP/config-good" 'Bearer test-secret' "http://127.0.0.1:$PORT/normal"

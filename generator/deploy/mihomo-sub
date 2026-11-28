@@ -210,7 +210,7 @@ if [ "$rc" -ne 0 ]; then
         7)  fail '502 Bad Gateway' '连接订阅服务器失败' 'connect' ;;
         28) fail '504 Gateway Timeout' '订阅拉取超时' 'timeout' ;;
         35|60) fail '502 Bad Gateway' '订阅 TLS 证书校验失败' 'tls' ;;
-        47) fail '502 Bad Gateway' '订阅重定向次数过多' 'redirect' ;;
+        47) fail '502 Bad Gateway' '订阅重定向次数过多，或目标协议不是 http/https（只允许 http/https）' 'redirect' ;;
         63) fail '413 Payload Too Large' '订阅内容超过 4 MiB' 'too-large' ;;
         127) fail '502 Bad Gateway' '路由器没有 curl，请先安装 curl 和 ca-bundle' 'no-curl' ;;
         *)  fail '502 Bad Gateway' "订阅拉取失败（curl $rc）" 'curl' ;;
@@ -226,6 +226,7 @@ size=$(wc -c < "$SUB_TMP" | tr -d ' ')
 [ "$size" -gt "$MAX_BYTES" ] && fail '413 Payload Too Large' '订阅内容超过 4 MiB' 'too-large'
 [ "$size" -eq 0 ] && fail '502 Bad Gateway' '订阅返回空内容' 'empty'
 
+printf 'Status: 200 OK\r\n'
 printf 'Content-Type: text/plain; charset=utf-8\r\n'
 printf 'Content-Length: %s\r\n' "$size"
 printf 'Cache-Control: no-store\r\n'

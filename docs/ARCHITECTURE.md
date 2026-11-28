@@ -55,7 +55,46 @@ install.sh
           ├── mihomo -t 校验
           ├── 原子替换 config.yaml
           └── 热载入 / 重启
+
+机场订阅（一次性）：
+配置工具
+    └── /cgi-bin/mihomo-sub?route=direct|tun
+          ├── direct：WAN 出口 + 真实 IPv4 + --resolve
+          ├── direct 失败：本机 mihomo（本地端口优先，退 TUN）
+          ├── 原文交给现有解析器
+          └── 只导入节点；不保存链接，不自动更新
 ```
+
+### 机场订阅一次性拉取
+
+「机场订阅」是配置工具里的手动入口，不托管订阅、不写订阅地址，也不做定时更新。拉取到的原文直接交给现有解析器（Clash / Meta、SIP008、sing-box、JSON 链接数组、Outline 等），只把节点并入当前配置。
+
+链路分两跳，由前端编排：
+
+```text
+hop1  direct
+        WAN 接口 + WAN 上的 DoH / HTTP DNS / nslookup
+        过滤 fake-ip，解析到内网地址直接拒绝
+        curl --resolve <host>:<port>:<真实 IPv4> --interface <WAN>
+        ｜
+        └─ 2xx 且正文非空：立即导入，不再发 hop2
+
+hop1 失败 / 非 2xx / 超时 / 空正文
+        ｜
+        └─ hop2  tun
+                mixed-port / socks-port / port 任一有效：本地代理（tun-port）
+                全部无效：直接靠 TUN 接管（tun-plain）
+```
+
+约束：
+
+- 每次 CGI 请求只执行一跳，`X-Sub-Route` 报告实际路径；前端在提示里显示真实走过的路径，不静默切换。
+- uhttpd 不把自定义 `X-Sub-Route` 请求头传进 CGI，因此路由同时通过 `?route=direct|tun` 查询串传递；CGI 优先读请求头，读不到再读 query。
+- hop1 返回 200 时绝不发第二请求；只有失败、非 2xx、超时或空正文才进入 hop2。
+- 单跳前端超时 75 秒；CGI 连接超时 6 秒、总超时 25 秒，正文上限 4 MiB。
+- CGI 必须对 uhttpd 运行用户可执行，权限固定为 `755`；`644` / `744` 会让探测拿到 403，表现为「够不着订阅拉取接口」。
+- 上游 403、返回 HTML 页面、超时、空正文、超过 4 MiB 等分别映射为明确错误；不会把网页当订阅导入。
+- 临时文件只清理超过 5 分钟的旧文件，避免误删并发请求；正常结束由 trap 清理。
 
 ## 文件布局
 
@@ -91,7 +130,8 @@ install.sh
 │
 └── www/
     ├── cgi-bin/
-    │   └── mihomo-apply
+    │   ├── mihomo-apply
+    │   └── mihomo-sub
     │
     └── luci-static/
         └── resources/
@@ -119,6 +159,8 @@ install.sh
 | `/etc/mihomo/rules/` | 规则集存储 |
 | `/etc/mihomo-toolpass` | 配置工具访问密码 |
 | `/www/cgi-bin/mihomo-apply` | 配置载入与写盘入口 |
+| `/www/cgi-bin/mihomo-sub` | 机场订阅一次性拉取入口（软链到 `/etc/mihomo/ui/config/mihomo-sub`） |
+| `/etc/mihomo/ui/config/subscription.js` | 订阅两跳编排、路径提示与导入 |
 | `common.js` | 三个 LuCI 页面的共用组件 |
 
 ## 80 端口与同源访问

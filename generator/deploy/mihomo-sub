@@ -86,8 +86,10 @@ case "$url" in
     http://*|https://*) ;;
     *) fail '400 Bad Request' '订阅 URL 只支持 http/https' ;;
 esac
+# S-UI 的订阅名称允许空格；HTTP URL 里必须编码成 %20。
+url=$(printf '%s' "$url" | sed 's/ /%20/g')
 case "$url" in
-    *[[:space:]]*) fail '400 Bad Request' '订阅 URL 不能包含空白' ;;
+    *[[:space:]]*) fail '400 Bad Request' '订阅 URL 不能包含制表符或换行' ;;
 esac
 
 # ── 拉取 ───────────────────────────────────────────────────────

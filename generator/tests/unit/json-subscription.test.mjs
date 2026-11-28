@@ -131,3 +131,11 @@ test('Outline 单条 access key：无 type 也按 ss 导入', () => {
   expect(n).toHaveLength(1);
   expect(n[0]).toMatchObject({ type: 'ss', name: 'outline.example.com', port: 8388 });
 });
+
+test('机场占位节点：Base64 包裹的“客户端版本太旧”要拒绝', () => {
+  const fake = [
+    'ss://YWVzLTEyOC1nY206cGFzcw==@127.0.0.1:12345#客户端版本太旧了',
+    'ss://YWVzLTEyOC1nY206cGFzcw==@127.0.0.1:12345#请升级Shadowrocket客户端'
+  ].join('\n');
+  expect(MH.placeholderHint(Buffer.from(fake).toString('base64'))).toContain('客户端版本过旧');
+});

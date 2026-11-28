@@ -1616,6 +1616,11 @@
       toast('内容超过 10 MiB 限制，已终止导入。', 'err');
       return false;
     }
+    var placeholder = MH.placeholderHint ? MH.placeholderHint(text) : '';
+    if (placeholder) {
+      toast(placeholder, 'err');
+      return false;
+    }
     var nodes;
     try {
       nodes = MH.parseAnyInput(text);

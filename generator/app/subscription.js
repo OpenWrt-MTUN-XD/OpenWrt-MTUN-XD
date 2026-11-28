@@ -128,6 +128,12 @@
         if (!root.MH || !root.MH.ui || typeof root.MH.ui.importText !== 'function') {
           throw new Error('导入模块未加载');
         }
+        var ph = root.MH.placeholderHint ? root.MH.placeholderHint(res.text) : '';
+        if (ph) {
+          note(ph);
+          toast(ph, 'err');
+          return;
+        }
         var ok = root.MH.ui.importText(res.text, '订阅');
         note(ok ? '订阅已拉取并导入。' : '订阅已拉取，但没有导入有效节点。');
       }).catch(function (e) {

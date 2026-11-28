@@ -1278,6 +1278,24 @@
   }
 
   /**
+   * 某些机场在客户端版本/账号异常时会返回一组 127.0.0.1 的“提示节点”，
+   * 备注写着“客户端版本太旧 / 请升级 / 去 AppStore”。这不是订阅，直接拒绝，
+   * 不能把 5 条假节点导进列表。
+   */
+  function placeholderHint(text) {
+    var t = String(text == null ? '' : text).trim();
+    if (!t) return '';
+    if (looksLikeB64(t)) {
+      var dec = b64DecodeSafe(t);
+      if (dec) t = dec;
+    }
+    if (/客户端版本(太旧|过旧)|请升级\s*Shadowrocket|卸载去AppStore|安装方式看官网教程/i.test(t)) {
+      return '机场返回的是客户端版本过旧提示节点，不是可用订阅；请升级机场面板/客户端，或联系机场换通用订阅';
+    }
+    return '';
+  }
+
+  /**
    * 解析失败时给用户一个可执行的结论。只识别“常见但不是 mihomo 直接可吃”的格式，
    * 不做转换；转换器不是本工具的边界。
    */
@@ -1360,6 +1378,7 @@
   }
 
   MH.parseAnyInput = parseAnyInput;
+  MH.placeholderHint = placeholderHint;
   MH.formatHint = formatHint;
   MH.yamlError = yamlError;
   MH.yamlDropped = yamlDropped;

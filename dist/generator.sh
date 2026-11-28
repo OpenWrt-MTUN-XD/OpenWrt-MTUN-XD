@@ -464,7 +464,8 @@ install_gen(){
         unzip -oq "$src" -d "$W"
         rc=$?
     fi
-    if [ "$rc" != 0 ] || [ ! -f "$W/config/index.html" ] || [ ! -f "$W/config/mihomo-apply" ]; then
+    if [ "$rc" != 0 ] || [ ! -f "$W/config/index.html" ] || [ ! -f "$W/config/mihomo-apply" ] \
+       || [ ! -f "$W/config/mihomo-sub" ]; then
         rm -rf "$W"
         [ "$kit_owned" = 1 ] && rm -f "$src"     # 宿主给的包不归我们删
         echo "✘ 解压失败"
@@ -480,6 +481,7 @@ install_gen(){
     # 写盘 CGI 得有执行位（zip 里存了权限，但解压器不一定认；
     # ⚠️ 少了这个 chmod，uhttpd 会给 403，写盘永远失败）
     chmod +x "$W/config/mihomo-apply"
+    chmod +x "$W/config/mihomo-sub"
 
     # ── 先铺到暂存目录，机器相关的补丁也打在这儿，最后一步才换名 ──────────────
     # 不原地铺（rm -rf $G 再铺的话中间那段目录是半新半旧的，撞上就 404/白屏，断电还留残目录）：
@@ -538,11 +540,18 @@ install_gen(){
     # /www/cgi-bin/ 下留着悬空链接。
     # ⚠️ 目录不存在就建：没有这条链接，「载入配置文件」永远 403，而屏幕上还打着「已就位」。
     mkdir -p /www/cgi-bin 2>/dev/null
+    command -v curl >/dev/null 2>&1 || \
+        echo "⚠️ 没有 curl，配置工具的「拉取订阅」会失败（opkg install curl ca-bundle）" >&2
     ln -sf "$G/mihomo-apply" /www/cgi-bin/mihomo-apply 2>/dev/null
+    ln -sf "$G/mihomo-sub" /www/cgi-bin/mihomo-sub 2>/dev/null
     # ⚠️ 链接建不上（/www 只读、overlay 满）不能当成功：页面一切正常、只有「载入配置文件」
     #    永远 404。这里明说，别让人到用的时候才发现。
     if [ ! -x /www/cgi-bin/mihomo-apply ]; then
         echo "✘ 配置工具：写盘接口没挂上（/www/cgi-bin/mihomo-apply）—— 检查 /www 是否可写" >&2
+        rc=1
+    fi
+    if [ ! -x /www/cgi-bin/mihomo-sub ]; then
+        echo "✘ 配置工具：订阅拉取接口没挂上（/www/cgi-bin/mihomo-sub）—— 检查 /www 是否可写" >&2
         rc=1
     fi
     for n in $LEGACY_CGI_NAMES; do drop_link "$n"; done
@@ -606,6 +615,7 @@ uninstall_gen(){
     # 当前 + 所有历史名字都清一遍（悬空链接也算，见 drop_link 的注释）
     for n in $LEGACY_CGI_NAMES; do drop_link "$n"; done
     drop_link mihomo-apply
+    drop_link mihomo-sub
 
     [ -d "$G" ] && rm -rf "$G"
 

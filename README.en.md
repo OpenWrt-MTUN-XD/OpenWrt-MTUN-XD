@@ -62,7 +62,7 @@ Release checklist: [RELEASE-CHECKLIST](docs/RELEASE-CHECKLIST.md)
 - **Single entry point** — LuCI, dashboard and config tool all behind port 80.
 - **Maintenance centre** — update core, dashboard and suite independently, in the background, with logs.
 - **Routing and groups** — precise routing, per-device egress, automatic multi-node load balancing.
-- **Config generator** — import nodes (links / subscriptions / Clash YAML) and generate a working `config.yaml`.
+- **Config generator** — import nodes (share links / one-shot subscription URLs / Clash YAML / SIP008 / sing-box JSON) and generate a working `config.yaml`; subscriptions are fetched manually, never hosted or auto-updated.
 
 ### Requirements
 

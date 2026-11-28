@@ -58,7 +58,7 @@ CI 结果：[Actions](https://github.com/OpenWrt-MTUN-XD/OpenWrt-MTUN-XD/actions
 - **统一入口**：LuCI、面板、配置工具同走 80 端口，无需记端口。
 - **维护中心**：核心 / 面板 / 套件分别更新，后台执行，日志可查。
 - **分流与分组**：精准分流、按设备 IP 分配出口、多节点自动负载均衡。
-- **配置生成器**：导入节点（链接 / 订阅 / Clash YAML），生成可用的 `config.yaml`。
+- **配置生成器**：导入节点（分享链接 / 一次性订阅 URL / Clash YAML / SIP008 / sing-box JSON），生成可用的 `config.yaml`；订阅只手动拉取，不托管、不自动更新。
 
 ### 系统要求
 

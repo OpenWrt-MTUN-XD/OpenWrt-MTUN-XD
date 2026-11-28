@@ -1645,6 +1645,11 @@
         toast(badKeys + ' 个 SS-2022 节点的密钥格式或长度不对（需 16/32 字节的 base64），已全部跳过。' + info, 'err');
         return false;
       }
+      var hint = MH.formatHint ? MH.formatHint(text) : '';
+      if (hint) {
+        toast(hint, 'err');
+        return false;
+      }
       toast('未检测到有效节点，请检查分享链接或订阅内容。', 'err');
       return false;
     }

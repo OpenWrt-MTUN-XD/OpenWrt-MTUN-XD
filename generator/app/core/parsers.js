@@ -1080,6 +1080,251 @@
     return parseNodes(text);
   }
 
+
+  // ── JSON 订阅：SIP008 / sing-box / JSON 链接数组 ──────────────
+  // 机场常见「通用 Base64」「Clash YAML」之外的两种：
+  //   SIP008：Shadowsocks 官方 JSON（version + servers）
+  //   sing-box：{"outbounds":[...]}，Happ / Hiddify / NekoBox 等会下发
+  // 只转换 mihomo 能直接表达的部分；selector / urltest / direct 等组跳过。
+  function jsonMaybe(text) {
+    var t = String(text == null ? '' : text).replace(/^\uFEFF/, '').trim();
+    if (!t || (t.charAt(0) !== '{' && t.charAt(0) !== '[')) return null;
+    try { return JSON.parse(t); } catch (e) { return null; }
+  }
+
+  function jsonPluginOpts(v) {
+    if (!v) return '';
+    if (typeof v === 'object' && !Array.isArray(v)) return v;
+    var o = {};
+    String(v).split(';').forEach(function (kv) {
+      if (!kv) return;
+      var i = kv.indexOf('=');
+      if (i < 0) o[kv] = true;
+      else o[kv.slice(0, i)] = kv.slice(i + 1);
+    });
+    return o;
+  }
+
+  function jsonTls(t, node, forVless) {
+    if (!t || !t.enabled) return;
+    node.sni = t.server_name || t.serverName || '';
+    if (t.insecure) node.allow_insecure = true;
+    if (t.alpn) node.alpn = Array.isArray(t.alpn) ? t.alpn.join(',') : String(t.alpn);
+    if (t.utls && t.utls.fingerprint) node.fp = t.utls.fingerprint;
+    if (t.reality) {
+      node.pbk = t.reality.public_key || t.reality.publicKey || '';
+      node.sid = t.reality.short_id || t.reality.shortId || '';
+      if (forVless) node.security = 'reality';
+    }
+    if (forVless) node.security = node.security || 'tls';
+    else node.tls = 'tls';
+  }
+
+  function jsonTransport(o, node) {
+    var tr = o.transport || {};
+    var net = String(tr.type || 'tcp').toLowerCase();
+    node.net = net;
+    if (net === 'ws') {
+      node.path = tr.path || '/';
+      node.host = (tr.headers && (tr.headers.Host || tr.headers.host)) || tr.host || '';
+    } else if (net === 'grpc') {
+      node.grpc_service = tr.service_name || tr.serviceName || '';
+    } else if (net === 'http' || net === 'h2') {
+      node.path = tr.path || '/';
+      node.host = (tr.headers && (tr.headers.Host || tr.headers.host)) || tr.host || '';
+      if (net === 'h2') { node.h2_host = node.host; node.h2_path = node.path; }
+      if (tr.method) node.http_method = tr.method;
+    }
+  }
+
+  function jsonNode(o) {
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+    var rawType = String(o.type || o.protocol || '').toLowerCase();
+    var type = ({ shadowsocks: 'ss', socks: 'socks5' })[rawType] || rawType;
+    if (!type) return null;
+    var server = o.server || '';
+    var port = sInt(o.server_port != null ? o.server_port : o.port, 0);
+    var n = {
+      type: type, server: server, port: port,
+      remarks: o.tag || o.name || o.remarks || server
+    };
+    if (type === 'ss') {
+      n.method = o.method || o.cipher || '';
+      n.password = o.password || '';
+      if (o.plugin) {
+        n.plugin = o.plugin === 'obfs-local' || o.plugin === 'simple-obfs' ? 'obfs' : o.plugin;
+        n.plugin_opts = jsonPluginOpts(o.plugin_opts);
+      }
+    } else if (type === 'vmess') {
+      n.uuid = o.uuid || o.id || '';
+      n.aid = sInt(o.alter_id != null ? o.alter_id : o.alterId, 0);
+      n.method = o.security || 'auto';
+      jsonTls(o.tls, n, false);
+      jsonTransport(o, n);
+    } else if (type === 'vless') {
+      n.uuid = o.uuid || o.id || '';
+      n.flow = o.flow || '';
+      n.encryption = o.encryption || '';
+      jsonTls(o.tls, n, true);
+      jsonTransport(o, n);
+    } else if (type === 'trojan') {
+      n.password = o.password || '';
+      jsonTls(o.tls, n, true);
+      jsonTransport(o, n);
+    } else if (type === 'hysteria2') {
+      n.password = o.password || '';
+      var sp = o.server_ports;
+      if (Array.isArray(sp) && sp.length) {
+        n.ports = sp.join(',');
+        if (!n.port) n.port = sInt(sp[0], 0);
+      } else if (typeof sp === 'string') {
+        n.ports = sp;
+      }
+      if (o.obfs) {
+        n.obfs = o.obfs.type || 'salamander';
+        n.obfs_password = o.obfs.password || '';
+      }
+      n.up = o.up_mbps || o.up || '';
+      n.down = o.down_mbps || o.down || '';
+      jsonTls(o.tls, n, false);
+      n.insecure = !!n.allow_insecure || !!o.insecure;
+    } else if (type === 'tuic') {
+      n.uuid = o.uuid || '';
+      n.password = o.password || '';
+      n.version = 5;
+      n.congestion = o.congestion_control || 'cubic';
+      n.udp_relay_mode = o.udp_relay_mode || 'native';
+      n.reduce_rtt = !!o.reduce_rtt;
+      jsonTls(o.tls, n, false);
+      n.insecure = !!n.allow_insecure;
+    } else if (type === 'wireguard') {
+      var peer = (o.peers && o.peers[0]) || {};
+      n.server = o.server || peer.server || '';
+      n.port = sInt(o.server_port != null ? o.server_port : peer.server_port, 0);
+      n.private_key = o.private_key || o.privateKey || '';
+      n.public_key = peer.public_key || peer.publicKey || o.peer_public_key || '';
+      n.pre_shared_key = peer.pre_shared_key || peer.preSharedKey || '';
+      n.reserved = peer.reserved || o.reserved || '';
+      var addr = o.address || o.local_address || [];
+      if (!Array.isArray(addr)) addr = [addr];
+      for (var ai = 0; ai < addr.length; ai++) {
+        var a = String(addr[ai]);
+        if (a.indexOf(':') === -1 && !n.ip) n.ip = a;
+        else if (a.indexOf(':') !== -1 && !n.ipv6) n.ipv6 = a;
+      }
+      n.allowed_ips = o.allowed_ips || peer.allowed_ips || '';
+      n.mtu = o.mtu || '';
+    } else if (type === 'socks5' || type === 'http') {
+      n.username = o.username || '';
+      n.password = o.password || '';
+      jsonTls(o.tls, n, false);
+    } else if (type === 'anytls') {
+      n.password = o.password || '';
+      jsonTls(o.tls, n, false);
+    } else {
+      return null;
+    }
+    return n;
+  }
+
+  function jsonFinish(nodes) {
+    var out = [];
+    for (var i = 0; i < (nodes || []).length; i++) {
+      var p = nodes[i];
+      if (!p || typeof p !== 'object' || Array.isArray(p)) continue;
+      if (!typeOk(p)) { _yamlDropped += 1; continue; }
+      if (!(hostOk(p.server) || NO_SERVER_TYPES.indexOf(p.type) !== -1)) { _yamlDropped += 1; continue; }
+      if (!yamlPortOk(p)) { _yamlDropped += 1; continue; }
+      if (!credOk(p)) { _yamlDropped += 1; continue; }
+      if (p.type === 'ss' && /^2022-/.test(String(p.method || p.cipher || ''))) {
+        p.password = normalizeSsKey(p.password);
+      }
+      if (p.type === 'ss' && !ssKeyOk(p.method || p.cipher, p.password)) {
+        _badKeys += 1;
+        if (_badKeyInfo.length < 3) _badKeyInfo.push(String(p.method || p.cipher) + ' / 密钥长度 ' + String(p.password || '').length);
+        continue;
+      }
+      bejsonClean(p);
+      out.push(p);
+    }
+    return out.length ? dedupeNames(out) : [];
+  }
+
+  function bejsonClean(p) {
+    var label = p.name || p.remarks || p.server;
+    delete p.remarks;
+    p.name = cleanName(label, pad3(1));
+    if (p.port !== undefined && p.port !== null && p.port !== '') p.port = Math.floor(Number(p.port));
+  }
+
+  function sip008Nodes(o) {
+    if (!o || typeof o !== 'object' || !Array.isArray(o.servers) || Number(o.version) !== 1) return null;
+    var out = [];
+    for (var i = 0; i < o.servers.length; i++) {
+      var x = o.servers[i];
+      if (!x || typeof x !== 'object') continue;
+      var n = {
+        type: 'ss', server: x.server || '', port: sInt(x.server_port, 0),
+        method: x.method || '', password: x.password || '',
+        remarks: x.remarks || x.id || x.server || ''
+      };
+      if (x.plugin) {
+        n.plugin = x.plugin === 'obfs-local' || x.plugin === 'simple-obfs' ? 'obfs' : x.plugin;
+        n.plugin_opts = jsonPluginOpts(x.plugin_opts);
+      }
+      out.push(n);
+    }
+    return jsonFinish(out);
+  }
+
+  /**
+   * 解析失败时给用户一个可执行的结论。只识别“常见但不是 mihomo 直接可吃”的格式，
+   * 不做转换；转换器不是本工具的边界。
+   */
+  function formatHint(text) {
+    var t = String(text == null ? '' : text).replace(/^\uFEFF/, '').trim();
+    if (!t) return '订阅返回空内容';
+    if (/^\s*<!doctype\s+html|<html[\s>]/i.test(t)) {
+      return '订阅返回的是 HTML 页面（登录页 / 错误页），不是节点数据';
+    }
+    if (/^\s*\[server_local\]/mi.test(t) || /^\s*\[policy\]/mi.test(t)) {
+      return '这是 Quantumult X 专用配置，不是通用订阅；请改用机场的通用 / Clash 订阅';
+    }
+    if (/^\s*\[proxy\]/mi.test(t) && /^\s*\[proxy group\]/mi.test(t)) {
+      return '这是 Surge / Loon 专用配置，不是 mihomo 可直接导入的格式';
+    }
+    if (/^\s*proxy-providers\s*:/m.test(t) && !/^\s*proxies\s*:/m.test(t)) {
+      return '这是 Clash proxy-providers 配置，不含节点列表；请填节点订阅，或 provider 文件的内容';
+    }
+    if (/^\s*\{/.test(t) && /"protocol"\s*:/.test(t) && /"settings"\s*:/.test(t)) {
+      return '这是 Xray 配置，当前不支持直接导入；请改用通用 / Clash / sing-box 订阅';
+    }
+    return '';
+  }
+
+  function jsonNodes(text) {
+    var o = jsonMaybe(text);
+    if (o === null) return null;
+    // Clash 的 JSON 写法交给原来的 YAML 路径（它认 JSON）
+    if (o && !Array.isArray(o) && Array.isArray(o.proxies)) return null;
+    if (Array.isArray(o) && o.length && o.every(function (x) { return typeof x === 'string'; })) {
+      return parseNodes(o.join('\n'));
+    }
+    if (Array.isArray(o)) return jsonFinish(o.map(jsonNode));
+    if (Array.isArray(o.servers)) return sip008Nodes(o);
+    if (Array.isArray(o.outbounds)) return jsonFinish(o.outbounds.map(jsonNode));
+    if (Array.isArray(o.endpoints)) return jsonFinish(o.endpoints.map(jsonNode));
+    if (o.type && (o.server || o.peers)) return jsonFinish([jsonNode(o)]);
+    // Outline 的单条 access key：没有 type，但 server/server_port/method/password 齐全。
+    if (!o.type && o.server && o.server_port && o.method && o.password) {
+      var outline = {};
+      for (var k in o) outline[k] = o[k];
+      outline.type = 'ss';
+      return jsonFinish([jsonNode(outline)]);
+    }
+    return null;
+  }
+
   /**
    * 统一导入入口：Clash YAML / base64 订阅 / 纯链接，三种都认。机场订阅十有八九是 base64，
    * 甚至双重编码。
@@ -1090,16 +1335,24 @@
     _badKeys = 0;
     _badKeyInfo = [];
     lastHashRepairs = 0;
+    var jnodes = jsonNodes(text);
+    if (jnodes && jnodes.length) return jnodes;
     var got = parseYamlOrNodes(text);
     if (got && got.length) return got;
     if (looksLikeB64(text)) {
       var dec = b64DecodeSafe(text);
       if (dec) {
+        jnodes = jsonNodes(dec);
+        if (jnodes && jnodes.length) return jnodes;
         got = parseYamlOrNodes(dec);
         if (got && got.length) return got;
         if (looksLikeB64(dec)) {
           var dec2 = b64DecodeSafe(dec);
-          if (dec2) return parseYamlOrNodes(dec2);
+          if (dec2) {
+            jnodes = jsonNodes(dec2);
+            if (jnodes && jnodes.length) return jnodes;
+            return parseYamlOrNodes(dec2);
+          }
         }
       }
     }
@@ -1107,6 +1360,7 @@
   }
 
   MH.parseAnyInput = parseAnyInput;
+  MH.formatHint = formatHint;
   MH.yamlError = yamlError;
   MH.yamlDropped = yamlDropped;
   MH.badKeys = badKeys;

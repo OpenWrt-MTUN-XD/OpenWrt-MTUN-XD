@@ -224,6 +224,7 @@ if [ "$route" = 'direct' ]; then
     # 拿不到再退回 nslookup（并过滤 fake-ip）。
     wan=$(ip -4 route show table main 2>/dev/null | awk '$1 == "default" { for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
     case "$wan" in *tun*|*Tun*|*TUN*|Meta|*mihomo*) wan='' ;; esac
+    wan=${MIHOMO_SUB_WAN:-$wan}
 
     ip=''
     dns_off=0
@@ -322,7 +323,7 @@ esac
 size=$(wc -c < "$SUB_TMP" | tr -d ' ')
 [ "$size" -gt "$MAX_BYTES" ] && fail '413 Payload Too Large' '订阅内容超过 4 MiB' 'too-large'
 [ "$size" -eq 0 ] && fail '502 Bad Gateway' '订阅返回空内容' 'empty'
-head -c 16 "$SUB_TMP" | grep -q '^[[:space:]]*<' && fail '502 Bad Gateway' '订阅站返回网页而不是订阅内容（可能需要 IP 白名单、登录或浏览器验证）' 'html'
+head -c 64 "$SUB_TMP" | grep -q '^[[:space:]]*<' && fail '502 Bad Gateway' '订阅站返回网页而不是订阅内容（可能需要 IP 白名单、登录或浏览器验证）' 'html'
 
 printf 'Status: 200 OK\r\n'
 printf 'X-Sub-Route: %s\r\n' "$ROUTE"

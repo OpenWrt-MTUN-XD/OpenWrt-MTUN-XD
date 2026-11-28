@@ -1,8 +1,12 @@
 #!/bin/sh
 # 配置工具「机场订阅」的一次性拉取接口。
 #
-# 为什么需要它：浏览器直接 fetch 机场订阅通常没有 CORS 头，静态页面拿不到内容；
-# 由 uhttpd CGI 代为拉取，前端再把原文交给 parseAnyInput()。
+# 每次请求只做「一跳」：
+#   X-Sub-Route: direct  → 强制从 WAN 出去，绕开 TUN / fake-ip
+#   X-Sub-Route: tun     → 优先经本机 mihomo 的 mixed/socks/http 口
+#                          没有本地端口时退化为 tun-plain（靠 TUN 接管）
+#
+# 两跳由前端编排；这个脚本绝不自己重试第二次。
 #
 # 调用：POST /cgi-bin/mihomo-sub
 #       Authorization: Bearer <config.yaml 里的 secret>
@@ -14,7 +18,7 @@
 #   - URL 请求体最多 4 KiB
 #   - 响应最多 4 MiB
 #   - 最多跟随 3 次重定向
-#   - 连接超时 8 秒，总超时 30 秒
+#   - 连接超时 6 秒，总超时 25 秒
 #   - 拒绝本机 / 内网 / 链路本地 / ULA 目标（SSRF 防护）
 #   - 不保存 URL，不写日志，不缓存内容
 #   - 认证复用 mihomo 自己的 secret，不新增钥匙
@@ -24,6 +28,8 @@ MAX_BYTES=4194304
 MAX_URL=4096
 SUB_TMP=''
 ERR_TMP=''
+ROUTE='direct'
+UPSTREAM='000'
 
 cleanup_sub_files() {
     [ -n "$SUB_TMP" ] && rm -f "$SUB_TMP"
@@ -37,8 +43,7 @@ api_secret() {
 }
 
 cors() {
-    # 生成器可能跑在 :9090，这个 CGI 在 :80，跨端口必须带 CORS。
-    # 只反射与 HTTP_HOST 主名相同的 Origin；不匹配就不输出该头，避免变成开放代理。
+    # 只反射与 HTTP_HOST 主名相同的 Origin；不匹配就不输出该头，避免开放代理。
     if [ -n "${HTTP_ORIGIN:-}" ]; then
         oh=$(printf '%s' "$HTTP_ORIGIN" | sed 's#^[^:]*://##; s#/.*##; s#:.*##')
         hh=$(printf '%s' "${HTTP_HOST:-}" | sed 's#:[0-9]*$##')
@@ -49,8 +54,8 @@ cors() {
         fi
     fi
     printf 'Access-Control-Allow-Methods: POST, OPTIONS\r\n'
-    printf 'Access-Control-Allow-Headers: Content-Type, Authorization\r\n'
-    printf 'Access-Control-Expose-Headers: X-Sub-Reason\r\n'
+    printf 'Access-Control-Allow-Headers: Content-Type, Authorization, X-Sub-Route\r\n'
+    printf 'Access-Control-Expose-Headers: X-Sub-Reason, X-Sub-Route, X-Sub-Upstream\r\n'
     printf 'X-Content-Type-Options: nosniff\r\n'
     printf 'Vary: Origin\r\n'
 }
@@ -58,6 +63,8 @@ cors() {
 fail() {
     printf 'Status: %s\r\n' "$1"
     [ -n "${3:-}" ] && printf 'X-Sub-Reason: %s\r\n' "$3"
+    printf 'X-Sub-Route: %s\r\n' "$ROUTE"
+    printf 'X-Sub-Upstream: %s\r\n' "$UPSTREAM"
     printf 'Content-Type: text/plain; charset=utf-8\r\n'
     printf 'Cache-Control: no-store\r\n'
     cors
@@ -75,7 +82,11 @@ if [ "${REQUEST_METHOD:-}" = 'OPTIONS' ]; then
 fi
 [ "${REQUEST_METHOD:-}" = 'POST' ] || fail '405 Method Not Allowed' 'only POST'
 
-# ── 认证 ────────────────────────────────────────────────────────
+# ── 路由与认证 ─────────────────────────────────────────────────
+route=$(printf '%s' "${HTTP_X_SUB_ROUTE:-}" | tr 'A-Z' 'a-z')
+case "$route" in direct|tun) ;; *) route=direct ;; esac
+ROUTE="$route"
+
 want=$(api_secret)
 if [ -z "$want" ]; then
     fail '403 Forbidden' 'mihomo 没设 secret' 'no-secret'
@@ -96,7 +107,6 @@ case "$len" in
 esac
 [ "$len" -gt "$MAX_URL" ] && fail '413 Payload Too Large' '订阅 URL 过长'
 
-# dd 读原始 body；只接受单行 URL，去掉 CR/LF 和首尾空白。
 url=$(dd bs=1 count="$len" 2>/dev/null)
 url=$(printf '%s' "$url" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 [ -n "$url" ] || fail '400 Bad Request' '订阅 URL 为空'
@@ -112,21 +122,21 @@ case "$url" in
 esac
 
 # ── SSRF：只允许公网主机 ──────────────────────────────────────
-host=$(printf '%s' "$url" | sed 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#[/?#].*$##; s#^.*@##')
-is_v6=0
-case "$host" in
-    \[*\]) host=${host#\[}; host=${host%\]}; is_v6=1 ;;
+# 代理地址 127.0.0.1 不在这里判，判据只针对目标 URL。
+rest=$(printf '%s' "$url" | sed 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#[/?#].*$##; s#^.*@##')
+host=$(printf '%s' "$rest" | sed 's#^\[##; s#\].*$##; s#:.*$##')
+case "$rest" in
+    \[*\]:*) port=${rest##*]:} ;;
+    \[*\])   port='' ;;
+    *:*)     port=${rest##*:} ;;
+    *)       port='' ;;
 esac
-if [ "$is_v6" = 0 ]; then
-    case "$host" in
-        *:*) host=${host%%:*} ;;
-    esac
-fi
+case "$url" in https://*) default_port=443 ;; *) default_port=80 ;; esac
+case "$port" in ''|*[!0-9]*) port="$default_port" ;; esac
+case "$host" in
+    ''|*[!A-Za-z0-9._:-]*) fail '400 Bad Request' '订阅 URL 主机名非法' 'ssrf' ;;
+esac
 host=$(printf '%s' "$host" | tr 'A-Z' 'a-z' | sed 's/\.$//')
-[ -n "$host" ] || fail '400 Bad Request' '订阅 URL 没有主机名' 'ssrf'
-case "$host" in
-    *[!A-Za-z0-9._:-]*) fail '400 Bad Request' '订阅 URL 主机名非法' 'ssrf' ;;
-esac
 
 ssrf=0
 case "$host" in
@@ -141,7 +151,6 @@ case "$host" in
         esac
         ;;
 esac
-# IPv4 字面量；短写法（127.1）也按前缀拦。
 case "$host" in
     127.*|10.*|192.168.*|169.254.*) ssrf=1 ;;
 esac
@@ -173,52 +182,101 @@ case "$avail" in
     *) [ "$avail" -lt 8192 ] && fail '507 Insufficient Storage' '路由器临时空间不足' 'no-space' ;;
 esac
 
-# ── 拉取 ───────────────────────────────────────────────────────
-# 有些精简 libcurl 没编 zlib，--compressed 会直接 rc=2；有就启用，没就退回原样。
-COMPRESSED_OPT=''
-curl --compressed --version >/dev/null 2>&1 && COMPRESSED_OPT='--compressed'
-
+# ── 一跳 ───────────────────────────────────────────────────────
 umask 077
 SUB_TMP=$(mktemp /tmp/mihomo-sub.XXXXXX 2>/dev/null) || \
     fail '500 Internal Server Error' '无法创建临时文件'
 ERR_TMP=$(mktemp /tmp/mihomo-sub-err.XXXXXX 2>/dev/null) || \
     fail '500 Internal Server Error' '无法创建临时文件'
 
-code=$(curl -sS -L $COMPRESSED_OPT \
+# 有些精简 libcurl 没编 zlib，--compressed 会直接 rc=2；有就启用，没就退回原样。
+COMPRESSED_OPT=''
+curl --compressed --version >/dev/null 2>&1 && COMPRESSED_OPT='--compressed'
+
+set -- -sS -L $COMPRESSED_OPT \
     --proto '=http,https' \
     --proto-redir '=http,https' \
     --max-redirs 3 \
-    --connect-timeout 8 \
-    --max-time 30 \
+    --connect-timeout 6 \
+    --max-time 25 \
     --speed-limit 10 \
     --speed-time 20 \
     --max-filesize "$MAX_BYTES" \
-    --user-agent 'mihomo/1.19.34' \
-    --header 'Cache-Control: no-cache' \
-    --output "$SUB_TMP" \
-    --write-out '%{http_code}' \
-    -- "$url" 2>"$ERR_TMP")
+    -A 'mihomo' \
+    -H 'Cache-Control: no-cache'
+
+if [ "$route" = 'direct' ]; then
+    # 系统 DNS 被 fake-ip 接管；必须用指定 resolver 取真实 IPv4。
+    ip=''
+    for dns in 223.5.5.5 119.29.29.29; do
+        ip=$(nslookup "$host" "$dns" 2>/dev/null | awk '
+            /^Name:/ { found=1; next }
+            found && /^Address: / { print $2; exit }
+        ')
+        [ -n "$ip" ] && break
+    done
+    # 去掉 IPv6 结果；直连这里只处理 IPv4。
+    case "$ip" in *:*) ip='' ;; esac
+
+    wan=$(ip -4 route show table main 2>/dev/null | awk '$1 == "default" { print $5; exit }')
+    if [ -z "$ip" ] || [ -z "$wan" ]; then
+        fail '409 Conflict' '直连不可用（解析或 WAN 接口缺失）' 'direct-unavailable'
+    fi
+
+    set -- "$@" --resolve "$host:$port:$ip" --interface "$wan"
+    ROUTE='direct'
+else
+    # 跳2：优先本地监听口；端口全部无效就靠 TUN 自然接管。
+    mp=$(sed -n 's/^mixed-port:[[:space:]]*//p' "$CONFIG" | head -1 | tr -d '" ')
+    sp=$(sed -n 's/^socks-port:[[:space:]]*//p' "$CONFIG" | head -1 | tr -d '" ')
+    hp=$(sed -n 's/^port:[[:space:]]*//p' "$CONFIG" | head -1 | tr -d '" ')
+    proxy_opt=''
+    proxy_arg=''
+    if [ -n "$mp" ] && [ "$mp" -gt 0 ] 2>/dev/null; then
+        proxy_opt='--proxy'
+        proxy_arg="http://127.0.0.1:$mp"
+        ROUTE='tun-port'
+    elif [ -n "$sp" ] && [ "$sp" -gt 0 ] 2>/dev/null; then
+        proxy_opt='--socks5-hostname'
+        proxy_arg="127.0.0.1:$sp"
+        ROUTE='tun-port'
+    elif [ -n "$hp" ] && [ "$hp" -gt 0 ] 2>/dev/null; then
+        proxy_opt='--proxy'
+        proxy_arg="http://127.0.0.1:$hp"
+        ROUTE='tun-port'
+    else
+        ROUTE='tun-plain'
+    fi
+    if [ -n "$proxy_opt" ]; then
+        set -- "$@" "$proxy_opt" "$proxy_arg"
+    fi
+fi
+
+set -- "$@" --output "$SUB_TMP" --write-out '%{http_code}' -- "$url"
+code=$(curl "$@" 2>"$ERR_TMP")
 rc=$?
-# 排障用 stderr 已经不需要了，先删掉；避免异常退出路径只清掉 SUB_TMP 的边角情况。
+UPSTREAM=${code:-000}
 rm -f "$ERR_TMP"
 ERR_TMP=''
 
 if [ "$rc" -ne 0 ]; then
     case "$rc" in
-        1)  fail '502 Bad Gateway' '订阅重定向到了不支持的协议（只允许 http/https）' 'bad-proto' ;;
-        6)  fail '502 Bad Gateway' '订阅域名解析失败' 'dns' ;;
-        7)  fail '502 Bad Gateway' '连接订阅服务器失败' 'connect' ;;
-        28) fail '504 Gateway Timeout' '订阅拉取超时' 'timeout' ;;
+        1)    fail '502 Bad Gateway' '订阅重定向到了不支持的协议（只允许 http/https）' 'redir' ;;
+        6)    fail '502 Bad Gateway' '订阅域名解析失败' 'dns' ;;
+        7)    fail '502 Bad Gateway' '连接订阅服务器失败' 'connect' ;;
+        28)   fail '504 Gateway Timeout' '订阅拉取超时' 'timeout' ;;
         35|60) fail '502 Bad Gateway' '订阅 TLS 证书校验失败' 'tls' ;;
-        47) fail '502 Bad Gateway' '订阅重定向次数过多，或目标协议不是 http/https（只允许 http/https）' 'redirect' ;;
-        63) fail '413 Payload Too Large' '订阅内容超过 4 MiB' 'too-large' ;;
-        127) fail '502 Bad Gateway' '路由器没有 curl，请先安装 curl 和 ca-bundle' 'no-curl' ;;
-        *)  fail '502 Bad Gateway' "订阅拉取失败（curl $rc）" 'curl' ;;
+        47)   fail '502 Bad Gateway' '订阅重定向次数过多，或目标协议不是 http/https（只允许 http/https）' 'redir' ;;
+        63)   fail '413 Payload Too Large' '订阅内容超过 4 MiB' 'too-large' ;;
+        127)  fail '502 Bad Gateway' '路由器没有 curl' 'no-curl' ;;
+        45)   fail '409 Conflict' '直连不可用（WAN 接口不可绑定）' 'direct-unavailable' ;;
+        *)    fail '502 Bad Gateway' "订阅拉取失败（curl $rc）" 'curl' ;;
     esac
 fi
 
 case "$code" in
     2??) ;;
+    3??) fail '502 Bad Gateway' '订阅重定向到了不支持的协议（只允许 http/https）' 'redir' ;;
     *) fail '502 Bad Gateway' "订阅返回 HTTP $code" 'http' ;;
 esac
 
@@ -227,6 +285,8 @@ size=$(wc -c < "$SUB_TMP" | tr -d ' ')
 [ "$size" -eq 0 ] && fail '502 Bad Gateway' '订阅返回空内容' 'empty'
 
 printf 'Status: 200 OK\r\n'
+printf 'X-Sub-Route: %s\r\n' "$ROUTE"
+printf 'X-Sub-Upstream: %s\r\n' "$UPSTREAM"
 printf 'Content-Type: text/plain; charset=utf-8\r\n'
 printf 'Content-Length: %s\r\n' "$size"
 printf 'Cache-Control: no-store\r\n'

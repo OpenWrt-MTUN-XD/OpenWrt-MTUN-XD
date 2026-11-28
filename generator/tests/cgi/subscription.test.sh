@@ -40,12 +40,14 @@ call_cgi() {
     cfg=$1
     auth=$2
     url=$3
+    route=${4:-direct}
     len=$(printf '%s' "$url" | wc -c | tr -d ' ')
     printf '%s' "$url" | env \
         REQUEST_METHOD=POST \
         CONTENT_LENGTH="$len" \
         HTTP_AUTHORIZATION="$auth" \
         HTTP_HOST=router.example \
+        HTTP_X_SUB_ROUTE="$route" \
         MIHOMO_SUB_CONFIG="$cfg" \
         sh "$CGI" > "$TMP/out"
 }
@@ -113,45 +115,56 @@ done
 BASE="http://$HOST:$PORT"
 
 # 1. 无 Authorization
-call_cgi "$TMP/config-good" '' "$BASE/normal"
+call_cgi "$TMP/config-good" '' "$BASE/normal" direct
 assert_status '401 Unauthorized'
 assert_reason 'no-auth'
 
 # 2. secret 为空
-call_cgi "$TMP/config-empty" 'Bearer x' "$BASE/normal"
+call_cgi "$TMP/config-empty" 'Bearer x' "$BASE/normal" direct
 assert_status '403 Forbidden'
 assert_reason 'no-secret'
 
 # 3. secret 错误
-call_cgi "$TMP/config-good" 'Bearer bad' "$BASE/normal"
+call_cgi "$TMP/config-good" 'Bearer bad' "$BASE/normal" direct
 assert_status '403 Forbidden'
 assert_reason 'bad-secret'
 
-# 4. 3.9 MiB
-call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/normal"
-assert_status '200 OK'
+# 4. SSRF（目标 127.0.0.1）
+call_cgi "$TMP/config-good" 'Bearer test-secret' "http://127.0.0.1:$PORT/normal" direct
+assert_status '400 Bad Request'
+assert_reason 'ssrf'
 
-# 5. 4.1 MiB + 临时文件清理
-call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/large"
+# 5. 3.9 MiB，经 tun（无本地端口 → tun-plain）
+call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/normal" tun
+assert_status '200 OK'
+[ "$(sed -n 's/^X-Sub-Upstream: //p' "$TMP/out" | tr -d '\r')" = '200' ] || fail 'missing upstream 200'
+
+# 6. 4.1 MiB + 临时文件清理
+call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/large" tun
 assert_status '413 Payload Too Large'
 if find /tmp -maxdepth 1 \( -name 'mihomo-sub.*' -o -name 'mihomo-sub-err.*' \) | grep -q .; then
     fail 'mihomo-sub temp files remain after 413'
 fi
 
-# 6. 302 到 ftp
-call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/redirect"
+# 7. 302 到 ftp
+call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/redirect" tun
 status=$(status_of "$TMP/out")
 [ "$status" = '502 Bad Gateway' ] || [ "$status" = '400 Bad Request' ] || fail "ftp redirect status: $status"
-body_of "$TMP/out" | grep -q '只允许 http/https' || { body_of "$TMP/out" >&2; fail 'ftp redirect body lacks protocol message'; }
+body_of "$TMP/out" | grep -q '只允许 http/https' || { echo "redirect_status=$(status_of "$TMP/out")" >&2; body_of "$TMP/out" | head -c 300 >&2; echo >&2; fail 'ftp redirect body lacks protocol message'; }
 
-# 7. SSRF
-call_cgi "$TMP/config-good" 'Bearer test-secret' "http://127.0.0.1:$PORT/normal"
-assert_status '400 Bad Request'
-assert_reason 'ssrf'
-
-# 8. 服务器 sleep 40s，CGI 总超时 30s
-call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/slow"
+# 8. 服务器 sleep 40s，CGI 总超时 25s
+call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/slow" tun
 assert_status '504 Gateway Timeout'
 assert_reason 'timeout'
+
+# 9. route=tun 且无本地端口 → tun-plain
+call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/normal" tun
+assert_status '200 OK'
+[ "$(sed -n 's/^X-Sub-Route: //p' "$TMP/out" | tr -d '\r')" = 'tun-plain' ] || fail 'route should be tun-plain'
+
+# 10. direct 且解析不到 → 409 / direct-unavailable
+call_cgi "$TMP/config-good" 'Bearer test-secret' 'http://no-such-host.invalid/' direct
+assert_status '409 Conflict'
+assert_reason 'direct-unavailable'
 
 echo "✔ subscription CGI tests passed"

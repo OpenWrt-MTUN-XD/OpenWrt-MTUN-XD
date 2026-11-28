@@ -125,11 +125,14 @@
   }
 
   function fetchHop(endpoint, url, route, secret) {
+    // uhttpd 不传自定义 X-Sub-Route 头，因此 route 同时放进 query。
+    var sep = endpoint.indexOf('?') === -1 ? '?' : '&';
+    var hopUrl = endpoint + sep + 'route=' + encodeURIComponent(route);
     var AC = root.AbortController;
     var ac = AC ? new AC() : null;
     var timer = ac ? root.setTimeout(function () { ac.abort(); }, HOP_TIMEOUT) : null;
 
-    return root.fetch(endpoint, {
+    return root.fetch(hopUrl, {
       method: 'POST',
       cache: 'no-store',
       headers: {

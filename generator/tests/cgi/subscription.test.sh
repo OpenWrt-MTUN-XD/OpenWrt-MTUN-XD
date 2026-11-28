@@ -52,6 +52,23 @@ call_cgi() {
         sh "$CGI" > "$TMP/out"
 }
 
+# 真实 uhttpd 不传自定义头，走 query。
+call_cgi_query() {
+    cfg=$1
+    auth=$2
+    url=$3
+    route=${4:-tun}
+    len=$(printf '%s' "$url" | wc -c | tr -d ' ')
+    printf '%s' "$url" | env \
+        REQUEST_METHOD=POST \
+        CONTENT_LENGTH="$len" \
+        HTTP_AUTHORIZATION="$auth" \
+        HTTP_HOST=router.example \
+        QUERY_STRING="route=$route" \
+        MIHOMO_SUB_CONFIG="$cfg" \
+        sh "$CGI" > "$TMP/out"
+}
+
 printf 'secret: "test-secret"\n' > "$TMP/config-good"
 printf 'secret: ""\n' > "$TMP/config-empty"
 HOST='sub.127.0.0.1.nip.io'
@@ -157,8 +174,8 @@ call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/slow" tun
 assert_status '504 Gateway Timeout'
 assert_reason 'timeout'
 
-# 9. route=tun 且无本地端口 → tun-plain
-call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/normal" tun
+# 9. route=tun 且无本地端口 → tun-plain（query 形式，模拟 uhttpd）
+call_cgi_query "$TMP/config-good" 'Bearer test-secret' "$BASE/normal" tun
 assert_status '200 OK'
 [ "$(sed -n 's/^X-Sub-Route: //p' "$TMP/out" | tr -d '\r')" = 'tun-plain' ] || fail 'route should be tun-plain'
 

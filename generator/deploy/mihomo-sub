@@ -87,7 +87,15 @@ fi
 [ "${REQUEST_METHOD:-}" = 'POST' ] || fail '405 Method Not Allowed' 'only POST'
 
 # ── 路由与认证 ─────────────────────────────────────────────────
+# uhttpd 不会把自定义 X-Sub-Route 头传进 CGI；Authorization 才会。
+# 所以同时支持头部（直调 / 测试）和 query（真实 uhttpd 路径）。
 route=$(printf '%s' "${HTTP_X_SUB_ROUTE:-}" | tr 'A-Z' 'a-z')
+case "$route" in
+    direct|tun) ;;
+    *)
+        route=$(printf '%s' "${QUERY_STRING:-}" | sed -n 's/.*route=\([^&]*\).*/\1/p' | head -1 | tr 'A-Z' 'a-z')
+        ;;
+esac
 case "$route" in direct|tun) ;; *) route=direct ;; esac
 ROUTE="$route"
 

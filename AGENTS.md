@@ -267,6 +267,8 @@ HAProxy 方案必须：
 1. 本地只更新 `generator/app/state.js` 的 `APP_VERSION`、`openwrt/Makefile` 的
    `PKG_VERSION`（去掉前导 v，必须一致）、`CHANGELOG.md`，然后提交 release commit 并推 `main`。
    **本地不产出 dist、不建 tag、不建 Release、不传附件。**
+   **更不要手动 `git tag` + `git push --tags`**：tag 由 workflow 的 publish 步骤创建；先有 tag 会让
+   `published_check` 读到「tag 已存在、Release 附件未生成」，判为半截状态并阻止发布。
 2. 推 `main` 后由 `.github/workflows/release.yml` 完成：prepare → test → 造 ipk/apk →
    更新/提交 dist → 建 Release（含 tag）→ Telegram 通知。
 3. `prepare` 的硬闸门：若 `dist/latest.txt` 已是本次版本、但 GitHub Release 不存在，

@@ -41,6 +41,7 @@ call_cgi() {
     auth=$2
     url=$3
     route=${4:-direct}
+    dns_disabled=${5:-0}
     len=$(printf '%s' "$url" | wc -c | tr -d ' ')
     printf '%s' "$url" | env \
         REQUEST_METHOD=POST \
@@ -48,6 +49,7 @@ call_cgi() {
         HTTP_AUTHORIZATION="$auth" \
         HTTP_HOST=router.example \
         HTTP_X_SUB_ROUTE="$route" \
+        MIHOMO_SUB_DNS_DISABLED="$dns_disabled" \
         MIHOMO_SUB_CONFIG="$cfg" \
         sh "$CGI" > "$TMP/out"
 }
@@ -94,6 +96,12 @@ class H(http.server.SimpleHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'slow')
+            return
+        if self.path.startswith('/html'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b'<!doctype html><html>login</html>')
             return
         if self.path.startswith('/403'):
             self.send_response(403)
@@ -185,7 +193,7 @@ assert_status '200 OK'
 [ "$(sed -n 's/^X-Sub-Route: //p' "$TMP/out" | tr -d '\r')" = 'tun-plain' ] || fail 'route should be tun-plain'
 
 # 10. direct 且解析不到 → 409 / direct-unavailable
-call_cgi "$TMP/config-good" 'Bearer test-secret' 'http://no-such-host.invalid/' direct
+call_cgi "$TMP/config-good" 'Bearer test-secret' 'http://no-such-host.invalid/' direct 1
 assert_status '409 Conflict'
 assert_reason 'direct-unavailable'
 
@@ -197,5 +205,10 @@ call_cgi "$TMP/config-good" 'Bearer test-secret' 'https://sub.example.co.uk/x' d
 call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/403" tun
 assert_status '502 Bad Gateway'
 assert_reason 'forbidden'
+
+# 13. 网页内容不能当订阅
+call_cgi "$TMP/config-good" 'Bearer test-secret' "$BASE/html" tun
+assert_status '502 Bad Gateway'
+assert_reason 'html'
 
 echo "✔ subscription CGI tests passed"

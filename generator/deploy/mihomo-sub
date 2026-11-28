@@ -226,7 +226,10 @@ if [ "$route" = 'direct' ]; then
     case "$wan" in *tun*|*Tun*|*TUN*|Meta|*mihomo*) wan='' ;; esac
 
     ip=''
-    if [ -n "$wan" ]; then
+    if [ "${MIHOMO_SUB_DNS_DISABLED:-0}" = 1 ]; then
+        ip=''
+    else
+        if [ -n "$wan" ]; then
         doh=$(curl -4 -sS -m 8 --interface "$wan" -k \
             "https://223.5.5.5/resolve?name=$host&type=A" 2>/dev/null)
         ip=$(printf '%s' "$doh" | sed -n 's/.*"type":1[^}]*"data":"\([0-9][0-9.]*\)".*/\1/p' | head -1)
@@ -247,6 +250,8 @@ if [ "$route" = 'direct' ]; then
         case "$ip" in *:*) ip='' ;; esac
         case "$ip" in 198.18.*|198.19.*|0.0.0.0) ip='' ;; esac
     fi
+    fi
+
     # 解析到内网地址同样不放行：DNS 层面就能把请求引到内网
     case "$ip" in
         '') ;;

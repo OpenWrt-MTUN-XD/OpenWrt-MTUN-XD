@@ -298,6 +298,10 @@ writeFileSync(join(GEN, 'index.html'), genHtml);
 writeFileSync(join(GEN, 'mihomo-apply'), lf(readFileSync(join(DEPLOY, 'mihomo-apply'), 'utf8')));
 try { chmodSync(join(GEN, 'mihomo-apply'), 0o755); } catch { /* Windows 上无所谓 */ }
 
+// ③″ 机场订阅一次性拉取 CGI：和写盘 CGI 一样，认证走 mihomo secret。
+writeFileSync(join(GEN, 'mihomo-sub'), lf(readFileSync(join(DEPLOY, 'mihomo-sub'), 'utf8')));
+try { chmodSync(join(GEN, 'mihomo-sub'), 0o755); } catch { /* Windows 上无所谓 */ }
+
 // ③′ 「取信」脚本已撤（信箱那条不稳，见 deploy/generator.sh 那段）；kit 里不再带 mihomo-pull，
 //     装的时候反过来把老机器上残留的那一套清掉。
 
@@ -322,7 +326,7 @@ writeFileSync(join(GEN, 'btn.js'), lf(readFileSync(join(DEPLOY, 'btn.js'), 'utf8
   };
   chk(GEN);
 }
-for (const rel of ['config/index.html', 'config/secret.js', 'config/mihomo-apply', 'config/btn.js', 'config/ui.js']) {
+for (const rel of ['config/index.html', 'config/secret.js', 'config/mihomo-apply', 'config/mihomo-sub', 'config/btn.js', 'config/ui.js']) {
   if (!existsSync(join(OUT, rel))) throw new Error(`打包不完整，少了 ${rel} —— 重跑一次`);
 }
 // ⚠️ **这两样是「没登录就 404」的命根子**，缺一个整道门就白做：

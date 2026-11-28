@@ -811,3 +811,32 @@ body.no-nodes #rules-card .rules-empty-hint { display: block; }
 
 /* 当前不可用的策略行固定显示但灰掉，避免误以为可以勾 */
 #strategy-field .strat-row.disabled { opacity: .55; }
+
+
+/* 节点导入首屏：压缩来源卡与空列表，避免页面右侧出现滚动条 */
+.step[data-step="0"] .card:first-of-type {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.step[data-step="0"] .card:first-of-type .field-label {
+  margin-top: 8px;
+}
+.step[data-step="0"] .card:first-of-type .field-label:first-of-type {
+  margin-top: 0;
+}
+.step[data-step="0"] .card:first-of-type .hint {
+  margin: 3px 0 6px;
+}
+.step[data-step="0"] .card:first-of-type > div[style] {
+  margin: 10px 0 12px !important;
+}
+.step[data-step="0"].active > #list-card > .node-list {
+  min-height: 48px;
+}
+.step[data-step="0"] .node-empty {
+  /* 总高不变，只把文字向下挪 8px */
+  padding: 30px 8px 6px;
+}
+.step[data-step="0"] .step-foot {
+  margin-top: 8px;
+}

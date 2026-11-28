@@ -62,6 +62,7 @@ GH_API='https://api.github.com'
 GH_RAW='https://raw.githubusercontent.com/'"$REPO_GH"'/main'
 KIT_CF='https://mtun-xd.wxcircle.top'
 CGI=/www/cgi-bin/mihomo-apply
+SUBCGI=/www/cgi-bin/mihomo-sub
 # 80 口归 nginx（Kwrt / QWRT 这类）时用的适配脚本，随包带在 usr/share 下，
 # 源是仓库的 deploy/mihomo-kwrt-nginx.sh。
 NGINX_HELPER=/usr/share/mtun-xd/mihomo-kwrt-nginx.sh
@@ -936,6 +937,7 @@ upgrade_ui() {
     fi
 
     [ -f "$UI/config/mihomo-apply" ] && ln -sf "$UI/config/mihomo-apply" "$CGI"
+    [ -f "$UI/config/mihomo-sub" ] && ln -sf "$UI/config/mihomo-sub" "$SUBCGI"
     seed_panel_cfg
     # 换完、校验也过了 → 旧的那份直接删掉（面板是静态文件，升级成功就没用了）。
     # $UIOLD 只在这几十秒里当"换名失败能挪回来"的缓冲。
@@ -946,12 +948,14 @@ upgrade_ui() {
     #    判据不能只看 index.html：半截复制常见的是 index.html 在、core/ 或 ui.js 缺
     #    （表现是 LuCI 里「配置工具」页一片空白）。
     if [ ! -f "$UI/config/index.html" ] || [ ! -f "$UI/config/core/render.js" ] \
-       || [ ! -f "$UI/config/ui.js" ] || [ ! -x "$UI/config/mihomo-apply" ]; then
+       || [ ! -f "$UI/config/ui.js" ] || [ ! -x "$UI/config/mihomo-apply" ] \
+       || [ ! -x "$UI/config/mihomo-sub" ]; then
         say "→ 面板：补配置工具"
         if ! install_tool; then
             say "✘ 配置工具：补装失败（网络？）—— 之后手动跑 mtun-xd tool"
         fi
         [ -f "$UI/config/mihomo-apply" ] && ln -sf "$UI/config/mihomo-apply" "$CGI"
+        [ -f "$UI/config/mihomo-sub" ] && ln -sf "$UI/config/mihomo-sub" "$SUBCGI"
     fi
     # 同版本恢复：chunk 文件名没变，浏览器手里可能还是改过的那份。
     [ "$restore" = 1 ] && say "⚠️ 浏览器要 Ctrl+F5 刷一次"
@@ -2054,6 +2058,7 @@ setup() {
         install_tool || { say "⚠️ 配置工具：没对齐（网络？）—— 之后重跑 mtun-xd setup"; [ -f "$UI/config/index.html" ] || ok=0; }
     fi
     [ -f "$UI/config/mihomo-apply" ] && { chmod +x "$UI/config/mihomo-apply" 2>/dev/null; mkdir -p /www/cgi-bin; ln -sf "$UI/config/mihomo-apply" "$CGI"; }
+    [ -f "$UI/config/mihomo-sub" ] && { chmod +x "$UI/config/mihomo-sub" 2>/dev/null; mkdir -p /www/cgi-bin; ln -sf "$UI/config/mihomo-sub" "$SUBCGI"; }
     # ⚠️ 生成器的安装脚本会把 $UI/config 整个重铺一遍（我们那份 theme.js 也在里面），
     #    所以铺完再种一次 —— 不然刚装完 theme.js 就没了。
     seed_panel_cfg

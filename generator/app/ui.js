@@ -688,7 +688,7 @@
     if (!state.nodes.length) {
       var empty = doc.createElement('div');
       empty.className = 'node-empty';
-      empty.textContent = '还没有节点。粘贴链接或上传文件都可以。';
+      empty.textContent = '您还没有节点。上传节点文件、拉取机场订阅或粘贴节点链接都可以。';
       box.appendChild(empty);
       return;
     }

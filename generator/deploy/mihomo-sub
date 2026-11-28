@@ -1,0 +1,139 @@
+#!/bin/sh
+# 配置工具「机场订阅」的一次性拉取接口。
+#
+# 为什么需要它：浏览器直接 fetch 机场订阅通常没有 CORS 头，静态页面拿不到内容；
+# 由 uhttpd CGI 代为拉取，前端再把原文交给 parseAnyInput()。
+#
+# 调用：POST /cgi-bin/mihomo-sub
+#       Authorization: Bearer <config.yaml 里的 secret>
+#       Content-Type: text/plain
+#       body: 订阅 URL
+#
+# 边界：
+#   - 只允许 http/https
+#   - URL 请求体最多 4 KiB
+#   - 响应最多 10 MiB
+#   - 最多跟随 3 次重定向
+#   - 连接超时 10 秒，总超时 45 秒
+#   - 不保存 URL，不写日志，不缓存内容
+#   - 认证复用 mihomo 自己的 secret，不新增钥匙
+
+CONFIG='/etc/mihomo/config.yaml'
+MAX_BYTES=10485760
+MAX_URL=4096
+SUB_TMP=''
+ERR_TMP=''
+
+cleanup_sub_files() {
+    [ -n "$SUB_TMP" ] && rm -f "$SUB_TMP"
+    [ -n "$ERR_TMP" ] && rm -f "$ERR_TMP"
+}
+trap cleanup_sub_files EXIT
+trap 'cleanup_sub_files; exit 130' INT TERM
+
+api_secret() {
+    sed -n 's/^secret:[[:space:]]*//p' "$CONFIG" | head -1 | tr -d '"'\'' '
+}
+
+cors() {
+    # 生成器可能跑在 :9090，这个 CGI 在 :80，跨端口必须带 CORS。
+    [ -n "$HTTP_ORIGIN" ] && printf 'Access-Control-Allow-Origin: %s\r\n' "$HTTP_ORIGIN"
+    printf 'Access-Control-Allow-Methods: POST, OPTIONS\r\n'
+    printf 'Access-Control-Allow-Headers: Content-Type, Authorization\r\n'
+    printf 'Vary: Origin\r\n'
+}
+
+fail() {
+    printf 'Status: %s\r\n' "$1"
+    printf 'Content-Type: text/plain; charset=utf-8\r\n'
+    printf 'Cache-Control: no-store\r\n'
+    cors
+    printf '\r\n'
+    printf '%s\n' "$2"
+    exit 0
+}
+
+[ "$REQUEST_METHOD" = 'OPTIONS' ] && fail '204 No Content' ''
+[ "$REQUEST_METHOD" = 'POST' ] || fail '405 Method Not Allowed' 'only POST'
+
+# ── 认证 ────────────────────────────────────────────────────────
+want=$(api_secret)
+if [ -z "$want" ]; then
+    fail '403 Forbidden' 'mihomo 没设 secret —— 订阅接口拒绝执行'
+fi
+
+given=$(printf '%s' "$HTTP_AUTHORIZATION" | sed -n 's/^[Bb]earer[[:space:]]*//p')
+if [ -z "$given" ]; then
+    fail '401 Unauthorized' 'missing Authorization: Bearer <secret>'
+fi
+if [ "$given" != "$want" ]; then
+    fail '403 Forbidden' 'bad secret'
+fi
+
+# ── 读取 URL ───────────────────────────────────────────────────
+len=${CONTENT_LENGTH:-}
+case "$len" in
+    ''|*[!0-9]*) fail '400 Bad Request' 'missing or invalid Content-Length' ;;
+esac
+[ "$len" -gt "$MAX_URL" ] && fail '413 Payload Too Large' '订阅 URL 过长'
+
+# dd 读原始 body；只接受单行 URL，去掉 CR/LF 和首尾空白。
+url=$(dd bs=1 count="$len" 2>/dev/null)
+url=$(printf '%s' "$url" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+[ -n "$url" ] || fail '400 Bad Request' '订阅 URL 为空'
+
+case "$url" in
+    http://*|https://*) ;;
+    *) fail '400 Bad Request' '订阅 URL 只支持 http/https' ;;
+esac
+case "$url" in
+    *[[:space:]]*) fail '400 Bad Request' '订阅 URL 不能包含空白' ;;
+esac
+
+# ── 拉取 ───────────────────────────────────────────────────────
+umask 077
+SUB_TMP=$(mktemp /tmp/mihomo-sub.XXXXXX 2>/dev/null) || \
+    fail '500 Internal Server Error' '无法创建临时文件'
+ERR_TMP=$(mktemp /tmp/mihomo-sub-err.XXXXXX 2>/dev/null) || \
+    fail '500 Internal Server Error' '无法创建临时文件'
+
+code=$(curl -sS -L --compressed \
+    --max-redirs 3 \
+    --connect-timeout 10 \
+    --max-time 45 \
+    --max-filesize "$MAX_BYTES" \
+    --user-agent 'mihomo/1.19.34' \
+    --header 'Cache-Control: no-cache' \
+    --output "$SUB_TMP" \
+    --write-out '%{http_code}' \
+    -- "$url" 2>"$ERR_TMP")
+rc=$?
+
+if [ "$rc" -ne 0 ]; then
+    case "$rc" in
+        6)  msg='订阅域名解析失败' ;;
+        7)  msg='连接订阅服务器失败' ;;
+        28) msg='订阅拉取超时' ;;
+        35|60) msg='订阅 TLS 证书校验失败' ;;
+        22) msg='订阅返回了错误状态' ;;
+        63) msg='订阅内容超过 10 MiB' ;;
+        *)  msg="订阅拉取失败（curl $rc）" ;;
+    esac
+    fail '502 Bad Gateway' "$msg"
+fi
+
+case "$code" in
+    2??) ;;
+    *) fail '502 Bad Gateway' "订阅返回 HTTP $code" ;;
+esac
+
+size=$(wc -c < "$SUB_TMP" | tr -d ' ')
+[ "$size" -gt "$MAX_BYTES" ] && fail '413 Payload Too Large' '订阅内容超过 10 MiB'
+[ "$size" -eq 0 ] && fail '502 Bad Gateway' '订阅返回空内容'
+
+printf 'Content-Type: text/plain; charset=utf-8\r\n'
+printf 'Content-Length: %s\r\n' "$size"
+printf 'Cache-Control: no-store\r\n'
+cors
+printf '\r\n'
+cat "$SUB_TMP"

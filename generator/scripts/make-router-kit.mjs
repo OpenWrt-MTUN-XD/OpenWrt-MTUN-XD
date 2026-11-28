@@ -136,7 +136,7 @@ function makeZip(entries) {
     const crc = crc32(e.data);
     // 名字是拼音/中文的一律当普通文件，除非显式给了 mode
     // ⚠️ CGI 得带上执行位 —— 少了的话 uhttpd 会直接给 403，写盘就永远失败
-    const mode = e.mode || (/\.sh$/.test(e.name) || /mihomo-apply$/.test(e.name) ? 0o100755 : 0o100644);
+    const mode = e.mode || (/\.sh$/.test(e.name) || /mihomo-(apply|sub)$/.test(e.name) ? 0o100755 : 0o100644);
 
     const lh = Buffer.alloc(30);
     lh.writeUInt32LE(0x04034b50, 0);
@@ -209,7 +209,7 @@ function makeTarGz(entries) {
     const name = Buffer.from(e.name, 'utf8');
     const isDir = !!e.dir;
     const data = isDir ? Buffer.alloc(0) : e.data;
-    const mode = e.mode || (isDir ? 0o40755 : (/\.sh$/.test(e.name) || /mihomo-apply$/.test(e.name) ? 0o100755 : 0o100644));
+    const mode = e.mode || (isDir ? 0o40755 : (/\.sh$/.test(e.name) || /mihomo-(apply|sub)$/.test(e.name) ? 0o100755 : 0o100644));
 
     const h = Buffer.alloc(512);
     name.copy(h, 0, 0, Math.min(name.length, 100));

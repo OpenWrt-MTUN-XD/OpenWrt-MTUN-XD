@@ -109,6 +109,22 @@ def diff_trees(fresh, dist, label):
     return bad
 
 
+def cgi_mode_bad(tar_path, zip_path):
+    """CGI 必须有 other 执行位：uhttpd 以非 root 跑 CGI，644 会给 403。"""
+    bad = []
+    want = ("config/mihomo-apply", "config/mihomo-sub")
+    with tarfile.open(tar_path, "r:gz") as t:
+        tm = {m.name.lstrip("./"): m.mode for m in t.getmembers() if m.isfile()}
+    with zipfile.ZipFile(zip_path) as z:
+        zm = {n: (z.getinfo(n).external_attr >> 16) & 0o777 for n in z.namelist()}
+    for rel in want:
+        if not tm.get(rel, 0) & 0o001:
+            bad.append("tar.gz: %s 缺 other 执行位（现 %s，uhttpd 会 403）" % (rel, oct(tm.get(rel, 0))))
+        if not zm.get(rel, 0) & 0o001:
+            bad.append("zip: %s 缺 other 执行位（现 %s，uhttpd 会 403）" % (rel, oct(zm.get(rel, 0))))
+    return bad
+
+
 def main():
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -141,6 +157,7 @@ def main():
     bad += check_lf(fresh, "fresh")
     bad += check_lf(tar_cfg, "tar.gz")
     bad += check_lf(zip_cfg, "zip")
+    bad += cgi_mode_bad(tar_path, zip_path)
 
     if open(fresh_gen_path, "rb").read() != open(gen_path, "rb").read():
         bad.append("generator.sh（与源码不一致）")
@@ -167,6 +184,7 @@ def main():
     print("✔ kit 与 generator/app 拍平目录一致（%d 个文件，tar.gz）" % len(fresh))
     print("✔ kit 与 generator/app 拍平目录一致（%d 个文件，zip）" % len(fresh))
     print("✔ generator.sh 与源码一致")
+    print("✔ CGI 执行位 755（tar.gz / zip：mihomo-apply、mihomo-sub）")
     print("✔ config/state.js APP_VERSION = v%s（fresh = tar = zip）" % version)
     return 0
 

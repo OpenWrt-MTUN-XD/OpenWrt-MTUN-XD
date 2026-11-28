@@ -31,6 +31,10 @@ ERR_TMP=''
 ROUTE='direct'
 UPSTREAM='000'
 
+# 清理上一次请求被客户端中断时留下的临时文件。UI 是单飞的，/tmp 下这些前缀
+# 只可能是本接口自己的；不清理会让 ls /tmp/mihomo-sub* 看起来永远不干净。
+rm -f /tmp/mihomo-sub.* /tmp/mihomo-sub-err.* 2>/dev/null
+
 cleanup_sub_files() {
     [ -n "$SUB_TMP" ] && rm -f "$SUB_TMP"
     [ -n "$ERR_TMP" ] && rm -f "$ERR_TMP"
